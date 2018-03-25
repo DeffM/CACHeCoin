@@ -682,7 +682,7 @@ void CWalletTx::GetAmounts(int64& nGeneratedImmature, int64& nGeneratedMature, l
 void CWalletTx::GetAccountAmounts(const string& strAccount, int64& nGenerated, int64& nReceived,
                                   int64& nSent, int64& nFee) const
 {
-    nReceived = nSent = nFee = 0;
+    nGenerated = nReceived = nSent = nFee = 0;
 
     int64 allGeneratedImmature, allGeneratedMature, allFee;
     string strSentAccount;
@@ -1366,8 +1366,14 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
 {
     // The following split & combine thresholds are important to security
     // Should not be adjusted if you don't understand the consequences
-    static unsigned int nStakeSplitAge = (60 * 60 * 24 * 90);
+    static unsigned int nStakeSplitAge;
+    if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() < nPowForceTimestamp)
+           nStakeSplitAge = (60 * 60 * 24 * 90);
+           else
+               nStakeSplitAge = (60 * 60 * 24 * 30);
+
     int64 nCombineThreshold = GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits) / 3;
+    int64 nNewCombineThreshold = GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits) / 3;
  
     // Keep a table of stuff to speed up POS mining
     static map<uint256, PosMiningStuff *> mapMiningStuff;
@@ -1519,11 +1525,15 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             // Stop adding more inputs if value is already pretty significant
             if (nCredit > nCombineThreshold)
                 break;
+            if (nCredit > nNewCombineThreshold)
+                break;
             // Stop adding inputs if reached reserve limit
             if (nCredit + pcoin.first->vout[pcoin.second].nValue > nBalance - nReserveBalance)
                 break;
             // Do not add additional significant input
             if (pcoin.first->vout[pcoin.second].nValue > nCombineThreshold)
+                continue;
+            if (pcoin.first->vout[pcoin.second].nValue > nNewCombineThreshold)
                 continue;
             // Do not add input that is still too young
             if (pcoin.first->nTime + nStakeMaxAge > txNew.nTime)

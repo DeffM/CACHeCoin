@@ -11,6 +11,8 @@
 #include "main.h"
 #include "uint256.h"
 
+//extern int nPowForceTimestamp;
+
 namespace Checkpoints
 {
     typedef std::map<int, uint256> MapCheckpoints;
@@ -41,7 +43,15 @@ namespace Checkpoints
         ( 16000, uint256("0x58f681c0eff1eb567767a54583f6c7946406197751899a1aa85eda6feae06d8b"))
         ( 19000, uint256("0x00000000320d193f86f5e7c3a076db13b76dc2fe229f445f89fb462167e0584c"))
         ( 20000, uint256("0x00000000214828a26dc5a8328f01daf6c0116af8ee9fb7be336485ba4c7a454b"))
-        //( 15000, uint256("0x00000082cab82d04354692fac3b83d19cbe3c3ab4b73610d0e73397545eb012e"))
+        ( 40000, uint256("0x0000001e4ee223f5ebdc19bff19474ebfdfe5f4c5a72eb9e4dd30321cfc04e0f"))
+        ( 80000, uint256("0x81a5550ed48795a248d81f8dfd08eef2a402eec7bc23c866c446b0139ee110aa"))
+        (100000, uint256("0x0000002f4353c1076f9338901550f75edd21900bc83774e558a2f4523f45f126"))
+        (101914, uint256("0x000002d9fffb1a1a942d49d4a53fb3d403aa08c8e402db5770ef6b165321e74c"))
+        (108045, uint256("0xcf21683844e404a48980a1a51f90c1da5ea5c881b4b9b0d98f657c2bb6dab211"))
+        (114468, uint256("0xcd88148074653f56e863a03ed3d9100aada0c68e99784bdf6d571bb099294467"))
+        (150000, uint256("0xf32066b3338000adc0099b585fb243896a229a933ed784b0b456466613578aba"))
+        (180000, uint256("0x000000b52ad2e0c0af47378ae542ae29a9e3bfc30028eeb24f72b98dcdfda16e"))
+        (230000, uint256("0x0000034829300a37ecc1f0662081b623a32457fccdd6a0b4b59ce26da204fef2"))
         ;
 
     static MapCheckpoints mapCheckpointsTestnet =
@@ -209,7 +219,14 @@ namespace Checkpoints
         // to defend against 51% attack which rejects other miners block
 
         // Select the last proof-of-work block
-        const CBlockIndex *pindex = GetLastBlockIndex(pindexBest, false);
+        const CBlockIndex *apindex = GetLastBlockIndex(pindexBest, false);
+        const CBlockIndex *bpindex = GetLastBlockIndexPow(pindexBest, false);
+        const CBlockIndex *pindex;
+        if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() < nPowForceTimestamp)
+           pindex = apindex;
+           else
+               pindex = bpindex;
+
         // Search forward for a block within max span and maturity window
         while (pindex->pnext && (pindex->GetBlockTime() + CHECKPOINT_MAX_SPAN <= pindexBest->GetBlockTime() || pindex->nHeight + std::min(6, nCoinbaseMaturity - 20) <= pindexBest->nHeight))
             pindex = pindex->pnext;

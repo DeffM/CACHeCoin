@@ -81,19 +81,6 @@ void scrypt_buffer_free(void *scratchpad)
    r = 1, p = 1, N = 1024
  */
 
-static void scrypt(const void* input, size_t inputlen, uint32_t *res, void *scratchpad)
-{
-    uint32_t *V;
-    uint32_t X[32];
-    V = (uint32_t *)(((uintptr_t)(scratchpad) + 63) & ~ (uintptr_t)(63));
-
-    PBKDF2_SHA256((const uint8_t*)input, inputlen, (const uint8_t*)input, sizeof(block_header), 1, (uint8_t *)X, 128);
-
-    scrypt_core(X, V);
-
-    PBKDF2_SHA256((const uint8_t*)input, inputlen, (uint8_t *)X, 128, 1, (uint8_t*)res, 32);
-}
-
 void scrypt_hash(const void* input, size_t inputlen, uint32_t *res, unsigned char Nfactor)
 {
     return scrypt((const unsigned char*)input, inputlen,

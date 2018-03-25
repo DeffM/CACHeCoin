@@ -205,16 +205,27 @@ Value getprofitestimate(const Array& params, bool fHelp)
          speed = gethashespersec(params, false).get_int64();
      double difficulty = GetDifficulty();
      double timeperblock = 0;
+     double timeperblocknew = 0;
      double coinsperblock = (double)GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits) / 1000000.0 ;
+     double coinsperblocknew = (double)GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits) / 1000000.0 ;
      if(speed > 0)
+     {
          timeperblock = (difficulty * constant) / speed;
+         timeperblocknew = (difficulty * constant) / speed;
+     }
      Object obj;
-     obj.push_back(Pair("difficulty", difficulty));
-     obj.push_back(Pair("speed", speed));
-     obj.push_back(Pair("time per block", timeperblock));
-     obj.push_back(Pair("coins per day", timeperblock ? ((60*60*24)/timeperblock)*coinsperblock : 0));
-     obj.push_back(Pair("coins per hr", timeperblock ? ((60*60)/timeperblock)*coinsperblock : 0));
-     obj.push_back(Pair("coins per min", timeperblock ? ((60)/timeperblock)*coinsperblock : 0));
+     obj.push_back(Pair("difficulty-before", difficulty));
+     obj.push_back(Pair("speed-before", speed));
+     obj.push_back(Pair("time per block-before", timeperblock));
+     obj.push_back(Pair("coins per day-before", timeperblock ? ((60*60*24)/timeperblock)*coinsperblock : 0));
+     obj.push_back(Pair("coins per hr-before", timeperblock ? ((60*60)/timeperblock)*coinsperblock : 0));
+     obj.push_back(Pair("coins per min-before", timeperblock ? ((60)/timeperblock)*coinsperblock : 0));
+     obj.push_back(Pair("difficulty-after", difficulty));
+     obj.push_back(Pair("speed-after", speed));
+     obj.push_back(Pair("time per block-after", timeperblocknew));
+     obj.push_back(Pair("coins per day-after", timeperblocknew ? ((60*60*24)/timeperblocknew)*coinsperblocknew : 0));
+     obj.push_back(Pair("coins per hr-after", timeperblocknew ? ((60*60)/timeperblocknew)*coinsperblocknew : 0));
+     obj.push_back(Pair("coins per min-after", timeperblocknew ? ((60)/timeperblocknew)*coinsperblocknew : 0));
      return obj;
  }
  
@@ -300,14 +311,14 @@ static const CRPCCommand vRPCCommands[] =
     { "signrawtransaction",     &signrawtransaction,     false,  false },
     { "sendrawtransaction",     &sendrawtransaction,     false,  false },
     { "getcheckpoint",          &getcheckpoint,          true,   false },
-    { "getprofitestimate",      &getprofitestimate,      true },
-    { "addnode",                &addnode,                false },
-    { "reservebalance",         &reservebalance,         false,  true},
-    { "checkwallet",            &checkwallet,            false,  true},
-    { "repairwallet",           &repairwallet,           false,  true},
-    { "resendtx",               &resendtx,               false,  true},
-    { "makekeypair",            &makekeypair,            false,  true},
-    { "sendalert",              &sendalert,              false,  false},
+    { "getprofitestimate",      &getprofitestimate,      true,   false },
+    { "addnode",                &addnode,                true,   true },
+    { "reservebalance",         &reservebalance,         false,  true },
+    { "checkwallet",            &checkwallet,            false,  true },
+    { "repairwallet",           &repairwallet,           false,  true },
+    { "resendtx",               &resendtx,               false,  true },
+    { "makekeypair",            &makekeypair,            false,  true },
+    { "sendalert",              &sendalert,              false,  false },
 };
 
 CRPCTable::CRPCTable()

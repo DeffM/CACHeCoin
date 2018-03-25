@@ -33,7 +33,9 @@ static const unsigned int MAX_INV_SZ = 50000;
 static const int64 MIN_TX_FEE = CENT;
 static const int64 MIN_RELAY_TX_FEE = CENT;
 static const int64 MAX_MONEY = 2000000000 * COIN;
-static const int64 MAX_MINT_PROOF_OF_WORK = 100 * COIN;
+static const int64 MINT_PROOF_OF_WORK = 100 * COIN;
+static const int64 MIN_MINT_PROOF_OF_WORK = 45 * COIN;
+static const int64 MAX_MINT_PROOF_OF_WORK = 90 * COIN;
 static const int64 MIN_TXOUT_AMOUNT = MIN_TX_FEE;
 inline bool MoneyRange(int64 nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 // Threshold for nLockTime: below this value it is interpreted as block number, otherwise as UNIX timestamp.
@@ -74,6 +76,23 @@ extern unsigned int nTransactionsUpdated;
 extern uint64 nLastBlockTx;
 extern uint64 nLastBlockSize;
 extern int64 nLastCoinStakeSearchInterval;
+extern int64 nLastCoinPowSearchInterval;
+extern int64 nLastCoinPowFiveInterval;
+extern int64 nLastCoinWithoutPowSearchInterval;
+extern int64 nLastCoinPosSearchInterval;
+extern int64 nLastCoinPosTwoInterval;
+extern int64 nLastCoinPosSearchIntervalPrev;
+extern int64 nLastCoinWithoutPosSearchInterval;
+extern double nActualTimeIntervalXUXLpow;
+extern double nActualTimeIntervalXUXLpos;
+extern double nPowTargetSpacingVar;
+extern double nPosTargetSpacingVar;
+extern double powUpperLower;
+extern double posUpperLower;
+extern double XUpperPow;
+extern double XLowerPow;
+extern double XUpperPos;
+extern double XLowerPos;
 extern const std::string strMessageMagic;
 extern double dHashesPerSec;
 extern int64 nHPSTimerStart;
@@ -85,6 +104,9 @@ extern std::map<uint256, CBlock*> mapOrphanBlocks;
 
 // Settings
 extern int64 nTransactionFee;
+
+// Settings PowForceGlobal
+static const int64 nPowForceTimestamp = 1523629191;
 
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64 nMinDiskSpace = 52428800;
@@ -108,7 +130,7 @@ bool ProcessMessages(CNode* pfrom);
 bool SendMessages(CNode* pto, bool fSendTrickle);
 bool LoadExternalBlockFile(FILE* fileIn);
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
-CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake=false);
+CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake=false, bool fProofOfWork=false);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
 bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey);
@@ -116,12 +138,16 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits);
 int64 GetProofOfWorkReward(unsigned int nBits);
 int64 GetProofOfStakeReward(int64 nCoinAge);
 unsigned int ComputeMinWork(unsigned int nBase, int64 nTime);
+unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fProofOfWork);
+unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fProofOfStake);
 unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake);
 int GetNumBlocksOfPeers();
 bool IsInitialBlockDownload();
 std::string GetWarnings(std::string strFor);
 bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock);
 uint256 WantedByOrphan(const CBlock* pblockOrphan);
+const CBlockIndex* GetLastBlockIndexPow(const CBlockIndex* powpindex, bool fProofOfWork);
+const CBlockIndex* GetLastBlockIndexPos(const CBlockIndex* pospindex, bool fProofOfStake);
 const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfStake);
 void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
 void ResendWalletTransactions();

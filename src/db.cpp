@@ -706,10 +706,8 @@ bool CTxDB::LoadBlockIndex()
         if (fRequestShutdown || pindex->nHeight < nBestHeight-nCheckDepth)
             break;
         CBlock block;
-        if (!block.ReadFromDisk(pindex)) {
-            break;
-            //return error("LoadBlockIndex() : block.ReadFromDisk failed");
-        }
+        if (!block.ReadFromDisk(pindex))
+            return error("LoadBlockIndex() : block.ReadFromDisk failed");
         // check level 1: verify block validity
         if (nCheckLevel>0 && !block.CheckBlock())
         {

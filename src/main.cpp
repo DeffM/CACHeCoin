@@ -44,8 +44,33 @@ static CBigNum bnInitialHashTarget(~uint256(0) >> 20);
 unsigned int nStakeMinAge = 60 * 60 * 24 * 7; // minimum age for coin age
 unsigned int nStakeMaxAge = 60 * 60 * 24 * 30; // stake age of full weight
 unsigned int nStakeTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
-int64 nChainStartTime = 1388949883;  // 01/05/2014 @ 19:24 (UTC)
-int64 nPowFixTimestamp = 1498262400; // 24/06/2017 @ 00:00 (UTC)
+unsigned int nPowTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
+unsigned int nPosTargetSpacing = 1 * 60 * 10; // DIFF: 10-minute block spacing
+unsigned int NTest = 518400;
+int64 nChainStartTime = 1388949883;
+int64 PowPindexPrevTime = 0;
+int64 PosPindexPrevTime = 0;
+int64 PosPindexPrevPrevTime = 0;
+int64 PosPindexPrevPrevPrevTime = 0;
+int64 PosPindexPrevPrevPrevPrevTime = 0;
+int64 nLastCoinPowSearchInterval = 0;
+int64 nLastCoinPowFiveInterval = 0;
+int64 nLastCoinWithoutPowSearchInterval = 0;
+int64 nLastCoinPosSearchInterval = 0;
+int64 nLastCoinPosSearchIntervalPrev = 0;
+int64 nLastCoinPosSearchIntervalPrevPrev = 0;
+int64 nLastCoinPosTwoInterval = 0;
+int64 nLastCoinWithoutPosSearchInterval = 0;
+double nActualTimeIntervalXUXLpow = 0;
+double nActualTimeIntervalXUXLpos = 0;
+double nPowTargetSpacingVar = 0;
+double nPosTargetSpacingVar = 0;
+double powUpperLower = 0;
+double posUpperLower = 0;
+double XUpperPow = 0;
+double XLowerPow = 0;
+double XUpperPos = 0;
+double XLowerPos = 0;
 int nCoinbaseMaturity = 500;
 CBlockIndex* pindexGenesisBlock = NULL;
 int nBestHeight = -1;
@@ -71,8 +96,8 @@ CScript COINBASE_FLAGS;
 
 const string strMessageMagic = "CacheCoin Signed Message:\n";
 
-double dHashesPerSec;
-int64 nHPSTimerStart;
+double dHashesPerSec = 0;
+int64 nHPSTimerStart = 0;
 
 // Settings
 int64 nTransactionFee = MIN_TX_FEE;
@@ -950,79 +975,33 @@ uint256 WantedByOrphan(const CBlock* pblockOrphan)
 {
     // Work back to the first block in the orphan chain
     while (mapOrphanBlocks.count(pblockOrphan->hashPrevBlock))
-        pblockOrphan = mapOrphanBlocks[pblockOrphan->hashPrevBlock];
+           pblockOrphan = mapOrphanBlocks[pblockOrphan->hashPrevBlock];
+
     return pblockOrphan->hashPrevBlock;
 }
 
 // cachecoin: increasing Nfactor gradually
 const unsigned char minNfactor = 4;
 const unsigned char maxNfactor = 30;
-double mGetDifficulty(const CBlockIndex* blockindex)
+
+unsigned char GetNfactor(int64 nTimestamp)
 {
-    // Floating point number that is a multiple of the minimum difficulty,
-    // minimum difficulty = 1.0.
-    if (blockindex == NULL)
-    {
-        if (pindexBest == NULL)
-            return 1.0;
-        else
-            blockindex = GetLastBlockIndex(pindexBest, false);
-    }
-    unsigned int nBlockBits = blockindex->nBits;
-    nBlockBits = GetNextTargetRequired(blockindex,blockindex->IsProofOfStake());
-    int nShift = (nBlockBits >> 24) & 0xff;
-
-    double dDiff = (double)0x0000ffff / (double)(nBlockBits & 0x00ffffff);
-
-    while (nShift < 29)
-    {
-        dDiff *= 256.0;
-        nShift++;
-    }
-    while (nShift > 29)
-    {
-        dDiff /= 256.0;
-        nShift--;
-    }
-
-    return dDiff;
-}
-
-uint64_t mGetNetworkHashPS( int lookup ) {
-    if( !pindexBest )
-        return 0;
-
-    if( lookup < 0 )
-        lookup = 0;
-
-    // If lookup is larger than chain, then set it to chain length.
-    if( lookup > pindexBest->nHeight )
-        lookup = pindexBest->nHeight;
-
-    CBlockIndex *pindexPrev = pindexBest;
-
-    for( int i = 0; i < lookup; ++i){
-        while(pindexPrev->pprev && pindexPrev->pprev->IsProofOfStake())
-            pindexPrev = pindexPrev->pprev;
-        pindexPrev = pindexPrev->pprev;
-    }
-
-    double timeDiff = pindexBest->GetBlockTime() - pindexPrev->GetBlockTime();
-    double timePerBlock = timeDiff / lookup;
-
-    return (uint64_t)(((double)mGetDifficulty(pindexBest) * pow(2.0, 32)) / timePerBlock);
-}
-
-unsigned char GetNfactor(int64 nTimestamp) {
     int l = 0;
+    int64 s = 0;
+    if(nTimestamp <= nChainStartTime || fTestNet)
+       return 4;
+    if(nTimestamp > nPowForceTimestamp && nTimestamp < nPowForceTimestamp + NTest)
+    {
+       s = nTimestamp - nPowForceTimestamp;
+       return 6;
+    }
+       else
+           s = nTimestamp - nChainStartTime;
 
-    if (nTimestamp <= nChainStartTime || fTestNet)
-        return 4;
-
-    int64 s = nTimestamp - nChainStartTime;
-    while ((s >> 1) > 3) {
-      l += 1;
-      s >>= 1;
+    while((s >> 1) > 3)
+    {
+           l += 1;
+           s >>= 1;
     }
 
     s &= 3;
@@ -1035,109 +1014,17 @@ unsigned char GetNfactor(int64 nTimestamp) {
         printf( "GetNfactor(%lld) - something wrong(n == %d)\n", nTimestamp, n );
 
     unsigned char N = (unsigned char) n;
-    unsigned char nFactor = min(max(N, minNfactor), maxNfactor);
-    //printf("GetNfactor: %d -> %d %d : %d / %d\n", nTimestamp - nChainStartTime, l, s, n, min(max(N, minNfactor), maxNfactor));
 
-    if(nTimestamp >= nPowFixTimestamp){
-		uint64_t nHashPS = mGetNetworkHashPS(1000);
-		uint64_t nHashPSTarget = 1000000;
-        if(nTimestamp >= 1498284368) nFactor = minNfactor;
-        if(nHashPS == 0) nFactor = minNfactor;
-		else if(nHashPS > nHashPSTarget){
-            int adjust = (int)(nHashPS/	nHashPSTarget);
-
-            if(adjust < maxNfactor) nFactor += adjust -1 ;
-            else nFactor = maxNfactor;
-        }else if(nHashPS < nHashPSTarget){
-            int adjust = (int)(nHashPSTarget/nHashPS);
-
-            if(adjust > nFactor) nFactor = minNfactor;
-            else nFactor -= adjust - 1;
-        }
-		nFactor = max(minNfactor, nFactor);
-		//printf("GetNfactor: %d -> %d %d : %d / %d\n", nTimestamp, l, s, n, nFactor);
-    }
-    return nFactor;
+    return min(max(N, minNfactor), maxNfactor);
 }
 
-int64 GetProofOfWorkReward(unsigned int nBits)
-{
-    CBigNum bnSubsidyLimit = MAX_MINT_PROOF_OF_WORK;
-    CBigNum bnTarget;
-    bnTarget.SetCompact(nBits);
-    CBigNum bnTargetLimit = bnProofOfWorkLimit;
-    bnTargetLimit.SetCompact(bnTargetLimit.GetCompact());
-
-    // ppcoin: subsidy is cut in half every 64x multiply of difficulty
-    // A reasonably continuous curve is used to avoid shock to market
-    // (nSubsidyLimit / nSubsidy) ** 6 == bnProofOfWorkLimit / bnTarget
-    //
-    // Human readable form:
-    //
-    // nSubsidy = 25 / (diff ^ 1/6)
-    CBigNum bnLowerBound = CENT;
-    CBigNum bnUpperBound = bnSubsidyLimit;
-    while (bnLowerBound + CENT <= bnUpperBound)
-    {
-        CBigNum bnMidValue = (bnLowerBound + bnUpperBound) / 2;
-        if (fDebug && GetBoolArg("-printcreation"))
-            printf("GetProofOfWorkReward() : lower=%"PRI64d" upper=%"PRI64d" mid=%"PRI64d"\n", bnLowerBound.getuint64(), bnUpperBound.getuint64(), bnMidValue.getuint64());
-        if (bnMidValue * bnMidValue * bnMidValue * bnMidValue * bnMidValue * bnMidValue * bnTargetLimit > bnSubsidyLimit * bnSubsidyLimit * bnSubsidyLimit * bnSubsidyLimit * bnSubsidyLimit * bnSubsidyLimit * bnTarget)
-            bnUpperBound = bnMidValue;
-        else
-            bnLowerBound = bnMidValue;
-    }
-
-    int64 nSubsidy = bnUpperBound.getuint64();
-    nSubsidy = (nSubsidy / CENT) * CENT;
-    if (fDebug && GetBoolArg("-printcreation"))
-        printf("GetProofOfWorkReward() : create=%s nBits=0x%08x nSubsidy=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nBits, nSubsidy);
-
-    return min(nSubsidy, MAX_MINT_PROOF_OF_WORK);
-}
-
-// ppcoin: miner's coin stake is rewarded based on coin age spent (coin-days)
-int64 GetProofOfStakeReward(int64 nCoinAge)
-{
-    static int64 nRewardCoinYear = 5 * CENT;  // creation amount per coin-year
-    int64 nSubsidy;
-    if(fTestNet)
-        nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
-    else
-        if(pindexBest->GetBlockTime() >= 1393140000)
-            nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
-        else
-            nSubsidy = nCoinAge * 33 / (365 * 33 + 8) * nRewardCoinYear;
-
-    if (fDebug && GetBoolArg("-printcreation"))
-        printf("GetProofOfStakeReward(): create=%s nCoinAge=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nCoinAge);
-    return nSubsidy;
-}
-
+static const int64 nTargetSpacingWorkMax = 12 * nStakeTargetSpacing;
 static const int64 nTargetTimespan = 7 * 24 * 60 * 60;  // one week
-static const int64 nTargetSpacingWorkMax = 12 * nStakeTargetSpacing; // 2-hour
 
-//
-// minimum amount of work that could possibly be required nTime after
-// minimum work required was nBase
-//
-unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
-{
-    CBigNum bnTargetLimit = bnProofOfWorkLimit;
-
-    CBigNum bnResult;
-    bnResult.SetCompact(nBase);
-    bnResult *= 2;
-    while (nTime > 0 && bnResult < bnTargetLimit)
-    {
-        // Maximum 200% adjustment per day...
-        bnResult *= 2;
-        nTime -= 24 * 60 * 60;
-    }
-    if (bnResult > bnTargetLimit)
-        bnResult = bnTargetLimit;
-    return bnResult.GetCompact();
-}
+static const int64 nTargetSpacingWorkMaxPow = 12 * nPowTargetSpacing; // 14400
+static const int64 nTargetSpacingWorkMaxPos = 12 * nPosTargetSpacing; // 7200
+static const int64 nTargetTimespanPow = nTargetSpacingWorkMaxPow * 6 * 12; // 1036800  matrix
+static const int64 nTargetTimespanPos = nTargetSpacingWorkMaxPos * 6 * 12; // 518400   matrix
 
 // ppcoin: find last block index up to pindex
 const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfStake)
@@ -1145,6 +1032,294 @@ const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfSta
     while (pindex && pindex->pprev && (pindex->IsProofOfStake() != fProofOfStake))
         pindex = pindex->pprev;
     return pindex;
+}
+const CBlockIndex* GetLastBlockIndexPow(const CBlockIndex* powpindex, bool fProofOfWork)
+{
+    while (powpindex && powpindex->pprev && (powpindex->IsProofOfWork() == fProofOfWork))
+        powpindex = powpindex->pprev;
+    return powpindex;
+}
+const CBlockIndex* GetLastBlockIndexPos(const CBlockIndex* pospindex, bool fProofOfStake)
+{
+    while (pospindex && pospindex->pprev && (pospindex->IsProofOfStake() != fProofOfStake))
+        pospindex = pospindex->pprev;
+    return pospindex;
+}
+
+unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fProofOfWork)
+{
+    CBigNum bnTargetLimitPow = bnProofOfWorkLimit;
+
+    if (powpindexLast == NULL)
+        return bnTargetLimitPow.GetCompact(); // last block
+    const CBlockIndex* powpindexPrev = GetLastBlockIndexPow(powpindexLast, fProofOfWork);
+    if (powpindexPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // first block
+    const CBlockIndex* powpindexPrevPrev = GetLastBlockIndexPow(powpindexPrev->pprev, fProofOfWork);
+    if (powpindexPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 1
+    const CBlockIndex* powpindexPrevPrevPrev = GetLastBlockIndexPow(powpindexPrevPrev->pprev, fProofOfWork);
+    if (powpindexPrevPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 2
+    const CBlockIndex* powpindexPrevPrevPrevPrev = GetLastBlockIndexPow(powpindexPrevPrevPrev->pprev, fProofOfWork);
+    if (powpindexPrevPrevPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 3
+    const CBlockIndex* powpindexPrevPrevPrevPrevPrev = GetLastBlockIndexPow(powpindexPrevPrevPrevPrev->pprev, fProofOfWork);
+    if (powpindexPrevPrevPrevPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 4
+    const CBlockIndex* powpindexPrevPrevPrevPrevPrevPrev = GetLastBlockIndexPow(powpindexPrevPrevPrevPrevPrev->pprev, fProofOfWork);
+    if (powpindexPrevPrevPrevPrevPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 5
+
+    double nPowTargetSpacingTest = 0;
+    if(powpindexPrev->GetBlockTime() > nPowForceTimestamp && powpindexPrev->GetBlockTime() < nPowForceTimestamp + NTest)
+       nPowTargetSpacingTest = nPowTargetSpacing / nPowTargetSpacing * 900;
+       else
+           nPowTargetSpacingTest = nPowTargetSpacing;
+    int64 nActualTimeIntervalLongPowVeryFirst = powpindexPrev->GetBlockTime() - powpindexPrevPrev->GetBlockTime();
+    int64 nActualTimeIntervalLongPowFirst = powpindexPrevPrev->GetBlockTime() - powpindexPrevPrevPrev->GetBlockTime();
+    int64 nActualTimeIntervalLongPowSecond = powpindexPrevPrevPrev->GetBlockTime() - powpindexPrevPrevPrevPrev->GetBlockTime();
+    double nActualSpacingTotalsPow = ( nActualTimeIntervalLongPowVeryFirst + nActualTimeIntervalLongPowFirst ) / 2;
+    double nActualTimeIntervalNvar = nActualTimeIntervalLongPowVeryFirst; // ( nActualSpacingTotalsPow + nActualTimeIntervalLongPowSecond ) / 2;
+
+    // cachecoin retarget
+    // VALM-Cach /logical analysis - mathematically variable/
+    int64 nActualSpacingPow = 0;
+    double nVar = nPowTargetSpacingTest / 3;
+    int64 nNonAccelerating = 0; // sec +0-
+          PowPindexPrevTime = powpindexPrev->GetBlockTime();
+          nLastCoinPowSearchInterval = nActualTimeIntervalLongPowVeryFirst;
+          nLastCoinPowFiveInterval = nActualSpacingTotalsPow;
+          nActualSpacingPow = ( nActualSpacingTotalsPow + nActualTimeIntervalLongPowSecond ) / 2; // nActualTimeIntervalLongPowVeryFirst;
+    if(nActualTimeIntervalNvar >= nNonAccelerating && nActualTimeIntervalNvar < nPowTargetSpacingTest - nNonAccelerating)
+       nPowTargetSpacingVar = (( nPowTargetSpacingTest - 1 + nVar ) - ( nActualTimeIntervalNvar * nVar / nPowTargetSpacingTest ));
+       else if
+              (nActualTimeIntervalNvar > nPowTargetSpacingTest + nNonAccelerating && nActualTimeIntervalNvar <= nPowTargetSpacingTest * 2)
+               nPowTargetSpacingVar = (( nPowTargetSpacingTest + 1 + nVar ) - ( nActualTimeIntervalNvar * nVar / nPowTargetSpacingTest ));
+               else if
+                      (nActualTimeIntervalNvar > nPowTargetSpacingTest * 2)
+                       nPowTargetSpacingVar = nPowTargetSpacingTest - nVar + 1;
+                       else
+                           nPowTargetSpacingVar = nPowTargetSpacingTest;
+    double nPTSp = nPowTargetSpacingTest; // 1200 sec
+    int64 powUppermin = 0;
+    double powUppermax = nPTSp - nNonAccelerating; // 1199 sec
+    double powLowermin = nPTSp + nNonAccelerating; // 1201 sec
+    int64 powLowermax = nTargetSpacingWorkMaxPow;  // 14400 sec
+    if(nActualTimeIntervalLongPowVeryFirst > powLowermin && nActualSpacingTotalsPow < powUppermax)
+       nActualTimeIntervalXUXLpow = nActualTimeIntervalLongPowVeryFirst;
+       else if(nActualTimeIntervalLongPowVeryFirst > powLowermin && nActualSpacingTotalsPow > powLowermin)
+               nActualTimeIntervalXUXLpow = min((double) nActualTimeIntervalLongPowVeryFirst, (double) nActualSpacingTotalsPow);
+       else if(nActualTimeIntervalLongPowVeryFirst < powUppermax && nActualSpacingTotalsPow < powUppermax)
+               nActualTimeIntervalXUXLpow = max((double) nActualTimeIntervalLongPowVeryFirst, (double) nActualSpacingTotalsPow);
+       else if(nActualSpacingTotalsPow < powUppermax && nActualSpacingTotalsPow > nActualSpacingPow)
+               nActualTimeIntervalXUXLpow = nActualSpacingTotalsPow;
+       else if(nActualSpacingTotalsPow > powLowermin && nActualSpacingTotalsPow < nActualSpacingPow)
+               nActualTimeIntervalXUXLpow = nActualSpacingTotalsPow;
+               else
+                   nActualTimeIntervalXUXLpow = nActualSpacingPow;
+    double nNix = nPTSp / 100 * 70; // 714
+    double nReverseEffectPow = 0;
+    if(nActualTimeIntervalXUXLpow < nNix)
+       nReverseEffectPow = nActualTimeIntervalXUXLpow / nNix;
+       else if(nActualTimeIntervalXUXLpow > nPTSp && nActualTimeIntervalXUXLpow <= nPTSp + ( nPTSp - nNix))
+               nReverseEffectPow = ( nPTSp / nPTSp ) / 2;
+       else if(nActualTimeIntervalXUXLpow > nPTSp + ( nPTSp - nNix) && nActualTimeIntervalXUXLpow < powLowermax)
+               nReverseEffectPow = (( nPTSp + ( nPTSp - nNix )) / nActualTimeIntervalXUXLpow ) / 2;
+               else
+                   nReverseEffectPow = 1;
+       powUpperLower = ( nPTSp / 2 ) * nReverseEffectPow; // interval sampling 2:1 variable
+    if(nActualSpacingTotalsPow < nNix / 1.30 && nActualTimeIntervalLongPowVeryFirst < powUppermax)
+       powUpperLower = powUpperLower * (( nNix / 1.30 ) / nActualSpacingTotalsPow );
+    double XUXL = nPowTargetSpacingTest / 100 * 4;
+    double U = 0;
+    double L = 0;
+    double XU = XUXL + ( powUppermax * powUpperLower / nPTSp ); // 100.9166 +%
+    double XL = XUXL + ( nPTSp * powUpperLower / powLowermin ); // 100.9167 +%
+    double nBalance = 1.0;
+    double nN = XUXL - ( XUXL / nBalance );
+    int64 nTargetTimespanMin = nTargetTimespanPow / XL - 1; // min
+    int64 nActualTimeIntervalXU = nActualTimeIntervalXUXLpow;
+    int64 nActualTimeIntervalXL = nActualTimeIntervalXUXLpow;
+    if(nActualTimeIntervalXU >= powUppermin && nActualTimeIntervalXU < powUppermax)
+       U = nN + (( XU - ( nActualTimeIntervalXU * powUpperLower / nPTSp )) / nBalance );
+       else U = 1;
+    if(nActualTimeIntervalXL > powLowermin && nActualTimeIntervalXL < powLowermax)
+       L = XL - ( nPTSp * powUpperLower / nActualTimeIntervalXL );
+       else if(nActualTimeIntervalXL >= powLowermax)
+               L = XL / 2;
+               else L = 1;
+    int64 nTargetTimespanControlu = nTargetTimespanPow / U; // min
+    int64 nTargetTimespanControll = nTargetTimespanPow / L; // min
+    if(nTargetTimespanControlu >= nTargetTimespanMin)
+       XUpperPow = U;
+       else if(nTargetTimespanControlu < nTargetTimespanMin)
+               XUpperPow = XU;
+               else
+                   XUpperPow = 1;
+    if(nTargetTimespanControll >= nTargetTimespanMin)
+       XLowerPow = L;
+       else if(nTargetTimespanControll < nTargetTimespanMin)
+               XLowerPow = XL;
+               else
+                   XLowerPow = 1;
+    CBigNum bnNewPow;
+    bnNewPow.SetCompact(powpindexPrev->nBits);
+    double nTargetTimespanBn = nTargetTimespanPow / max( XUpperPow, XLowerPow );
+    double nInterval = nTargetTimespanBn / nPowTargetSpacingTest;
+    if(powpindexPrev->GetBlockTime() > nPowForceTimestamp)
+    {
+       if(powpindexPrev->GetBlockTime() > nPowForceTimestamp && powpindexPrev->IsProofOfWork())
+
+       bnNewPow *= (( (int64) nInterval - 1) * (int64) nPowTargetSpacingVar + (int64) nActualTimeIntervalXUXLpow + (int64) nActualTimeIntervalXUXLpow);
+       bnNewPow /= (( (int64) nInterval + 1) * (int64) nPowTargetSpacingVar);
+
+       if(bnNewPow > bnTargetLimitPow)
+          bnNewPow = bnTargetLimitPow;
+       if(bnNewPow < bnTargetLimitPow + bnTargetLimitPow &&
+                   powpindexPrev->GetBlockTime() > nPowForceTimestamp &&
+                                                 powpindexPrev->GetBlockTime() < nPowForceTimestamp + NTest)
+          bnNewPow = bnTargetLimitPow;
+     }
+    return bnNewPow.GetCompact();
+}
+
+unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fProofOfStake)
+{
+    CBigNum bnTargetLimitPos = bnProofOfStakeHardLimit;
+
+    if (pospindexLast == NULL)
+        return bnTargetLimitPos.GetCompact(); // last block
+    const CBlockIndex* pospindexPrev = GetLastBlockIndexPos(pospindexLast, fProofOfStake);
+    if (pospindexPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // first block
+    const CBlockIndex* pospindexPrevPrev = GetLastBlockIndexPos(pospindexPrev->pprev, fProofOfStake);
+    if (pospindexPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 1
+    const CBlockIndex* pospindexPrevPrevPrev = GetLastBlockIndexPos(pospindexPrevPrev->pprev, fProofOfStake);
+    if (pospindexPrevPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 2
+    const CBlockIndex* pospindexPrevPrevPrevPrev = GetLastBlockIndexPos(pospindexPrevPrevPrev->pprev, fProofOfStake);
+    if (pospindexPrevPrevPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 3
+    const CBlockIndex* pospindexPrevPrevPrevPrevPrev = GetLastBlockIndexPos(pospindexPrevPrevPrevPrev->pprev, fProofOfStake);
+    if (pospindexPrevPrevPrevPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 4
+    const CBlockIndex* pospindexPrevPrevPrevPrevPrevPrev = GetLastBlockIndexPos(pospindexPrevPrevPrevPrevPrev->pprev, fProofOfStake);
+    if (pospindexPrevPrevPrevPrevPrevPrev->pprev == NULL)
+        return bnInitialHashTarget.GetCompact(); // second block 5
+
+    double nPosTargetSpacingTest = 0;
+    if(pospindexPrev->GetBlockTime() > nPowForceTimestamp && pospindexPrev->GetBlockTime() < nPowForceTimestamp + NTest)
+       nPosTargetSpacingTest = nPosTargetSpacing / nPosTargetSpacing * 600;
+       else
+           nPosTargetSpacingTest = nPosTargetSpacing;
+    int64 nActualTimeIntervalLongPosVeryFirst = nLastCoinPosSearchInterval;
+    int64 nActualTimeIntervalLongPosFirst = nLastCoinPosSearchIntervalPrev;
+    int64 nActualTimeIntervalLongPosSecond = nLastCoinPosSearchIntervalPrevPrev;
+    double nActualSpacingTotalsPos = ( nActualTimeIntervalLongPosVeryFirst + nActualTimeIntervalLongPosFirst ) / 2;
+    double nActualTimeIntervalNvar = nActualTimeIntervalLongPosVeryFirst; // ( nActualSpacingTotalsPos + nActualTimeIntervalLongPosSecond ) / 2;
+
+    // cachecoin retarget
+    // VALM-Cach /logical analysis - mathematically variable/
+    int64 nActualSpacingPos = 0;
+    double nVar = nPosTargetSpacingTest / 3;
+    int64 nNonAccelerating = 0; // sec +0-
+          PosPindexPrevTime = pospindexPrev->GetBlockTime();
+          PosPindexPrevPrevTime = pospindexPrevPrev->GetBlockTime();
+          PosPindexPrevPrevPrevTime = pospindexPrevPrevPrev->GetBlockTime();
+          PosPindexPrevPrevPrevPrevTime = pospindexPrevPrevPrevPrev->GetBlockTime();
+          nLastCoinPosTwoInterval = nActualSpacingTotalsPos;
+          nActualSpacingPos = ( nActualSpacingTotalsPos + nActualTimeIntervalLongPosSecond ) / 2; // nActualTimeIntervalLongPosVeryFirst;
+    if(nActualTimeIntervalNvar >= nNonAccelerating && nActualTimeIntervalNvar < nPosTargetSpacingTest - nNonAccelerating)
+       nPosTargetSpacingVar = (( nPosTargetSpacingTest - 1 + nVar ) - ( nActualTimeIntervalNvar * nVar / nPosTargetSpacingTest ));
+       else if
+              (nActualTimeIntervalNvar > nPosTargetSpacingTest + nNonAccelerating && nActualTimeIntervalNvar <= nPosTargetSpacingTest * 2)
+               nPosTargetSpacingVar = (( nPosTargetSpacingTest + 1 + nVar ) - ( nActualTimeIntervalNvar * nVar / nPosTargetSpacingTest ));
+               else if
+                      (nActualTimeIntervalNvar > nPosTargetSpacingTest * 2)
+                       nPosTargetSpacingVar = nPosTargetSpacingTest - nVar + 1;
+                       else
+                           nPosTargetSpacingVar = nPosTargetSpacingTest;
+    double nSTSp = nPosTargetSpacingTest; // 1200 sec
+    int64 posUppermin = 0;
+    double posUppermax = nSTSp - nNonAccelerating; // 1199 sec
+    double posLowermin = nSTSp + nNonAccelerating; // 1201 sec
+    int64 posLowermax = nTargetSpacingWorkMaxPos;  // 2400 sec
+    if(nActualTimeIntervalLongPosVeryFirst > posLowermin && nActualSpacingTotalsPos < posUppermax)
+       nActualTimeIntervalXUXLpos = nActualTimeIntervalLongPosVeryFirst;
+       else if(nActualTimeIntervalLongPosVeryFirst > posLowermin && nActualSpacingTotalsPos > posLowermin)
+               nActualTimeIntervalXUXLpos = min((double) nActualTimeIntervalLongPosVeryFirst, (double) nActualSpacingTotalsPos);
+       else if(nActualTimeIntervalLongPosVeryFirst < posUppermax && nActualSpacingTotalsPos < posUppermax)
+               nActualTimeIntervalXUXLpos = max((double) nActualTimeIntervalLongPosVeryFirst, (double) nActualSpacingTotalsPos);
+       else if(nActualSpacingTotalsPos < posUppermax && nActualSpacingTotalsPos > nActualSpacingPos)
+               nActualTimeIntervalXUXLpos = nActualSpacingTotalsPos;
+       else if(nActualSpacingTotalsPos > posLowermin && nActualSpacingTotalsPos < nActualSpacingPos)
+               nActualTimeIntervalXUXLpos = nActualSpacingTotalsPos;
+               else
+                   nActualTimeIntervalXUXLpos = nActualSpacingPos;
+    double nNix = nSTSp / 100 * 70;
+    double nReverseEffectPos = 0;
+    if(nActualTimeIntervalXUXLpos < nNix)
+       nReverseEffectPos = nActualTimeIntervalXUXLpos / nNix;
+       else if(nActualTimeIntervalXUXLpos > nSTSp && nActualTimeIntervalXUXLpos <= nSTSp + ( nSTSp - nNix))
+               nReverseEffectPos = ( nSTSp / nSTSp ) / 2;
+       else if(nActualTimeIntervalXUXLpos > nSTSp + ( nSTSp - nNix) && nActualTimeIntervalXUXLpos < posLowermax)
+               nReverseEffectPos = (( nSTSp + ( nSTSp - nNix )) / nActualTimeIntervalXUXLpos ) / 2;
+               else
+                   nReverseEffectPos = 1;
+       posUpperLower = ( nSTSp / 2 ) * nReverseEffectPos; // interval sampling 2:1 variable
+    if(nActualSpacingTotalsPos < nNix / 1.30 && nActualTimeIntervalLongPosVeryFirst < posUppermax)
+       posUpperLower = posUpperLower * (( nNix / 1.30 ) / nActualSpacingTotalsPos );
+    double XUXL = nPosTargetSpacingTest / 100 * 4;
+    double U = 0;
+    double L = 0;
+    double XU = XUXL + ( posUppermax * posUpperLower / nSTSp ); // 100.9166 +%
+    double XL = XUXL + ( nSTSp * posUpperLower / posLowermin ); // 100.9167 +%
+    double nBalance = 1.0;
+    double nN = XUXL - ( XUXL / nBalance );
+    int64 nTargetTimespanMin = nTargetTimespanPos / XL - 1; // min
+    int64 nActualTimeIntervalXU = nActualTimeIntervalXUXLpos;
+    int64 nActualTimeIntervalXL = nActualTimeIntervalXUXLpos;
+    if(nActualTimeIntervalXU >= posUppermin && nActualTimeIntervalXU < posUppermax)
+       U = nN + (( XU - ( nActualTimeIntervalXU * posUpperLower / nSTSp )) / nBalance );
+       else U = 1;
+    if(nActualTimeIntervalXL > posLowermin && nActualTimeIntervalXL < posLowermax)
+       L = XL - ( nSTSp * posUpperLower / nActualTimeIntervalXL );
+       else if(nActualTimeIntervalXL >= posLowermax)
+               L = XL / 2;
+               else L = 1;
+    int64 nTargetTimespanControlu = nTargetTimespanPos / U; // min
+    int64 nTargetTimespanControll = nTargetTimespanPos / L; // min
+    if(nTargetTimespanControlu >= nTargetTimespanMin)
+       XUpperPos = U;
+       else if(nTargetTimespanControlu < nTargetTimespanMin)
+               XUpperPos = XU;
+               else
+                   XUpperPos = 1;
+    if(nTargetTimespanControll >= nTargetTimespanMin)
+       XLowerPos = L;
+       else if(nTargetTimespanControll < nTargetTimespanMin)
+               XLowerPos = XL;
+               else
+                   XLowerPos = 1;
+    CBigNum bnNewPos;
+    bnNewPos.SetCompact(pospindexPrev->nBits);
+    double nTargetTimespanBn = nTargetTimespanPos / max( XUpperPos, XLowerPos );
+    double nInterval = nTargetTimespanBn / nPosTargetSpacingTest;
+    if(pospindexPrev->GetBlockTime() > nPowForceTimestamp)
+    {
+       if(pospindexPrev->GetBlockTime() > nPowForceTimestamp && pospindexPrev->IsProofOfStake())
+
+       bnNewPos *= (( (int64) nInterval - 1) * (int64) nPosTargetSpacingVar + (int64) nActualTimeIntervalXUXLpos + (int64) nActualTimeIntervalXUXLpos);
+       bnNewPos /= (( (int64) nInterval + 1) * (int64) nPosTargetSpacingVar);
+
+       if(bnNewPos > bnTargetLimitPos)
+          bnNewPos = bnTargetLimitPos;
+       //if(bnNewPos < bnTargetLimitPos + bnTargetLimitPos)
+          //bnNewPos = bnTargetLimitPos;
+     }
+    return bnNewPos.GetCompact();
 }
 
 unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake)
@@ -1179,31 +1354,115 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
     CBigNum bnNew;
     bnNew.SetCompact(pindexPrev->nBits);
     int64 nTargetSpacing;
-    if(pindexPrev->GetBlockTime() < 1391046000)
-        nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
-    else if(pindexPrev->GetBlockTime() < POWFIX_DATE)
-        nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min((int64) nStakeTargetSpacing*2, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
-    else
-        if(nActualSpacing > nStakeTargetSpacing*6){
-            int factor = (nActualSpacing / nStakeTargetSpacing);
-            factor /= 3;
-            factor--;
-            bnNew *= factor;
-            if (bnNew > bnTargetLimit)
-                bnNew = bnTargetLimit;
-            return bnNew.GetCompact();
-        }else{
-            nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
-        }
+    if(pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() < nPowForceTimestamp)
+    {
+       if(pindexPrev->GetBlockTime() < 1391046000)
+          nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
+          else if(pindexPrev->GetBlockTime() < POWFIX_DATE)
+                  nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min((int64) nStakeTargetSpacing * 2, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
+                  else if(nActualSpacing > nStakeTargetSpacing * 6)
+                  {
+                          int factor = (nActualSpacing / nStakeTargetSpacing);
+                              factor /= 3;
+                              factor--;
+                              bnNew *= factor;
+                           if(bnNew > bnTargetLimit)
+                              bnNew = bnTargetLimit;
+                           return bnNew.GetCompact();
+                  }
+                  else
+                  {
+                       nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
+                  }
 
-    int64 nInterval = nTargetTimespan / nTargetSpacing;
-    bnNew *= ((nInterval - 1) * nTargetSpacing + nActualSpacing + nActualSpacing);
-    bnNew /= ((nInterval + 1) * nTargetSpacing);
+           int64 nInterval = nTargetTimespan / nTargetSpacing;
+           bnNew *= ((nInterval - 1) * nTargetSpacing + nActualSpacing + nActualSpacing);
+           bnNew /= ((nInterval + 1) * nTargetSpacing);
 
-    if (bnNew > bnTargetLimit)
-        bnNew = bnTargetLimit;
-
+         if (bnNew > bnTargetLimit)
+             bnNew = bnTargetLimit;
+    }
     return bnNew.GetCompact();
+}
+
+int64 GetProofOfWorkReward(unsigned int nBits)
+{
+    CBigNum bnMinSubsidyLimit = 0;
+    if  (PowPindexPrevTime > nPowForceTimestamp + NTest)
+         bnMinSubsidyLimit = MIN_MINT_PROOF_OF_WORK;
+    else bnMinSubsidyLimit = MINT_PROOF_OF_WORK;
+    CBigNum bnMaxSubsidyLimit = MAX_MINT_PROOF_OF_WORK;
+    CBigNum bnTarget;
+    bnTarget.SetCompact(nBits);
+    CBigNum bnTargetLimit = bnProofOfWorkLimit;
+    bnTargetLimit.SetCompact(bnTargetLimit.GetCompact());
+
+    // cachecoin subsidy
+    CBigNum bnLowerBound = CENT;
+    CBigNum bnUpperBound = bnMinSubsidyLimit;
+    while (bnLowerBound + CENT <= bnUpperBound)
+    {
+        CBigNum bnMidValue = (bnLowerBound + bnUpperBound) / 2;
+        if (fDebug && GetBoolArg("-printcreation"))
+            printf("GetProofOfWorkReward() : lower=%"PRI64d" upper=%"PRI64d" mid=%"PRI64d"\n", bnLowerBound.getuint64(), bnUpperBound.getuint64(), bnMidValue.getuint64());
+        if (bnMidValue * bnMidValue * bnMidValue * bnMidValue * bnMidValue * bnMidValue * bnTargetLimit > bnMinSubsidyLimit * bnMinSubsidyLimit * bnMinSubsidyLimit * bnMinSubsidyLimit * bnMinSubsidyLimit * bnMinSubsidyLimit * bnTarget)
+            bnUpperBound = bnMidValue;
+        else
+            bnLowerBound = bnMidValue;
+    }
+    if(PowPindexPrevTime > nPowForceTimestamp + NTest)
+    {
+    bnUpperBound = bnMaxSubsidyLimit - bnUpperBound;
+    bnLowerBound = bnMaxSubsidyLimit - bnLowerBound;
+    }
+    int64 nSubsidy = bnUpperBound.getuint64();
+    nSubsidy = (nSubsidy / CENT) * CENT;
+    if (fDebug && GetBoolArg("-printcreation"))
+        printf("GetProofOfWorkReward() : create=%s nBits=0x%08x nSubsidy=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nBits, nSubsidy);
+
+    if  (PowPindexPrevTime > nPowForceTimestamp + NTest)
+         return max(nSubsidy, MIN_MINT_PROOF_OF_WORK);
+    else return min(nSubsidy, MINT_PROOF_OF_WORK);
+}
+
+// ppcoin: miner's coin stake is rewarded based on coin age spent (coin-days)
+int64 GetProofOfStakeReward(int64 nCoinAge)
+{
+    static int64 nRewardCoinYear = 5 * CENT;  // creation amount per coin-year
+    int64 nSubsidy;
+    if(fTestNet)
+        nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
+    else
+        if(pindexBest->GetBlockTime() >= 1393140000)
+            nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
+        else
+            nSubsidy = nCoinAge * 33 / (365 * 33 + 8) * nRewardCoinYear;
+
+    if (fDebug && GetBoolArg("-printcreation"))
+        printf("GetProofOfStakeReward(): create=%s nCoinAge=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nCoinAge);
+    return nSubsidy;
+}
+
+//
+// minimum amount of work that could possibly be required nTime after
+// minimum work required was nBase
+//
+unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
+{
+    CBigNum bnTargetLimit = bnProofOfWorkLimit;
+
+    CBigNum bnResult;
+    bnResult.SetCompact(nBase);
+    bnResult *= 2;
+    while (nTime > 0 && bnResult < bnTargetLimit)
+    {
+        // Maximum 200% adjustment per day...
+        bnResult *= 2;
+        nTime -= 24 * 60 * 60;
+    }
+    if (bnResult > bnTargetLimit)
+        bnResult = bnTargetLimit;
+    return bnResult.GetCompact();
 }
 
 bool CheckProofOfWork(uint256 hash, unsigned int nBits)
@@ -2168,9 +2427,14 @@ bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot) const
         return DoS(50, error("CheckBlock() : coinstake timestamp violation nTimeBlock=%"PRI64d" nTimeTx=%u", GetBlockTime(), vtx[1].nTime));
 
     // Check coinbase reward
-    if (vtx[0].GetValueOut() > (IsProofOfWork()? (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
+    double nGetValueOut = 0;
+    if (GetBlockTime() < nPowForceTimestamp + NTest + NTest && vtx[0].GetValueOut() > (IsProofOfWork()? (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
+        nGetValueOut = (( MINT_PROOF_OF_WORK / COIN * 2 - 1 ) * 1000000 - vtx[0].GetValueOut() ) / ((double)MINT_PROOF_OF_WORK / (double)MIN_MINT_PROOF_OF_WORK );
+        else nGetValueOut = vtx[0].GetValueOut();
+
+    if (nGetValueOut > (IsProofOfWork()? (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
         return DoS(50, error("CheckBlock() : coinbase reward exceeded %s > %s",
-                   FormatMoney(vtx[0].GetValueOut()).c_str(),
+                   FormatMoney(nGetValueOut).c_str(),
                    FormatMoney(IsProofOfWork()? GetProofOfWorkReward(nBits) : 0).c_str()));
 
     // Check transactions
@@ -2228,12 +2492,54 @@ bool CBlock::AcceptBlock()
     int nHeight = pindexPrev->nHeight+1;
 
     // Check proof-of-work or proof-of-stake
-    if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()))
-        return DoS(100, error("AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
+    if(pindexPrev->GetBlockTime() > nPowForceTimestamp)
+       if(IsProofOfWork())
+    {
+       if (nBits != GetNextTargetRequiredPow(pindexPrev, IsProofOfStake()))
+       {
+           return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-work"));
+       }
+    }
+
+    if(pindexPrev->GetBlockTime() > nPowForceTimestamp)
+       if(IsProofOfStake())
+    {
+       if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
+       {
+           return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake"));
+       }
+    }
+
+    if(pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() < nPowForceTimestamp)
+    {
+       if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()))
+       {
+           return DoS(5, error("AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
+       }
+    }
 
     // Check timestamp against prev
     if (GetBlockTime() <= pindexPrev->GetMedianTimePast() || GetBlockTime() + nMaxClockDrift < pindexPrev->GetBlockTime())
         return error("AcceptBlock() : block's timestamp is too early");
+
+    // Hash spam control
+    if(pindexPrev->GetBlockTime() > nPowForceTimestamp + NTest)
+       if(IsProofOfWork())
+    {
+       if (GetBlockTime() <= PowPindexPrevTime + ( nPowTargetSpacing / 100 * 30 ))
+       {
+           return error("AcceptBlock() : block's stopped by hash spam control - pow");
+       }
+    }
+
+    if(pindexPrev->GetBlockTime() > nPowForceTimestamp + NTest)
+       if(IsProofOfStake())
+    {
+       if (GetBlockTime() <= PosPindexPrevTime + ( nPosTargetSpacing / 100 * 30 ))
+       {
+           return error("AcceptBlock() : block's stopped by hash spam control - pos");
+       }
+    }
 
     // Check that all transactions are finalized
     BOOST_FOREACH(const CTransaction& tx, vtx)
@@ -2337,6 +2643,40 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock)
         bnNewBlock.SetCompact(pblock->nBits);
         CBigNum bnRequired;
         bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndex(pcheckpoint, pblock->IsProofOfStake())->nBits, deltaTime));
+        if (bnNewBlock > bnRequired)
+        {
+            if (pfrom)
+                pfrom->Misbehaving(100);
+            return error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work");
+        }
+    }
+
+    CBlockIndex* pcheckpointpos = Checkpoints::GetLastSyncCheckpoint();
+    if (pcheckpointpos && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+    {
+        // Extra checks to prevent "fill up memory by spamming with bogus blocks"
+        int64 deltaTime = pblock->GetBlockTime() - pcheckpointpos->nTime;
+        CBigNum bnNewBlock;
+        bnNewBlock.SetCompact(pblock->nBits);
+        CBigNum bnRequired;
+        bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndexPos(pcheckpointpos, pblock->IsProofOfStake())->nBits, deltaTime));
+        if (bnNewBlock > bnRequired)
+        {
+            if (pfrom)
+                pfrom->Misbehaving(100);
+            return error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work");
+        }
+    }
+
+    CBlockIndex* pcheckpointpow = Checkpoints::GetLastSyncCheckpoint();
+    if (pcheckpointpow && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+    {
+        // Extra checks to prevent "fill up memory by spamming with bogus blocks"
+        int64 deltaTime = pblock->GetBlockTime() - pcheckpointpow->nTime;
+        CBigNum bnNewBlock;
+        bnNewBlock.SetCompact(pblock->nBits);
+        CBigNum bnRequired;
+        bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndexPow(pcheckpointpow, pblock->IsProofOfStake())->nBits, deltaTime));
         if (bnNewBlock > bnRequired)
         {
             if (pfrom)
@@ -3315,9 +3655,18 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                         // download node to accept as orphan (proof-of-stake
                         // block might be rejected by stake connection check)
                         vector<CInv> vInv;
-                        vInv.push_back(CInv(MSG_BLOCK, GetLastBlockIndex(pindexBest, false)->GetBlockHash()));
-                        pfrom->PushMessage("inv", vInv);
-                        pfrom->hashContinue = 0;
+                        if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() < nPowForceTimestamp)
+                        {
+                           vInv.push_back(CInv(MSG_BLOCK, GetLastBlockIndex(pindexBest, false)->GetBlockHash()));
+                           pfrom->PushMessage("inv", vInv);
+                           pfrom->hashContinue = 0;
+                        }
+                           else
+                           {
+                               vInv.push_back(CInv(MSG_BLOCK, GetLastBlockIndexPow(pindexBest, false)->GetBlockHash()));
+                               pfrom->PushMessage("inv", vInv);
+                               pfrom->hashContinue = 0;
+                           }
                     }
                 }
             }
@@ -4055,7 +4404,7 @@ public:
 
 // CreateNewBlock:
 //   fProofOfStake: try (best effort) to make a proof-of-stake block
-CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake)
+CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
 {
     CReserveKey reservekey(pwallet);
 
@@ -4100,12 +4449,62 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake)
     if (mapArgs.count("-mintxfee"))
         ParseMoney(mapArgs["-mintxfee"], nMinTxFee);
 
+    // ppcoin: if pow available
+    CBlockIndex* powpindexPrev = pindexBest;
+    if (!fProofOfStake && powpindexPrev->GetBlockTime() > nPowForceTimestamp)
+    {
+    if (!fProofOfStake)
+     {
+        pblock->nBits = GetNextTargetRequiredPow(powpindexPrev, true);
+     }
+
+    pblock->nBits = GetNextTargetRequiredPow(powpindexPrev, pblock->IsProofOfStake());
+    }
+
+    // ppcoin: if pos available add coinstake tx
+    CBlockIndex* pospindexPrev = pindexBest;
+    if (fProofOfStake && pospindexPrev->GetBlockTime() > nPowForceTimestamp)
+    {
+    static int64 nLastCoinPosSearchTime = GetAdjustedTime();
+
+    if (fProofOfStake)
+     {
+        pblock->nBits = GetNextTargetRequiredPos(pospindexPrev, true);
+        CTransaction txCoinPos;
+        int64 nSearchTime = txCoinPos.nTime; // search to current time
+        if (nSearchTime > nLastCoinPosSearchTime)
+        {
+            if (pwallet->CreateCoinStake(*pwallet, pblock->nBits, nSearchTime-nLastCoinPosSearchTime, txCoinPos))
+            {
+                if (txCoinPos.nTime >= max(pospindexPrev->GetMedianTimePast()+1, pospindexPrev->GetBlockTime() - nMaxClockDrift))
+                {   // make sure coinstake would meet timestamp protocol
+                    // as it would be the same as the block timestamp
+                    pblock->vtx[0].vout[0].SetEmpty();
+                    pblock->vtx[0].nTime = txCoinPos.nTime;
+                    pblock->vtx.push_back(txCoinPos);
+                }
+            }
+            nLastCoinPosSearchInterval = ( nLastCoinPosSearchTime - PosPindexPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevTime );
+            nLastCoinPosSearchIntervalPrev = ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevPrevTime );
+            nLastCoinPosSearchIntervalPrevPrev = ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevTime );
+            nLastCoinWithoutPosSearchInterval = nLastCoinPosSearchTime - PosPindexPrevTime;
+            nLastCoinWithoutPowSearchInterval = nLastCoinPosSearchTime - PowPindexPrevTime;
+            nLastCoinPosSearchTime = nSearchTime;
+        }
+     }
+
+    pblock->nBits = GetNextTargetRequiredPos(pospindexPrev, pblock->IsProofOfStake());
+    }
+
     // ppcoin: if coinstake available add coinstake tx
+    CBlockIndex* pindexPrev = pindexBest;
+    if(pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() < nPowForceTimestamp)
+    {
     static int64 nLastCoinStakeSearchTime = GetAdjustedTime();  // only initialized at startup
     CBlockIndex* pindexPrev = pindexBest;
 
     if (fProofOfStake)  // attemp to find a coinstake
-    {
+     {
         pblock->nBits = GetNextTargetRequired(pindexPrev, true);
         CTransaction txCoinStake;
         int64 nSearchTime = txCoinStake.nTime; // search to current time
@@ -4124,9 +4523,9 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake)
             nLastCoinStakeSearchInterval = nSearchTime - nLastCoinStakeSearchTime;
             nLastCoinStakeSearchTime = nSearchTime;
         }
+     }
+     pblock->nBits = GetNextTargetRequired(pindexPrev, pblock->IsProofOfStake());
     }
-
-    pblock->nBits = GetNextTargetRequired(pindexPrev, pblock->IsProofOfStake());
 
     // Collect memory pool transactions into the block
     int64 nFees = 0;

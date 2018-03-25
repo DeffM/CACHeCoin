@@ -13,7 +13,7 @@
 const std::string CLIENT_NAME("CACHecoin-WM");
 
 // Client version number
-#define CLIENT_VERSION_SUFFIX   "-kal"
+#define CLIENT_VERSION_SUFFIX   "-cach-wm-beta"
 
 
 // The following part of the code determines the CLIENT_BUILD variable.

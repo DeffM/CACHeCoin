@@ -10,7 +10,7 @@ using namespace json_spirit;
 using namespace std;
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, json_spirit::Object& entry);
-double GetDifficulty(const CBlockIndex* blockindex)
+double GetDifficulty(const CBlockIndex* blockindex, const CBlockIndex* blockindexpow, const CBlockIndex* blockindexpos)
 {
     // Floating point number that is a multiple of the minimum difficulty,
     // minimum difficulty = 1.0.
@@ -21,12 +21,36 @@ double GetDifficulty(const CBlockIndex* blockindex)
         else
             blockindex = GetLastBlockIndex(pindexBest, false);
     }
+    if (blockindexpow == NULL)
+    {
+        if (pindexBest == NULL)
+            return 1.0;
+        else
+            blockindexpow = GetLastBlockIndexPow(pindexBest, false);
+    }
+    if (blockindexpos == NULL)
+    {
+        if (pindexBest == NULL)
+            return 1.0;
+        else
+            blockindexpos = GetLastBlockIndexPos(pindexBest, false);
+    }
     unsigned int nBlockBits = blockindex->nBits;
+    unsigned int nBlockBitspow = blockindexpow->nBits;
+    unsigned int nBlockBitspos = blockindexpos->nBits;
     nBlockBits = GetNextTargetRequired(blockindex,blockindex->IsProofOfStake());
+    nBlockBitspow = GetNextTargetRequiredPow(blockindexpow,blockindexpow->IsProofOfStake());
+    nBlockBitspos = GetNextTargetRequiredPos(blockindexpos,blockindexpos->IsProofOfStake());
     int nShift = (nBlockBits >> 24) & 0xff;
+    int nShiftpow = (nBlockBitspow >> 24) & 0xff;
+    int nShiftpos = (nBlockBitspos >> 24) & 0xff;
 
     double dDiff =
         (double)0x0000ffff / (double)(nBlockBits & 0x00ffffff);
+    double dDiffpow =
+        (double)0x0000ffff / (double)(nBlockBitspow & 0x00ffffff);
+    double dDiffpos =
+        (double)0x0000ffff / (double)(nBlockBitspos & 0x00ffffff);
 
     while (nShift < 29)
     {
@@ -38,8 +62,30 @@ double GetDifficulty(const CBlockIndex* blockindex)
         dDiff /= 256.0;
         nShift--;
     }
+    while (nShiftpow < 29)
+    {
+        dDiffpow *= 256.0;
+        nShiftpow++;
+    }
+    while (nShiftpow > 29)
+    {
+        dDiffpow /= 256.0;
+        nShiftpow--;
+    }
+    while (nShiftpos < 29)
+    {
+        dDiffpos *= 256.0;
+        nShiftpos++;
+    }
+    while (nShiftpos > 29)
+    {
+        dDiffpos /= 256.0;
+        nShiftpos--;
+    }
 
     return dDiff;
+    return dDiffpow;
+    return dDiffpos;
 }
 
 
@@ -112,9 +158,33 @@ Value getdifficulty(const Array& params, bool fHelp)
             "Returns the difficulty as a multiple of the minimum difficulty.");
 
     Object obj;
-    obj.push_back(Pair("proof-of-work",        GetDifficulty()));
-    obj.push_back(Pair("proof-of-stake",       GetDifficulty(GetLastBlockIndex(pindexBest, true))));
-    obj.push_back(Pair("search-interval",      (int)nLastCoinStakeSearchInterval));
+    if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() < nPowForceTimestamp)
+    {
+    obj.push_back(Pair("proof-of-work",                             GetDifficulty()));
+    obj.push_back(Pair("proof-of-stake",                            GetDifficulty(GetLastBlockIndex(pindexBest, true))));
+    obj.push_back(Pair("search-interval",                          (int)nLastCoinStakeSearchInterval));
+    }
+    else
+    {
+    obj.push_back(Pair("proof - of - work",                         GetDifficulty()));
+    obj.push_back(Pair("search-interval-powblock",                 (int)nLastCoinPowSearchInterval));
+    obj.push_back(Pair("search-twointerval-powblock",              (int)nLastCoinPowFiveInterval));
+    obj.push_back(Pair("search-full-result-powblock",              (int)nActualTimeIntervalXUXLpow));
+    obj.push_back(Pair("pow-target-spacing-variable",              (int)nPowTargetSpacingVar));
+    obj.push_back(Pair("UpperLower-pow",                           (int)powUpperLower));
+    obj.push_back(Pair("XUpper-pow",                               (int)XUpperPow));
+    obj.push_back(Pair("XLower-pow",                               (int)XLowerPow));
+    obj.push_back(Pair("proof - of - stake",                        GetDifficulty(GetLastBlockIndexPos(pindexBest, true))));
+    obj.push_back(Pair("search-interval-posblock",                 (int)nLastCoinPosSearchInterval));
+    obj.push_back(Pair("search-twointerval-posblock",              (int)nLastCoinPosTwoInterval));
+    obj.push_back(Pair("search-full-result-posblock",              (int)nActualTimeIntervalXUXLpos));
+    obj.push_back(Pair("pos-target-spacing-variable",              (int)nPosTargetSpacingVar));
+    obj.push_back(Pair("UpperLower-pos",                           (int)posUpperLower));
+    obj.push_back(Pair("XUpper-pos",                               (int)XUpperPos));
+    obj.push_back(Pair("XLower-pos",                               (int)XLowerPos));
+    obj.push_back(Pair("search-interval-without pow block",        (int)nLastCoinWithoutPowSearchInterval));
+    obj.push_back(Pair("search-interval-without pos block",        (int)nLastCoinWithoutPosSearchInterval));
+    }
     return obj;
 }
 
