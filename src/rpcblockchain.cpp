@@ -39,7 +39,7 @@ double GetDifficulty(const CBlockIndex* blockindex, const CBlockIndex* blockinde
     unsigned int nBlockBitspow = blockindexpow->nBits;
     unsigned int nBlockBitspos = blockindexpos->nBits;
     nBlockBits = GetNextTargetRequired(blockindex,blockindex->IsProofOfStake());
-    nBlockBitspow = GetNextTargetRequiredPow(blockindexpow,blockindexpow->IsProofOfStake());
+    nBlockBitspow = GetNextTargetRequiredPow(blockindexpow,blockindexpow->IsProofOfWork());
     nBlockBitspos = GetNextTargetRequiredPos(blockindexpos,blockindexpos->IsProofOfStake());
     int nShift = (nBlockBits >> 24) & 0xff;
     int nShiftpow = (nBlockBitspow >> 24) & 0xff;
@@ -83,11 +83,13 @@ double GetDifficulty(const CBlockIndex* blockindex, const CBlockIndex* blockinde
         nShiftpos--;
     }
 
-    return dDiff;
-    return dDiffpow;
-    return dDiffpos;
+    if(pindexBest->GetBlockTime() > nPowForceTimestamp + nPowForceTimestamp && blockindex->IsProofOfWork())          //  fulldiffbits /disabled/
+       return dDiffpow;
+       else if(pindexBest->GetBlockTime() > nPowForceTimestamp + nPowForceTimestamp && blockindex->IsProofOfStake()) //  fulldiffbits /disabled/
+               return dDiffpos;
+               else
+                   return dDiff;
 }
-
 
 Object blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool fPrintTransactionDetail)
 {
