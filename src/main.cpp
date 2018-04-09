@@ -1077,8 +1077,11 @@ unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fPr
        else
            nPowTargetSpacingTest = nPowTargetSpacing;
     int64 nActualTimeIntervalLongPowVeryFirst = powpindexPrev->GetBlockTime() - powpindexPrevPrev->GetBlockTime();
+    if(nActualTimeIntervalLongPowVeryFirst < 0) nActualTimeIntervalLongPowVeryFirst = nPowTargetSpacingTest;
     int64 nActualTimeIntervalLongPowFirst = powpindexPrevPrev->GetBlockTime() - powpindexPrevPrevPrev->GetBlockTime();
+    if(nActualTimeIntervalLongPowFirst < 0) nActualTimeIntervalLongPowFirst = nPowTargetSpacingTest;
     int64 nActualTimeIntervalLongPowSecond = powpindexPrevPrevPrev->GetBlockTime() - powpindexPrevPrevPrevPrev->GetBlockTime();
+    if(nActualTimeIntervalLongPowSecond < 0) nActualTimeIntervalLongPowSecond = nPowTargetSpacingTest;
     double nActualSpacingTotalsPow = ( nActualTimeIntervalLongPowVeryFirst + nActualTimeIntervalLongPowFirst ) / 2;
     double nActualTimeIntervalNvar = nActualTimeIntervalLongPowVeryFirst; // ( nActualSpacingTotalsPow + nActualTimeIntervalLongPowSecond ) / 2;
 
@@ -1215,8 +1218,11 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
        else
            nPosTargetSpacingTest = nPosTargetSpacing;
     int64 nActualTimeIntervalLongPosVeryFirst = nLastCoinPosSearchInterval;
+    if(nActualTimeIntervalLongPosVeryFirst < 0) nActualTimeIntervalLongPosVeryFirst = nPosTargetSpacingTest;
     int64 nActualTimeIntervalLongPosFirst = nLastCoinPosSearchIntervalPrev;
+    if(nActualTimeIntervalLongPosFirst < 0) nActualTimeIntervalLongPosFirst = nPosTargetSpacingTest;
     int64 nActualTimeIntervalLongPosSecond = nLastCoinPosSearchIntervalPrevPrev;
+    if(nActualTimeIntervalLongPosSecond < 0) nActualTimeIntervalLongPosSecond = nPosTargetSpacingTest;
     double nActualSpacingTotalsPos = ( nActualTimeIntervalLongPosVeryFirst + nActualTimeIntervalLongPosFirst ) / 2;
     double nActualTimeIntervalNvar = nActualTimeIntervalLongPosVeryFirst; // ( nActualSpacingTotalsPos + nActualTimeIntervalLongPosSecond ) / 2;
 
