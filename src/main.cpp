@@ -47,6 +47,7 @@ unsigned int nStakeTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
 unsigned int nPowTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
 unsigned int nPosTargetSpacing = 1 * 60 * 10; // DIFF: 10-minute block spacing
 unsigned int NTest = 518400;
+int64 nSpamHashControl = 30; // % from (nPos)nPowTargetSpacing
 int64 nChainStartTime = 1388949883;
 int64 PowPindexPrevTime = 0;
 int64 PosPindexPrevTime = 0;
@@ -1077,11 +1078,14 @@ unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fPr
        else
            nPowTargetSpacingTest = nPowTargetSpacing;
     int64 nActualTimeIntervalLongPowVeryFirst = powpindexPrev->GetBlockTime() - powpindexPrevPrev->GetBlockTime();
-    if(nActualTimeIntervalLongPowVeryFirst < 0) nActualTimeIntervalLongPowVeryFirst = nPowTargetSpacingTest;
+    if(nActualTimeIntervalLongPowVeryFirst < 0)
+       nActualTimeIntervalLongPowVeryFirst = nPowTargetSpacingTest / 100 * nSpamHashControl;
     int64 nActualTimeIntervalLongPowFirst = powpindexPrevPrev->GetBlockTime() - powpindexPrevPrevPrev->GetBlockTime();
-    if(nActualTimeIntervalLongPowFirst < 0) nActualTimeIntervalLongPowFirst = nPowTargetSpacingTest;
+    if(nActualTimeIntervalLongPowFirst < 0)
+       nActualTimeIntervalLongPowFirst = nPowTargetSpacingTest / 100 * nSpamHashControl;
     int64 nActualTimeIntervalLongPowSecond = powpindexPrevPrevPrev->GetBlockTime() - powpindexPrevPrevPrevPrev->GetBlockTime();
-    if(nActualTimeIntervalLongPowSecond < 0) nActualTimeIntervalLongPowSecond = nPowTargetSpacingTest;
+    if(nActualTimeIntervalLongPowSecond < 0)
+       nActualTimeIntervalLongPowSecond = nPowTargetSpacingTest / 100 * nSpamHashControl;
     double nActualSpacingTotalsPow = ( nActualTimeIntervalLongPowVeryFirst + nActualTimeIntervalLongPowFirst ) / 2;
     double nActualTimeIntervalNvar = nActualTimeIntervalLongPowVeryFirst; // ( nActualSpacingTotalsPow + nActualTimeIntervalLongPowSecond ) / 2;
 
@@ -1218,11 +1222,14 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
        else
            nPosTargetSpacingTest = nPosTargetSpacing;
     int64 nActualTimeIntervalLongPosVeryFirst = nLastCoinPosSearchInterval;
-    if(nActualTimeIntervalLongPosVeryFirst < 0) nActualTimeIntervalLongPosVeryFirst = nPosTargetSpacingTest;
+    if(nActualTimeIntervalLongPosVeryFirst < 0)
+       nActualTimeIntervalLongPosVeryFirst = nPosTargetSpacingTest / 100 * nSpamHashControl;
     int64 nActualTimeIntervalLongPosFirst = nLastCoinPosSearchIntervalPrev;
-    if(nActualTimeIntervalLongPosFirst < 0) nActualTimeIntervalLongPosFirst = nPosTargetSpacingTest;
+    if(nActualTimeIntervalLongPosFirst < 0)
+       nActualTimeIntervalLongPosFirst = nPosTargetSpacingTest / 100 * nSpamHashControl;
     int64 nActualTimeIntervalLongPosSecond = nLastCoinPosSearchIntervalPrevPrev;
-    if(nActualTimeIntervalLongPosSecond < 0) nActualTimeIntervalLongPosSecond = nPosTargetSpacingTest;
+    if(nActualTimeIntervalLongPosSecond < 0)
+       nActualTimeIntervalLongPosSecond = nPosTargetSpacingTest / 100 * nSpamHashControl;
     double nActualSpacingTotalsPos = ( nActualTimeIntervalLongPosVeryFirst + nActualTimeIntervalLongPosFirst ) / 2;
     double nActualTimeIntervalNvar = nActualTimeIntervalLongPosVeryFirst; // ( nActualSpacingTotalsPos + nActualTimeIntervalLongPosSecond ) / 2;
 
@@ -2532,7 +2539,7 @@ bool CBlock::AcceptBlock()
     if(pindexPrev->GetBlockTime() > nPowForceTimestamp + NTest)
        if(IsProofOfWork())
     {
-       if (GetBlockTime() <= PowPindexPrevTime + ( nPowTargetSpacing / 100 * 30 ))
+       if (GetBlockTime() < PowPindexPrevTime + (nPowTargetSpacing / 100 * nSpamHashControl))
        {
            return error("AcceptBlock() : block's stopped by hash spam control - pow");
        }
@@ -2541,7 +2548,7 @@ bool CBlock::AcceptBlock()
     if(pindexPrev->GetBlockTime() > nPowForceTimestamp + NTest)
        if(IsProofOfStake())
     {
-       if (GetBlockTime() <= PosPindexPrevTime + ( nPosTargetSpacing / 100 * 30 ))
+       if (GetBlockTime() < PosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
        {
            return error("AcceptBlock() : block's stopped by hash spam control - pos");
        }
