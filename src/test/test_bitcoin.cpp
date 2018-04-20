@@ -9,6 +9,7 @@ CWallet* pwalletMain;
 CClientUIInterface uiInterface;
 
 extern bool fPrintToConsole;
+extern bool fDebugDisabled;
 extern void noui_connect();
 
 struct TestingSetup {

@@ -266,6 +266,7 @@ std::string HelpMessage()
         "  -testnet               " + _("Use the test network") + "\n" +
         "  -debug                 " + _("Output extra debugging information. Implies all other -debug* options") + "\n" +
         "  -debugnet              " + _("Output extra network debugging information") + "\n" +
+        "  -debugdisabled         " + _("Disabled debugging information (default: 0)") + "\n" +
         "  -logtimestamps         " + _("Prepend debug output with timestamp") + "\n" +
         "  -shrinkdebugfile       " + _("Shrink debug.log file on client startup (default: 1 when no -debug)") + "\n" +
         "  -printtoconsole        " + _("Send trace/debug info to console instead of debug.log file") + "\n" +
@@ -417,6 +418,7 @@ bool AppInit2()
 #endif
     fPrintToConsole = GetBoolArg("-printtoconsole");
     fPrintToDebugger = GetBoolArg("-printtodebugger");
+    fDebugDisabled = GetBoolArg("-debugdisabled");
     fLogTimestamps = GetBoolArg("-logtimestamps");
 
     if (mapArgs.count("-timeout"))

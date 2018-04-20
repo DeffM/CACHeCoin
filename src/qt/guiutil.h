@@ -109,6 +109,9 @@ namespace GUIUtil
         /** Print help message to console */
         void printToConsole();
 
+
+        void debugDisabled();
+
     private:
         QString header;
         QString coreOptions;
