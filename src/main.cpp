@@ -46,7 +46,7 @@ unsigned int nStakeMaxAge = 60 * 60 * 24 * 30; // stake age of full weight
 unsigned int nStakeTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
 unsigned int nPowTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
 unsigned int nPosTargetSpacing = 1 * 60 * 10; // DIFF: 10-minute block spacing
-unsigned int NTest = 518400;
+unsigned int NTest = 176500;
 int64 nSpamHashControl = 30; // % from (nPos)nPowTargetSpacing
 int64 nChainStartTime = 1388949883;
 int64 PowPindexPrevTime = 0;
@@ -1183,9 +1183,8 @@ unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fPr
 
        if(bnNewPow > bnTargetLimitPow)
           bnNewPow = bnTargetLimitPow;
-       if(bnNewPow < bnTargetLimitPow + bnTargetLimitPow &&
-                   powpindexPrev->GetBlockTime() > nPowForceTimestamp &&
-                                                 powpindexPrev->GetBlockTime() < nPowForceTimestamp + NTest)
+       if(bnNewPow < bnTargetLimitPow && powpindexPrev->GetBlockTime() > nPowForceTimestamp &&
+                                         powpindexPrev->GetBlockTime() < nPowForceTimestamp + NTest)
           bnNewPow = bnTargetLimitPow;
      }
     return bnNewPow.GetCompact();

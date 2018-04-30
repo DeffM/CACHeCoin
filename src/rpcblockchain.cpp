@@ -39,7 +39,7 @@ double GetDifficulty(const CBlockIndex* blockindex, const CBlockIndex* blockinde
     unsigned int nBlockBitspow = blockindexpow->nBits;
     unsigned int nBlockBitspos = blockindexpos->nBits;
     nBlockBits = GetNextTargetRequired(blockindex,blockindex->IsProofOfStake());
-    nBlockBitspow = GetNextTargetRequiredPow(blockindexpow,blockindexpow->IsProofOfWork());
+    nBlockBitspow = GetNextTargetRequiredPow(blockindexpow,blockindexpow->IsProofOfStake());
     nBlockBitspos = GetNextTargetRequiredPos(blockindexpos,blockindexpos->IsProofOfStake());
     int nShift = (nBlockBits >> 24) & 0xff;
     int nShiftpow = (nBlockBitspow >> 24) & 0xff;
@@ -168,7 +168,7 @@ Value getdifficulty(const Array& params, bool fHelp)
     }
     else
     {
-    obj.push_back(Pair("proof - of - work",                         GetDifficulty()));
+    obj.push_back(Pair("proof-of-work",                             GetDifficulty()));
     obj.push_back(Pair("search-interval-powblock",                 (int)nLastCoinPowSearchInterval));
     obj.push_back(Pair("search-twointerval-powblock",              (int)nLastCoinPowFiveInterval));
     obj.push_back(Pair("search-full-result-powblock",              (int)nActualTimeIntervalXUXLpow));
@@ -176,7 +176,7 @@ Value getdifficulty(const Array& params, bool fHelp)
     obj.push_back(Pair("UpperLower-pow",                           (int)powUpperLower));
     obj.push_back(Pair("XUpper-pow",                               (int)XUpperPow));
     obj.push_back(Pair("XLower-pow",                               (int)XLowerPow));
-    obj.push_back(Pair("proof - of - stake",                        GetDifficulty(GetLastBlockIndexPos(pindexBest, true))));
+    obj.push_back(Pair("proof-of-stake",                            GetDifficulty(GetLastBlockIndexPos(pindexBest, true))));
     obj.push_back(Pair("search-interval-posblock",                 (int)nLastCoinPosSearchInterval));
     obj.push_back(Pair("search-twointerval-posblock",              (int)nLastCoinPosTwoInterval));
     obj.push_back(Pair("search-full-result-posblock",              (int)nActualTimeIntervalXUXLpos));
