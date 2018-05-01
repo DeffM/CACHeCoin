@@ -34,8 +34,8 @@ static const int64 MIN_TX_FEE = CENT;
 static const int64 MIN_RELAY_TX_FEE = CENT;
 static const int64 MAX_MONEY = 2000000000 * COIN;
 static const int64 MINT_PROOF_OF_WORK = 100 * COIN;
-static const int64 MIN_MINT_PROOF_OF_WORK = 45 * COIN;
-static const int64 MAX_MINT_PROOF_OF_WORK = 90 * COIN;
+static const int64 MIN_MINT_PROOF_OF_WORK = 40 * COIN;
+static const int64 MAX_MINT_PROOF_OF_WORK = 80 * COIN;
 static const int64 MIN_TXOUT_AMOUNT = MIN_TX_FEE;
 inline bool MoneyRange(int64 nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 // Threshold for nLockTime: below this value it is interpreted as block number, otherwise as UNIX timestamp.
@@ -106,7 +106,7 @@ extern std::map<uint256, CBlock*> mapOrphanBlocks;
 extern int64 nTransactionFee;
 
 // Settings PowForceGlobal
-static const int64 nPowForceTimestamp = 9524268800;
+static const int64 nPowForceTimestamp = 1524837600;
 
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64 nMinDiskSpace = 52428800;
