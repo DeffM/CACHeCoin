@@ -40,7 +40,7 @@ static const int NOBLKS_VERSION_END = 60004;
 // From Thu Jan 30 05:40:00 MSK 2014, disallow blocks from older versions.
 static const int NOBLKS2014_VERSION_END = 70000;
 static const int NOBLKS2014_2_VERSION_END = 80000;
-static const int NOBLKS2014_3_VERSION_END = 90000;
+static const int NOBLKS2014_3_VERSION_END = 90002;
 
 // BIP 0031, pong message, is enabled for all versions AFTER this one
 static const int BIP0031_VERSION = 60000;

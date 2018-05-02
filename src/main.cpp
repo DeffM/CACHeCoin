@@ -3336,7 +3336,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
 
         int64 nTime;
-        bool badVersion = false;
+        bool badVersion = true;
         int64 currentTimestamp = GetTime();
         CAddress addrMe;
         CAddress addrFrom;
@@ -3351,11 +3351,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             return false;
         }
         // Start disconnecting older client versions from Thu Jan 30 05:40:00 MSK 2014
-        if(currentTimestamp >= POWFIX_DATE){
-            if(pfrom->nVersion < NOBLKS2014_3_VERSION_END)
-                badVersion = true;
-        }
-
+        if(currentTimestamp >= POWFIX_DATE)
+        if(pfrom->nVersion <= NOBLKS2014_3_VERSION_END)
         if(badVersion)
         {
          printf("partner %s using obsolete version %i; disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
@@ -3451,7 +3448,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                  nAskedForBlocks++;
                  pfrom->PushGetBlocks(pindexBest, uint256(0));
              }
-        }else if(currentTimestamp < POWFIX_DATE){
+        }
+        else if(currentTimestamp < POWFIX_DATE)
+        {
             if (!pfrom->fClient && !pfrom->fOneShot &&
                 (pfrom->nStartingHeight > (nBestHeight - 144)) &&
                 (pfrom->nVersion < NOBLKS_VERSION_START ||
@@ -3461,7 +3460,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                  nAskedForBlocks++;
                  pfrom->PushGetBlocks(pindexBest, uint256(0));
              }
-        }else{
+        }
+        else
+        {
             if (!pfrom->fClient && !pfrom->fOneShot &&
                 (pfrom->nStartingHeight > (nBestHeight - 144)) &&
                 (pfrom->nVersion < NOBLKS_VERSION_START ||
