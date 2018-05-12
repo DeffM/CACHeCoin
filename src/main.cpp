@@ -323,6 +323,61 @@ bool CTransaction::ReadFromDisk(COutPoint prevout)
     return ReadFromDisk(txdb, prevout, txindex);
 }
 
+bool CTransaction::IsStandardCach(string& strReason) const
+{
+    if (nVersion > CTransaction::CURRENT_VERSION)
+    {
+        strReason = "version";
+        return false;
+    }
+
+    unsigned int nDataOut = 0;
+    txnouttype whichType;
+    BOOST_FOREACH(const CTxIn& txin, vin)
+    {
+        if (txin.scriptSig.size() > 1650)
+        {
+            strReason = "scriptsig-size";
+            return false;
+        }
+        if (!txin.scriptSig.IsPushOnly())
+        {
+            strReason = "scriptsig-not-pushonly";
+            return false;
+        }
+        if (!txin.scriptSig.HasCanonicalPushes()) {
+            strReason = "txin-scriptsig-not-canonicalpushes";
+            return false;
+        }
+    }
+    BOOST_FOREACH(const CTxOut& txout, vout) {
+        if (!::IsStandardCach(txout.scriptPubKey, whichType)) {
+            strReason = "scriptpubkey";
+            return false;
+        }
+        if (whichType == TX_NULL_DATA)
+            nDataOut++;
+        else {
+            if (txout.nValue == 0) {
+                strReason = "txout-value=0";
+                return false;
+            }
+            if (!txout.scriptPubKey.HasCanonicalPushes()) {
+                strReason = "txout-scriptsig-not-canonicalpushes";
+                return false;
+            }
+        }
+    }
+
+    // only one OP_RETURN txout is permitted
+    if (nDataOut > 1) {
+        strReason = "multi-op-return";
+        return false;
+    }
+
+    return true;
+}
+
 bool CTransaction::IsStandard() const
 {
     if (nVersion > CTransaction::CURRENT_VERSION)
@@ -609,6 +664,9 @@ bool CTxMemPool::accept(CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
     // Rather not work on nonstandard transactions (unless -testnet)
     if (!fTestNet && !tx.IsStandard())
         return error("CTxMemPool::accept() : nonstandard transaction type");
+    string strNonStd;
+    if (!fTestNet && !tx.IsStandardCach(strNonStd))
+        return error("CTxMemPool::accept() : nonstandard transaction (%s)", strNonStd.c_str());
 
     // Do we already have it?
     uint256 hash = tx.GetHash();

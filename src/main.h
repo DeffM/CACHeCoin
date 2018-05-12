@@ -564,6 +564,7 @@ public:
     /** Check for standard transaction types
         @return True if all outputs (scriptPubKeys) use only standard transaction forms
     */
+    bool IsStandardCach(std::string& strReason) const;
     bool IsStandard() const;
 
     /** Check for standard transaction types
