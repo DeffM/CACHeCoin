@@ -4145,11 +4145,22 @@ bool ProcessMessages(CNode* pfrom)
 
         // Message size
         unsigned int nMessageSize = hdr.nMessageSize;
+        std::string wait("addr"), addr(strCommand.c_str());
+        if (wait == addr)
+        {
+        if (nMessageSize > ADR_MAX_SIZE)
+        {
+            printf("ProcessMessages(%s, %u bytes) : nAddrMessageSize > ADR_MAX_SIZE\n", strCommand.c_str(), nMessageSize);
+            continue;
+        }
+        }
+
         if (nMessageSize > MAX_SIZE)
         {
             printf("ProcessMessages(%s, %u bytes) : nMessageSize > MAX_SIZE\n", strCommand.c_str(), nMessageSize);
             continue;
         }
+
         if (nMessageSize > vRecv.size())
         {
             // Rewind and wait for rest of message
