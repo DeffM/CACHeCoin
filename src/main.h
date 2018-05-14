@@ -1210,6 +1210,7 @@ private:
 class CBlockIndex : public CBlockHeader
 {
 public:
+    const uint256* phashBlock;
     CBlockIndex* pprev;
     CBlockIndex* pnext;
     unsigned int nFile;
@@ -1239,6 +1240,7 @@ public:
 
     CBlockIndex()
     {
+        phashBlock = NULL;
         fHashed = false;
         CBlockHeader::SetNull();
         pprev = NULL;
@@ -1261,6 +1263,7 @@ public:
     CBlockIndex(unsigned int nFileIn, unsigned int nBlockPosIn, CBlock& block)
         : CBlockHeader(block)
     {
+        phashBlock = NULL;
         pprev = NULL;
         pnext = NULL;
         nFile = nFileIn;
