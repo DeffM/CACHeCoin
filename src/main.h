@@ -115,6 +115,7 @@ static const uint64 nMinDiskSpace = 52428800;
 class CReserveKey;
 class CTxDB;
 class CTxIndex;
+class CScriptCheck;
 
 void RegisterWallet(CWallet* pwalletIn);
 void UnregisterWallet(CWallet* pwalletIn);
@@ -726,7 +727,9 @@ public:
      */
     bool ConnectInputs(CTxDB& txdb, MapPrevTx inputs,
                        std::map<uint256, CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx,
-                       const CBlockIndex* pindexBlock, bool fBlock, bool fMiner, bool fStrictPayToScriptHash=true);
+                       const CBlockIndex* pindexBlock, bool fBlock, bool fMiner, bool fStrictPayToScriptHash=true,
+                       bool fScriptChecks=true, unsigned int flags=STRICT_FLAGS,
+                       std::vector<CScriptCheck> *pvChecks = NULL);
     bool ClientConnectInputs();
     bool CheckTransaction() const;
     bool AcceptToMemoryPool(CTxDB& txdb, bool fCheckInputs=true, bool* pfMissingInputs=NULL);
