@@ -487,6 +487,8 @@ bool AppInit2()
     printf("Default data directory %s\n", GetDefaultDataDir().string().c_str());
     printf("Used data directory %s\n", strDataDir.c_str());
     std::ostringstream strErrors;
+    if (GetBoolArg("-shrinkpeersdat", fDebug))
+        ShrinkPeersDat();
 
     if (fDaemon)
         fprintf(stdout, "CACHeCoin server starting\n");

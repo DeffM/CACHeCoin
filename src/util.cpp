@@ -1175,6 +1175,26 @@ void ShrinkDebugFile()
     }
 }
 
+void ShrinkPeersDat()
+{
+    boost::filesystem::path pathLog = GetDataDir() / "peers.dat";
+    FILE* file = fopen(pathLog.string().c_str(), "r");
+    if (file && GetFilesize(file) > 250000)
+    {
+        char pch[50];
+        fseek(file, -sizeof(pch), SEEK_END);
+        int nBytes = fread(pch, 1, sizeof(pch), file);
+        fclose(file);
+
+        file = fopen(pathLog.string().c_str(), "w");
+        if (file)
+        {
+            fwrite(pch, 1, nBytes, file);
+            fclose(file);
+        }
+    }
+}
+
 
 
 
