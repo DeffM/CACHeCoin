@@ -4099,8 +4099,6 @@ bool ProcessMessages(CNode* pfrom)
     CDataStream& vRecv = pfrom->vRecv;
     if (vRecv.empty())
         return true;
-    //if (fDebug)
-    //    printf("ProcessMessages(%u bytes)\n", vRecv.size());
 
     //
     // Message format
@@ -4122,16 +4120,21 @@ bool ProcessMessages(CNode* pfrom)
         int nHeaderSize = vRecv.GetSerializeSize(CMessageHeader());
         if (vRecv.end() - pstart < nHeaderSize)
         {
-            if ((int)vRecv.size() > nHeaderSize)
+            if ((double)vRecv.size() + 24 > nHeaderSize)
             {
-                printf("\n\nPROCESSMESSAGE MESSAGESTART NOT FOUND\n\n");
+                printf("\n\nBAD PROCESSMESSAGE - DISCONECTED PEERS\n\n");
+                {
                 vRecv.erase(vRecv.begin(), vRecv.end() - nHeaderSize);
+                pfrom->fDisconnect = true;
+                }
             }
             break;
         }
         if (pstart - vRecv.begin() > 0)
             printf("\n\nPROCESSMESSAGE SKIPPED %"PRIpdd" BYTES\n\n", pstart - vRecv.begin());
-        vRecv.erase(vRecv.begin(), pstart);
+            {
+            vRecv.erase(vRecv.begin(), pstart);
+            }
 
         // Read header
         vector<char> vHeaderSave(vRecv.begin(), vRecv.begin() + nHeaderSize);
@@ -4151,7 +4154,7 @@ bool ProcessMessages(CNode* pfrom)
         {
         if (nMessageSize > ADR_MAX_SIZE)
         {
-            printf("ProcessMessages(%s, %u bytes) : nAddrMessageSize > ADR_MAX_SIZE\n", strCommand.c_str(), nMessageSize);
+            printf("ProcessMessages(%s, %u bytes) : PEERS.DAT EXCEEDS THE ALLOWABLE SIZE\n", strCommand.c_str(), nMessageSize);
             continue;
         }
         }
@@ -4159,6 +4162,7 @@ bool ProcessMessages(CNode* pfrom)
         if (nMessageSize > MAX_SIZE)
         {
             printf("ProcessMessages(%s, %u bytes) : nMessageSize > MAX_SIZE\n", strCommand.c_str(), nMessageSize);
+            pfrom->fDisconnect = true;
             continue;
         }
 
