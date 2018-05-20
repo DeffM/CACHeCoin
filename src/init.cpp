@@ -26,6 +26,8 @@ using namespace boost;
 
 CWallet* pwalletMain;
 CClientUIInterface uiInterface;
+unsigned int nNodeLifespan;
+unsigned int nLimitationDistr;
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -263,6 +265,7 @@ std::string HelpMessage()
 #if !defined(WIN32) && !defined(QT_GUI)
         "  -daemon                " + _("Run in the background as a daemon and accept commands") + "\n" +
 #endif
+        "  -addrlifespan          " + _("This asymmetric behavior for inbound and outbound connections (default: 7)") + "\n" +
         "  -testnet               " + _("Use the test network") + "\n" +
         "  -debug                 " + _("Output extra debugging information. Implies all other -debug* options") + "\n" +
         "  -debugnet              " + _("Output extra network debugging information") + "\n" +
@@ -350,6 +353,10 @@ bool AppInit2()
 #endif
 
     // ********************************************************* Step 2: parameter interactions
+
+    nNodeLifespan = (int)GetArg("-addrlifespan", 7);
+
+    nLimitationDistr = (int)GetArg("-limitationdistr", 7);
 
     fTestNet = GetBoolArg("-testnet");
     if (fTestNet) {

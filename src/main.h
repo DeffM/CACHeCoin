@@ -99,6 +99,8 @@ extern int64 nHPSTimerStart;
 extern int64 nTimeBestReceived;
 extern CCriticalSection cs_setpwalletRegistered;
 extern std::set<CWallet*> setpwalletRegistered;
+extern unsigned int nNodeLifespan;
+extern unsigned int nLimitationDistr;
 extern unsigned char pchMessageStart[4];
 extern std::map<uint256, CBlock*> mapOrphanBlocks;
 
@@ -107,6 +109,7 @@ extern int64 nTransactionFee;
 
 // Settings PowForceGlobal
 static const int64 nPowForceTimestamp = 1524837600;
+static const int64 nCorrectedTimestamp = 9999999999;
 
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64 nMinDiskSpace = 52428800;
