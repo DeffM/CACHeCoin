@@ -38,7 +38,6 @@ map<uint256, CBlockIndex*> mapBlockIndex;
 set<pair<COutPoint, unsigned int> > setStakeSeen;
 uint256 hashGenesisBlock = hashGenesisBlockOfficial;
 static CBigNum bnProofOfWorkLimit(~uint256(0) >> 20);
-static CBigNum bnProofOfWorkLimitNf20(~uint256(0) >> 10);
 static CBigNum bnProofOfStakeLimit(~uint256(0) >> 24);
 static CBigNum bnProofOfStakeHardLimit(~uint256(0) >> 30);
 static CBigNum bnInitialHashTarget(~uint256(0) >> 20);
@@ -73,6 +72,8 @@ double XUpperPow = 0;
 double XLowerPow = 0;
 double XUpperPos = 0;
 double XLowerPos = 0;
+double study = 0;
+double studys = 0;
 int nCoinbaseMaturity = 500;
 CBlockIndex* pindexGenesisBlock = NULL;
 int nBestHeight = -1;
@@ -1051,8 +1052,7 @@ unsigned char GetNfactor(int64 nTimestamp)
     }
        else
            s = nTimestamp - nChainStartTime;
-    if (PowPindexPrevTime > nCorrectedTimestamp)
-        return 6;
+
     while((s >> 1) > 3)
     {
            l += 1;
@@ -1103,11 +1103,7 @@ const CBlockIndex* GetLastBlockIndexPos(const CBlockIndex* pospindex, bool fProo
 
 unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fProofOfWork)
 {
-    CBigNum bnTargetLimitPow;
-    if (PowPindexPrevTime < nCorrectedTimestamp)
-        bnTargetLimitPow = bnProofOfWorkLimit;
-        else
-            bnTargetLimitPow = bnProofOfWorkLimitNf20;
+    CBigNum bnTargetLimitPow = bnProofOfWorkLimit;
 
     if (powpindexLast == NULL)
         return bnTargetLimitPow.GetCompact(); // last block
@@ -1394,12 +1390,7 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
 
 unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake)
 {
-     CBigNum bnTargetLimit;
-     if (PowPindexPrevTime < nCorrectedTimestamp)
-         bnTargetLimit = bnProofOfWorkLimit;
-         else
-             bnTargetLimit = bnProofOfWorkLimitNf20;
-
+    CBigNum bnTargetLimit = bnProofOfWorkLimit;
      if(fProofOfStake)
      {
         // Proof-of-Stake blocks has own target limit since nVersion=3 supermajority on mainNet and always on testNet
@@ -1469,11 +1460,7 @@ int64 GetProofOfWorkReward(unsigned int nBits)
     CBigNum bnMaxSubsidyLimit = MAX_MINT_PROOF_OF_WORK;
     CBigNum bnTarget;
     bnTarget.SetCompact(nBits);
-    CBigNum bnTargetLimit;
-    if (PowPindexPrevTime < nCorrectedTimestamp)
-        bnTargetLimit = bnProofOfWorkLimit;
-        else
-            bnTargetLimit = bnProofOfWorkLimitNf20;
+    CBigNum bnTargetLimit = bnProofOfWorkLimit;
     bnTargetLimit.SetCompact(bnTargetLimit.GetCompact());
 
     // cachecoin subsidy
@@ -1528,11 +1515,8 @@ int64 GetProofOfStakeReward(int64 nCoinAge)
 //
 unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
 {
-   CBigNum bnTargetLimit;
-    if (PowPindexPrevTime < nCorrectedTimestamp)
-        bnTargetLimit = bnProofOfWorkLimit;
-        else
-            bnTargetLimit = bnProofOfWorkLimitNf20;
+    CBigNum bnTargetLimit = bnProofOfWorkLimit;
+
     CBigNum bnResult;
     bnResult.SetCompact(nBase);
     bnResult *= 2;
@@ -1551,14 +1535,9 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits)
 {
     CBigNum bnTarget;
     bnTarget.SetCompact(nBits);
-    CBigNum bnTargetLimit;
-    if (PowPindexPrevTime < nCorrectedTimestamp)
-        bnTargetLimit = bnProofOfWorkLimit;
-        else
-            bnTargetLimit = bnProofOfWorkLimitNf20;
 
     // Check range
-    if (bnTarget <= 0 || bnTarget > bnTargetLimit)
+    if (bnTarget <= 0 || bnTarget > bnProofOfWorkLimit)
         return error("CheckProofOfWork() : nBits below minimum work");
 
     // Check proof of work matches claimed amount
@@ -2604,10 +2583,30 @@ bool CBlock::AcceptBlock()
     if(pindexPrev->GetBlockTime() > nPowForceTimestamp)
        if(IsProofOfStake())
     {
-       if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
+       int i = 0;
+       double nBitsDouble = nBits;
+       double TargetRequiredDouble = GetNextTargetRequiredPos(pindexPrev, IsProofOfStake());
+       double nBitsInt = 0;
+       double TargetRequiredInt = 0;
+       if (nBits == GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
        {
-           return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake"));
+           i = 0;
+           nBitsInt = nBitsDouble;
+           TargetRequiredInt = TargetRequiredDouble;
        }
+           else
+           {
+               i = 1;
+               nBitsInt = nBitsDouble * 1.021;
+               TargetRequiredInt = TargetRequiredDouble;
+           }
+       study = nBitsInt;
+       studys = TargetRequiredInt;
+       if (nBitsInt < TargetRequiredInt && nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && i == 1)
+           return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake-network"));
+       else if (nBitsInt != TargetRequiredInt && nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && i == 0)
+                return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake-miner"));
+
     }
 
     if(pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() < nPowForceTimestamp)
@@ -3083,10 +3082,7 @@ bool LoadBlockIndex(bool fAllowNew)
         block.hashMerkleRoot = block.BuildMerkleTree();
         block.nVersion = 1;
         block.nTime    = 1388949933;
-        if (PowPindexPrevTime < nCorrectedTimestamp)
         block.nBits = bnProofOfWorkLimit.GetCompact();
-        else
-            block.nBits = bnProofOfWorkLimitNf20.GetCompact();
         block.nNonce   = 23391;
 
         //// debug print

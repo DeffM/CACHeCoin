@@ -93,6 +93,8 @@ extern double XUpperPow;
 extern double XLowerPow;
 extern double XUpperPos;
 extern double XLowerPos;
+extern double study;
+extern double studys;
 extern const std::string strMessageMagic;
 extern double dHashesPerSec;
 extern int64 nHPSTimerStart;
