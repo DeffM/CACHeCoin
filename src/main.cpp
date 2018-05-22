@@ -2594,15 +2594,16 @@ bool CBlock::AcceptBlock()
            nBitsInt = nBitsDouble;
            TargetRequiredInt = TargetRequiredDouble;
        }
-           else
+           else if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
            {
                i = 1;
                nBitsInt = nBitsDouble * 1.021;
                TargetRequiredInt = TargetRequiredDouble;
            }
+               else i = 3;
        study = nBitsInt;
        studys = TargetRequiredInt;
-       if (nBitsInt < TargetRequiredInt && nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && i == 1)
+       if (nBitsInt == TargetRequiredInt && nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && i == 3)
            return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake-network"));
        else if (nBitsInt != TargetRequiredInt && nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && i == 0)
                 return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake-miner"));
