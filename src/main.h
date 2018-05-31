@@ -77,6 +77,7 @@ extern CBlockIndex* pindexBest;
 extern unsigned int nTransactionsUpdated;
 extern uint64 nLastBlockTx;
 extern uint64 nLastBlockSize;
+extern int64 nUnixCachChainTime;
 extern int64 nLastCoinStakeSearchInterval;
 extern int64 nLastCoinPowSearchInterval;
 extern int64 nLastCoinPowFiveInterval;

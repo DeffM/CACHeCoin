@@ -50,6 +50,8 @@ unsigned int nPosTargetSpacing = 1 * 60 * 10; // DIFF: 10-minute block spacing
 unsigned int NTest = 176500;
 int64 nSpamHashControl = 30; // % from (nPos)nPowTargetSpacing
 int64 nChainStartTime = 1388949883;
+int64 nNewTimeBlock = 0;
+int64 nUnixCachChainTime = 0;
 int64 PowPindexPrevTime = 0;
 int64 PosPindexPrevTime = 0;
 int64 PosPindexPrevPrevTime = 0;
@@ -1760,15 +1762,15 @@ unsigned int CTransaction::GetP2SHSigOpCount(const MapPrevTx& inputs) const
 }
 
 bool CScriptCheck::operator()() const {
-    const CScript &scriptSig = ptxTo->vin[nIn].scriptSig;
-    if (!VerifyScript(scriptSig, scriptPubKey, *ptxTo, nIn, nFlags, true, nHashType))
-        return error("CScriptCheck() : %s VerifySignature failed", ptxTo->GetHash().ToString().substr(0,10).c_str());
-    return true;
+     const CScript &scriptSig = ptxTo->vin[nIn].scriptSig;
+     if (!VerifyScript(scriptSig, scriptPubKey, *ptxTo, nIn, nFlags, true, nHashType))
+         return error("CScriptCheck() : %s VerifySignature failed", ptxTo->GetHash().ToString().substr(0,10).c_str());
+     return true;
 }
 
 bool VerifySignatureCach(const CTransaction& txFrom, const CTransaction& txTo, unsigned int nIn, unsigned int flags, int nHashType)
 {
-    return CScriptCheck(txFrom, txTo, nIn, flags, nHashType)();
+     return CScriptCheck(txFrom, txTo, nIn, flags, nHashType)();
 }
 
 bool CTransaction::ConnectInputs(CTxDB& txdb, MapPrevTx inputs, map<uint256, CTxIndex>& mapTestPool,
@@ -2637,39 +2639,43 @@ bool CBlock::AcceptBlock()
        }
     }
 
+       int64 nNewTimeBlockA = 0;
+       int64 nNewTimeBlockB = 0;
+       int64 nLastCoinWithoutInterval = GetTime() - GetBlockTime();
+       int64 nNewGetTime = GetTime();
+       if ( nLastCoinWithoutInterval < 0 )
+       {
+            nNewTimeBlockA = nLastCoinWithoutInterval * (-1);
+            nNewTimeBlockB = 0;
+       }
+       else if ( nLastCoinWithoutInterval >= 0 )
+       {
+                 nNewTimeBlockB = nLastCoinWithoutInterval;
+                 nNewTimeBlockA = 0;
+       }
+
+       nNewTimeBlock = nNewTimeBlockA - nNewTimeBlockB;
+
     if(pindexPrev->GetBlockTime() > nPowForceTimestamp)
        if(IsProofOfStake())
     {
-       int i = 0;
-       double nBitsDouble = nBits;
-       double TargetRequiredDouble = GetNextTargetRequiredPos(pindexPrev, IsProofOfStake());
-       double nBitsInt = 0;
-       double TargetRequiredInt = 0;
-       if (nBits == GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
+       nNewGetTime = nNewGetTime + nNewTimeBlock;
+       if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) &&
+           GetBlockTime() < nUnixCachChainTime + (nPosTargetSpacing / 100 * nSpamHashControl) &&
+           GetBlockTime() > nUnixCachChainTime - (nPosTargetSpacing / 100 * nSpamHashControl) &&
+           pindexBest->nHeight >= GetNumBlocksOfPeers())
        {
-           i = 0;
-           nBitsInt = nBitsDouble;
-           TargetRequiredInt = TargetRequiredDouble;
+           return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake"));
        }
-           else if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
-           {
-               i = 1;
-               nBitsInt = nBitsDouble * 1.021;
-               TargetRequiredInt = TargetRequiredDouble;
-           }
-               else i = 3;
-       study = nBitsInt;
-       studys = TargetRequiredInt;
-       if (nBitsInt == TargetRequiredInt && nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && i == 3)
-           return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake-network"));
-       else if (nBitsInt != TargetRequiredInt && nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && i == 0)
-                return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake-miner"));
-
+       else if (GetBlockTime() != nNewGetTime && pindexBest->nHeight >= GetNumBlocksOfPeers())
+       {
+           return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake-chain-time"));
+       }
     }
 
     if(pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() < nPowForceTimestamp)
     {
-       if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()))
+       if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()) && pindexBest->nHeight >= GetNumBlocksOfPeers())
        {
            return DoS(5, error("AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
        }
@@ -4636,6 +4642,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
             nLastCoinWithoutPosSearchInterval = nLastCoinPosSearchTime - PosPindexPrevTime;
             nLastCoinWithoutPowSearchInterval = nLastCoinPosSearchTime - PowPindexPrevTime;
             nLastCoinPosSearchTime = nSearchTime;
+            nUnixCachChainTime = GetTime() + nNewTimeBlock;
         }
      }
 

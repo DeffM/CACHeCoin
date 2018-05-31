@@ -165,6 +165,8 @@ Value getdifficulty(const Array& params, bool fHelp)
     obj.push_back(Pair("proof-of-work",                             GetDifficulty()));
     obj.push_back(Pair("proof-of-stake",                            GetDifficulty(GetLastBlockIndex(pindexBest, true))));
     obj.push_back(Pair("search-interval",                          (int)nLastCoinStakeSearchInterval));
+    obj.push_back(Pair("study",                                    (double)study));
+    obj.push_back(Pair("studys",                                   (double)studys));
     }
     else
     {
@@ -186,6 +188,7 @@ Value getdifficulty(const Array& params, bool fHelp)
     obj.push_back(Pair("XLower-pos",                               (int)XLowerPos));
     obj.push_back(Pair("search-interval-without pow block",        (int)nLastCoinWithoutPowSearchInterval));
     obj.push_back(Pair("search-interval-without pos block",        (int)nLastCoinWithoutPosSearchInterval));
+    obj.push_back(Pair("UnixCachChainTime",                        (int)nUnixCachChainTime));
     obj.push_back(Pair("study",                                    (double)study));
     obj.push_back(Pair("studys",                                   (double)studys));
     }
