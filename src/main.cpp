@@ -81,6 +81,8 @@ int nCoinbaseMaturity = 500;
 CBlockIndex* pindexGenesisBlock = NULL;
 int nBestHeight = -1;
 int64 nBestHeightTime = 0;   // WM - Keep track of timestamp of block at best height.
+uint256 nBestChainTrust = 0;
+uint256 nBestInvalidTrust = 0;
 CBigNum bnBestChainTrust = 0;
 CBigNum bnBestInvalidTrust = 0;
 uint256 hashBestChain = 0;
@@ -1575,7 +1577,30 @@ bool IsInitialBlockDownload()
             pindexBest->GetBlockTime() < nCurrentTime - 24 * 60 * 60);
 }
 
-void static InvalidChainFound(CBlockIndex* pindexNew)
+void static InvalidChainFoundCach(CBlockIndex* pindexNew)
+{
+    if (pindexNew->nChainTrust > nBestInvalidTrust)
+    {
+        nBestInvalidTrust = pindexNew->nChainTrust;
+        CTxDB().WriteBestInvalidTrust(CBigNum(nBestInvalidTrust));
+        uiInterface.NotifyBlocksChanged();
+    }
+
+    uint256 nBestInvalidBlockTrust = pindexNew->nChainTrust - pindexNew->pprev->nChainTrust;
+    uint256 nBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->nChainTrust - pindexBest->pprev->nChainTrust) : pindexBest->nChainTrust;
+
+    printf("InvalidChainFound: invalid block=%s  height=%d  trust=%s  blocktrust=% date=%s\n",
+      pindexNew->GetBlockHash().ToString().substr(0,20).c_str(), pindexNew->nHeight,
+      CBigNum(pindexNew->nChainTrust).ToString().c_str(), (uint32_t)nBestInvalidBlockTrust.Get64(),
+      DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str());
+    printf("InvalidChainFound:  current best=%s  height=%d  trust=%s  blocktrust=% date=%s\n",
+      hashBestChain.ToString().substr(0,20).c_str(), nBestHeight,
+      CBigNum(pindexBest->nChainTrust).ToString().c_str(),
+      (uint32_t)nBestBlockTrust.Get64(),
+      DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str());
+}
+
+/*void static InvalidChainFound(CBlockIndex* pindexNew)
 {
     if (pindexNew->bnChainTrust > bnBestInvalidTrust)
     {
@@ -1592,21 +1617,12 @@ void static InvalidChainFound(CBlockIndex* pindexNew)
       hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainTrust.ToString().c_str(),
       DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str());
 }
+*/
 
 void CBlock::UpdateTime(const CBlockIndex* pindexPrev)
 {
     nTime = max(GetBlockTime(), GetAdjustedTime());
 }
-
-
-
-
-
-
-
-
-
-
 
 bool CTransaction::DisconnectInputs(CTxDB& txdb)
 {
@@ -2243,9 +2259,17 @@ bool CBlock::SetBestChainInner(CTxDB& txdb, CBlockIndex *pindexNew)
     if (!ConnectBlock(txdb, pindexNew) || !txdb.WriteHashBestChain(hash))
     {
         txdb.TxnAbort();
-        InvalidChainFound(pindexNew);
+        InvalidChainFoundCach(pindexNew);
         return false;
     }
+
+    //if (!ConnectBlock(txdb, pindexNew) || !txdb.WriteHashBestChain(hash))
+    //{
+    //    txdb.TxnAbort();
+    //    InvalidChainFound(pindexNew);
+    //    return false;
+    //}
+
     if (!txdb.TxnCommit())
         return error("SetBestChain() : TxnCommit failed");
 
@@ -2301,9 +2325,16 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
         if (!Reorganize(txdb, pindexIntermediate))
         {
             txdb.TxnAbort();
-            InvalidChainFound(pindexNew);
+            InvalidChainFoundCach(pindexNew);
             return error("SetBestChain() : Reorganize failed");
         }
+
+        //if (!Reorganize(txdb, pindexIntermediate))
+        //{
+        //    txdb.TxnAbort();
+        //    InvalidChainFound(pindexNew);
+        //    return error("SetBestChain() : Reorganize failed");
+        //}
 
         // Connect further blocks
         BOOST_REVERSE_FOREACH(CBlockIndex *pindex, vpindexSecondary)
@@ -3091,6 +3122,18 @@ FILE* AppendBlockFile(unsigned int& nFileRet)
         fclose(file);
         nCurrentBlockFile++;
     }
+}
+
+void UnloadBlockIndex()
+{
+    mapBlockIndex.clear();
+    setStakeSeen.clear();
+    pindexGenesisBlock = NULL;
+    nBestHeight = 0;
+    nBestChainTrust = 0;
+    nBestInvalidTrust = 0;
+    hashBestChain = 0;
+    pindexBest = NULL;
 }
 
 bool LoadBlockIndex(bool fAllowNew)

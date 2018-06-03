@@ -72,6 +72,8 @@ extern int nBestHeight;
 extern int64 nBestHeightTime;
 extern CBigNum bnBestChainTrust;
 extern CBigNum bnBestInvalidTrust;
+extern uint256 nBestChainTrust;
+extern uint256 nBestInvalidTrust;
 extern uint256 hashBestChain;
 extern CBlockIndex* pindexBest;
 extern unsigned int nTransactionsUpdated;
@@ -133,6 +135,7 @@ bool ProcessBlock(CNode* pfrom, CBlock* pblock);
 bool CheckDiskSpace(uint64 nAdditionalBytes=0);
 FILE* OpenBlockFile(unsigned int nFile, unsigned int nBlockPos, const char* pszMode="rb");
 FILE* AppendBlockFile(unsigned int& nFileRet);
+void UnloadBlockIndex();
 bool LoadBlockIndex(bool fAllowNew=true);
 void PrintBlockTree();
 CBlockIndex* FindBlockByHeight(int nHeight);
@@ -1259,6 +1262,7 @@ public:
     CBlockIndex* pnext;
     unsigned int nFile;
     unsigned int nBlockPos;
+    uint256 nChainTrust;  // cachecoin
     CBigNum bnChainTrust; // ppcoin: trust score of block chain
     int nHeight;
 
@@ -1292,6 +1296,7 @@ public:
         nFile = 0;
         nBlockPos = 0;
         nHeight = 0;
+        nChainTrust = 0;
         bnChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
@@ -1313,6 +1318,7 @@ public:
         nFile = nFileIn;
         nBlockPos = nBlockPosIn;
         nHeight = 0;
+        nChainTrust = 0;
         bnChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
