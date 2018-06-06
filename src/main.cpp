@@ -474,9 +474,14 @@ unsigned int
 CTransaction::GetLegacySigOpCount() const
 {
     unsigned int nSigOps = 0;
-    BOOST_FOREACH(const CTxIn& txin, vin)
+    if (!IsCoinBase())
     {
-        nSigOps += txin.scriptSig.GetSigOpCount(false);
+        // Coinbase scriptsigs are never executed, so there is 
+        //    no sense in calculation of sigops.
+        BOOST_FOREACH(const CTxIn& txin, vin)
+        {
+            nSigOps += txin.scriptSig.GetSigOpCount(false);
+        }
     }
     BOOST_FOREACH(const CTxOut& txout, vout)
     {
@@ -530,7 +535,7 @@ int CMerkleTx::SetMerkleBranch(const CBlock* pblock)
     map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashBlock);
     if (mi == mapBlockIndex.end())
         return 0;
-    CBlockIndex* pindex = (*mi).second;
+    const CBlockIndex* pindex = (*mi).second;
     if (!pindex || !pindex->IsInMainChain())
         return 0;
 
@@ -651,6 +656,10 @@ bool CTxMemPool::accept(CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
 {
     if (pfMissingInputs)
         *pfMissingInputs = false;
+
+    // Time (prevent mempool memory exhaustion attack)
+    if (tx.nTime > FutureDrift(GetAdjustedTime()))
+        return tx.DoS(10, error("CTxMemPool::accept() : transaction timestamp is too far in the future"));
 
     if (!tx.CheckTransaction())
         return error("CTxMemPool::accept() : CheckTransaction failed");
@@ -1850,6 +1859,10 @@ bool CTransaction::ConnectInputs(CTxDB& txdb, MapPrevTx inputs, map<uint256, CTx
                 return DoS(100, error("ConnectInputs() : txin values out of range"));
 
         }
+
+        if (pvChecks)
+            pvChecks->reserve(vin.size());
+
         // The first loop above does all the inexpensive checks.
         // Only if ALL inputs pass do we perform expensive ECDSA signature checks.
         // Helps prevent CPU exhaustion attacks.
@@ -2043,8 +2056,8 @@ void ThreadScriptCheckQuit() {
 
 bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
 {
-    // Check it again in case a previous version let a bad block in
-    if (!CheckBlock(!fJustCheck, !fJustCheck))
+    // Check it again in case a previous version let a bad block in, but skip BlockSig checking
+    if (!CheckBlock(!fJustCheck, !fJustCheck, false))
         return false;
 
     // Do not allow blocks that contain transactions which 'overwrite' older transactions,
@@ -2578,7 +2591,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
 
 
 
-bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot) const
+bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot, bool fCheckSig) const
 {
     // These are checks that are independent of context
     // that can be verified before saving an orphan block.
