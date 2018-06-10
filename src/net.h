@@ -18,6 +18,7 @@
 #include "netbase.h"
 #include "protocol.h"
 #include "addrman.h"
+#include "bloom.h"
 
 class CRequestTracker;
 class CNode;
@@ -67,13 +68,6 @@ bool GetLocal(CService &addr, const CNetAddr *paddrPeer = NULL);
 bool IsReachable(const CNetAddr &addr);
 void SetReachable(enum Network net, bool fFlag = true);
 CAddress GetLocalAddress(const CNetAddr *paddrPeer = NULL);
-
-
-enum
-{
-    MSG_TX = 1,
-    MSG_BLOCK,
-};
 
 class CRequestTracker
 {
@@ -141,6 +135,7 @@ public:
     int64 nTimeConnected;
     std::string addrName;
     int nVersion;
+    std::string cleanSubVer;
     std::string strSubVer;
     bool fInbound;
     int64 nReleaseTime;
@@ -158,6 +153,7 @@ class CNode
 public:
     // socket
     uint64 nServices;
+    size_t nSendSize;
     SOCKET hSocket;
     CDataStream vSend;
     CDataStream vRecv;
@@ -170,16 +166,20 @@ public:
     int nHeaderStart;
     unsigned int nMessageStart;
     CAddress addr;
+    std::deque<CInv> vRecvGetData;
     std::string addrName;
     CService addrLocal;
     int nVersion;
-    std::string strSubVer;
+    std::string strSubVer, cleanSubVer;
     bool fOneShot;
     bool fClient;
     bool fInbound;
     bool fNetworkNode;
     bool fSuccessfullyConnected;
     bool fDisconnect;
+    bool fRelayTxes;
+    CCriticalSection cs_filter;
+    CBloomFilter* pfilter;
     CSemaphoreGrant grantOutbound;
 protected:
     int nRefCount;
@@ -242,7 +242,9 @@ public:
         fGetAddr = false;
         nMisbehavior = 0;
         hashCheckpointKnown = 0;
+        fRelayTxes = false;
         setInventoryKnown.max_size(SendBufferSize() / 1000);
+        pfilter = new CBloomFilter();
 
         // Be shy and don't send version until we hear
         if (!fInbound)

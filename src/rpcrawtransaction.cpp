@@ -521,7 +521,8 @@ Value sendrawtransaction(const Array& params, bool fHelp)
     {
         // push to local node
         CTxDB txdb("r");
-        if (!tx.AcceptToMemoryPool(txdb))
+        CValidationState state;
+        if (!tx.AcceptToMemoryPool(state, txdb))
             throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX rejected");
 
         SyncWithWallets(tx, NULL, true);

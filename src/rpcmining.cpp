@@ -575,7 +575,8 @@ Value submitblock(const Array& params, bool fHelp)
     if (!block.SignBlock(*pwalletMain))
         throw JSONRPCError(-100, "Unable to sign block, wallet locked?");
 
-    bool fAccepted = ProcessBlock(NULL, &block);
+    CValidationState state;
+    bool fAccepted = ProcessBlock(state, NULL, &block);
     if (!fAccepted)
         return "rejected";
 

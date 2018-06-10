@@ -4,7 +4,6 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include "irc.h"
 #include "db.h"
 #include "net.h"
 #include "init.h"
@@ -689,6 +688,7 @@ void CNode::copyStats(CNodeStats &stats)
     X(nTimeConnected);
     X(addrName);
     X(nVersion);
+    X(cleanSubVer);
     X(strSubVer);
     X(fInbound);
     X(nReleaseTime);
@@ -704,6 +704,11 @@ static int64 NodeSyncScore(const CNode *pnode) {
 void static StartSync(const vector<CNode*> &vNodes) {
     CNode *pnodeNewSync = NULL;
     int64 nBestScore = 0;
+
+    // fImporting and fReindex are accessed out of cs_main here, but only
+    // as an optimization - they are checked again in SendMessages.
+    if (fImporting || fReindex)
+        return;
 
     // Iterate over all nodes
     BOOST_FOREACH(CNode* pnode, vNodes) {

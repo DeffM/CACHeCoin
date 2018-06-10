@@ -19,7 +19,7 @@ class CBlockIndex;
 class CKeyItem;
 class CReserveKey;
 class COutPoint;
-
+class CValidationState;
 class CAddress;
 class CInv;
 class CRequestTracker;
@@ -79,6 +79,8 @@ extern uint256 nBestChainTrust;
 extern uint256 nBestInvalidTrust;
 extern uint256 hashBestChain;
 extern CBlockIndex* pindexBest;
+extern bool fImporting;
+extern bool fReindex;
 extern unsigned int nTransactionsUpdated;
 extern uint64 nLastBlockTx;
 extern uint64 nLastBlockSize;
@@ -130,11 +132,12 @@ class CReserveKey;
 class CTxDB;
 class CTxIndex;
 class CScriptCheck;
+struct CDiskBlockPos;
 
 void RegisterWallet(CWallet* pwalletIn);
 void UnregisterWallet(CWallet* pwalletIn);
 void SyncWithWallets(const CTransaction& tx, const CBlock* pblock = NULL, bool fUpdate = false, bool fConnect = true);
-bool ProcessBlock(CNode* pfrom, CBlock* pblock);
+bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
 bool CheckDiskSpace(uint64 nAdditionalBytes=0);
 FILE* OpenBlockFile(unsigned int nFile, unsigned int nBlockPos, const char* pszMode="rb");
 FILE* AppendBlockFile(unsigned int& nFileRet);
@@ -144,7 +147,10 @@ void PrintBlockTree();
 CBlockIndex* FindBlockByHeight(int nHeight);
 bool ProcessMessages(CNode* pfrom);
 bool SendMessages(CNode* pto, bool fSendTrickle);
-bool LoadExternalBlockFile(FILE* fileIn);
+bool LoadExternalBlockFile(FILE* fileIn, CDiskBlockPos *dbp = NULL);
+
+/** Abort with a message */
+bool AbortNode(const std::string &msg);
 
 // Run an instance of the script checking thread
 void ThreadScriptCheck(void* parg);
@@ -185,6 +191,37 @@ unsigned char GetNfactor(int64 nTimestamp);
 
 
 bool GetWalletFile(CWallet* pwallet, std::string &strWalletFileOut);
+
+struct CDiskBlockPos
+{
+    int nFile;
+    unsigned int nPos;
+
+    IMPLEMENT_SERIALIZE(
+        READWRITE(VARINT(nFile));
+        READWRITE(VARINT(nPos));
+    )
+
+    CDiskBlockPos() {
+        SetNull();
+    }
+
+    CDiskBlockPos(int nFileIn, unsigned int nPosIn) {
+        nFile = nFileIn;
+        nPos = nPosIn;
+    }
+
+    friend bool operator==(const CDiskBlockPos &a, const CDiskBlockPos &b) {
+        return (a.nFile == b.nFile && a.nPos == b.nPos);
+    }
+
+    friend bool operator!=(const CDiskBlockPos &a, const CDiskBlockPos &b) {
+        return !(a == b);
+    }
+
+    void SetNull() { nFile = -1; nPos = 0; }
+    bool IsNull() const { return (nFile == -1); }
+};
 
 /** Position on disk for a particular transaction. */
 class CDiskTxPos
@@ -754,8 +791,9 @@ public:
                        bool fScriptChecks=true, unsigned int flags=STRICT_FLAGS,
                        std::vector<CScriptCheck> *pvChecks = NULL, bool fStrictPayToScriptHash=true);
     bool ClientConnectInputs();
-    bool CheckTransaction() const;
-    bool AcceptToMemoryPool(CTxDB& txdb, bool fCheckInputs=true, bool* pfMissingInputs=NULL);
+    bool CheckTransaction(CValidationState &state) const;
+    bool AcceptToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
+                            bool fLimitFree=true, bool* pfMissingInputs=NULL);
     bool GetCoinAge(CTxDB& txdb, uint64& nCoinAge) const;  // ppcoin: get transaction coin age
 
 protected:
@@ -835,7 +873,8 @@ public:
     int GetDepthInMainChain() const { CBlockIndex *pindexRet; return GetDepthInMainChain(pindexRet); }
     bool IsInMainChain() const { return GetDepthInMainChain() > 0; }
     int GetBlocksToMaturity() const;
-    bool AcceptToMemoryPool(CTxDB& txdb, bool fCheckInputs=true);
+    bool AcceptToMemoryPool(CTxDB& txdb, bool fCheckInputs=true,
+                            bool fLimitFree=true);
     bool AcceptToMemoryPool();
 };
 
@@ -971,6 +1010,101 @@ public:
     }
 };
 
+/** Data structure that represents a partial merkle tree.
+ *
+ * It respresents a subset of the txid's of a known block, in a way that
+ * allows recovery of the list of txid's and the merkle root, in an
+ * authenticated way.
+ *
+ * The encoding works as follows: we traverse the tree in depth-first order,
+ * storing a bit for each traversed node, signifying whether the node is the
+ * parent of at least one matched leaf txid (or a matched txid itself). In
+ * case we are at the leaf level, or this bit is 0, its merkle node hash is
+ * stored, and its children are not explorer further. Otherwise, no hash is
+ * stored, but we recurse into both (or the only) child branch. During
+ * decoding, the same depth-first traversal is performed, consuming bits and
+ * hashes as they written during encoding.
+ *
+ * The serialization is fixed and provides a hard guarantee about the
+ * encoded size:
+ *
+ *   SIZE <= 10 + ceil(32.25*N)
+ *
+ * Where N represents the number of leaf nodes of the partial tree. N itself
+ * is bounded by:
+ *
+ *   N <= total_transactions
+ *   N <= 1 + matched_transactions*tree_height
+ *
+ * The serialization format:
+ *  - uint32     total_transactions (4 bytes)
+ *  - varint     number of hashes   (1-3 bytes)
+ *  - uint256[]  hashes in depth-first order (<= 32*N bytes)
+ *  - varint     number of bytes of flag bits (1-3 bytes)
+ *  - byte[]     flag bits, packed per 8 in a byte, least significant bit first (<= 2*N-1 bits)
+ * The size constraints follow from this.
+ */
+class CPartialMerkleTree
+{
+protected:
+    // the total number of transactions in the block
+    unsigned int nTransactions;
+
+    // node-is-parent-of-matched-txid bits
+    std::vector<bool> vBits;
+
+    // txids and internal hashes
+    std::vector<uint256> vHash;
+
+    // flag set when encountering invalid data
+    bool fBad;
+
+    // helper function to efficiently calculate the number of nodes at given height in the merkle tree
+    unsigned int CalcTreeWidth(int height) {
+        return (nTransactions+(1 << height)-1) >> height;
+    }
+
+    // calculate the hash of a node in the merkle tree (at leaf level: the txid's themself)
+    uint256 CalcHash(int height, unsigned int pos, const std::vector<uint256> &vTxid);
+
+    // recursive function that traverses tree nodes, storing the data as bits and hashes
+    void TraverseAndBuild(int height, unsigned int pos, const std::vector<uint256> &vTxid, const std::vector<bool> &vMatch);
+
+    // recursive function that traverses tree nodes, consuming the bits and hashes produced by TraverseAndBuild.
+    // it returns the hash of the respective node.
+    uint256 TraverseAndExtract(int height, unsigned int pos, unsigned int &nBitsUsed, unsigned int &nHashUsed, std::vector<uint256> &vMatch);
+
+public:
+
+    // serialization implementation
+    IMPLEMENT_SERIALIZE(
+        READWRITE(nTransactions);
+        READWRITE(vHash);
+        std::vector<unsigned char> vBytes;
+        if (fRead) {
+            READWRITE(vBytes);
+            CPartialMerkleTree &us = *(const_cast<CPartialMerkleTree*>(this));
+            us.vBits.resize(vBytes.size() * 8);
+            for (unsigned int p = 0; p < us.vBits.size(); p++)
+                us.vBits[p] = (vBytes[p / 8] & (1 << (p % 8))) != 0;
+            us.fBad = false;
+        } else {
+            vBytes.resize((vBits.size()+7)/8);
+            for (unsigned int p = 0; p < vBits.size(); p++)
+                vBytes[p / 8] |= vBits[p] << (p % 8);
+            READWRITE(vBytes);
+        }
+    )
+
+    // Construct a partial merkle tree from a list of transaction id's, and a mask that selects a subset of them
+    CPartialMerkleTree(const std::vector<uint256> &vTxid, const std::vector<bool> &vMatch);
+
+    CPartialMerkleTree();
+
+    // extract the matching txid's represented by this partial merkle tree.
+    // returns the merkle root, or 0 in case of failure
+    uint256 ExtractMatches(std::vector<uint256> &vMatch);
+};
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -1103,6 +1237,18 @@ public:
         return maxTransactionTime;
     }
 
+    CBlockHeader GetBlockHeader() const
+    {
+        CBlockHeader block;
+        block.nVersion       = nVersion;
+        block.hashPrevBlock  = hashPrevBlock;
+        block.hashMerkleRoot = hashMerkleRoot;
+        block.nTime          = nTime;
+        block.nBits          = nBits;
+        block.nNonce         = nNonce;
+        return block;
+    }
+
     uint256 BuildMerkleTree() const
     {
         vMerkleTree.clear();
@@ -1231,18 +1377,18 @@ public:
 
 
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
-    bool ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
+    bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);
-    bool SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew);
-    bool AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos);
-    bool CheckBlock(bool fCheckPOW=true, bool fCheckMerkleRoot=true, bool fCheckSig=true) const;
+    bool SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pindexNew);
+    bool AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos);
+    bool CheckBlock(CValidationState &state, bool fCheckPOW=true, bool fCheckMerkleRoot=true, bool fCheckSig=true) const;
     bool AcceptBlock();
     bool GetCoinAge(uint64& nCoinAge) const; // ppcoin: calculate total coin age spent in block
     bool SignBlock(const CKeyStore& keystore);
     bool CheckBlockSignature() const;
 
 private:
-    bool SetBestChainInner(CTxDB& txdb, CBlockIndex *pindexNew);
+    bool SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex *pindexNew);
 };
 
 
@@ -1548,12 +1694,57 @@ public:
     }
 };
 
-
-
-
-
-
-
+/** Capture information about block/transaction validation */
+class CValidationState {
+private:
+    enum mode_state {
+        MODE_VALID,   // everything ok
+        MODE_INVALID, // network rule violation (DoS value may be set)
+        MODE_ERROR,   // run-time error
+    } mode;
+    int nDoS;
+    bool corruptionPossible;
+public:
+    CValidationState() : mode(MODE_VALID), nDoS(0), corruptionPossible(false) {}
+    bool DoS(int level, bool ret = false, bool corruptionIn = false) {
+        if (mode == MODE_ERROR)
+            return ret;
+        nDoS += level;
+        mode = MODE_INVALID;
+        corruptionPossible = corruptionIn;
+        return ret;
+    }
+    bool Invalid(bool ret = false) {
+        return DoS(0, ret);
+    }
+    bool Error() {
+        mode = MODE_ERROR;
+        return false;
+    }
+    bool Abort(const std::string &msg) {
+        AbortNode(msg);
+        return Error();
+    }
+    bool IsValid() {
+        return mode == MODE_VALID;
+    }
+    bool IsInvalid() {
+        return mode == MODE_INVALID;
+    }
+    bool IsError() {
+        return mode == MODE_ERROR;
+    }
+    bool IsInvalid(int &nDoSOut) {
+        if (IsInvalid()) {
+            nDoSOut = nDoS;
+            return true;
+        }
+        return false;
+    }
+    bool CorruptionPossible() {
+        return corruptionPossible;
+    }
+};
 
 /** Describes a place in the block chain to another node such that if the
  * other node doesn't have the same branch, it can find a recent common trunk.
@@ -1697,8 +1888,8 @@ public:
     std::map<COutPoint, CInPoint> mapNextTx;
 
     bool removeConflicts(const CTransaction &tx);
-    bool accept(CTxDB& txdb, CTransaction &tx,
-                bool fCheckInputs, bool* pfMissingInputs);
+    bool accept(CValidationState &state, CTxDB& txdb, CTransaction &tx,
+                bool fCheckInputs, bool fLimitFree, bool* pfMissingInputs);
     bool addUnchecked(const uint256& hash, CTransaction &tx);
     bool remove(const CTransaction &tx, bool fRecursive = false);
     void clear();
@@ -1722,5 +1913,32 @@ public:
 };
 
 extern CTxMemPool mempool;
+
+/** Used to relay blocks as header + vector<merkle branch>
+ * to filtered nodes.
+ */
+class CMerkleBlock
+{
+public:
+    // Public only for unit testing
+    CBlockHeader header;
+    CPartialMerkleTree txn;
+
+public:
+    // Public only for unit testing and relay testing
+    // (not relayed)
+    std::vector<std::pair<unsigned int, uint256> > vMatchedTxn;
+
+    // Create from a CBlock, filtering transactions according to filter
+    // Note that this will call IsRelevantAndUpdate on the filter for each transaction,
+    // thus the filter will likely be modified.
+    CMerkleBlock(const CBlock& block, CBloomFilter& filter);
+
+    IMPLEMENT_SERIALIZE
+    (
+        READWRITE(header);
+        READWRITE(txn);
+    )
+};
 
 #endif
