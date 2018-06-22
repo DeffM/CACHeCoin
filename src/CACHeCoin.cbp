@@ -55,6 +55,7 @@
                 <Unit filename="hash.cpp" />
                 <Unit filename="hash.h" />
                 <Unit filename="checkqueue.h" />
+                <Unit filename="threadsafety.h" />
 		<Unit filename="json/json_spirit.h" />
 		<Unit filename="json/json_spirit_error_position.h" />
 		<Unit filename="json/json_spirit_reader.cpp" />

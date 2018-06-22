@@ -69,6 +69,7 @@ uint64 nLocalHostNonce = 0;
 boost::array<int, THREAD_MAX> vnThreadsRunning;
 static std::vector<SOCKET> vhListenSocket;
 CAddrMan addrman;
+int nMaxConnections = 125;
 
 vector<CNode*> vNodes;
 CCriticalSection cs_vNodes;
@@ -223,8 +224,7 @@ bool RecvLine(SOCKET hSocket, string& strLine)
         }
         else if (nBytes <= 0)
         {
-            if (fShutdown)
-                return false;
+            boost::this_thread::interruption_point();
             if (nBytes < 0)
             {
                 int nErr = WSAGetLastError();
@@ -606,6 +606,15 @@ void CNode::CloseSocketDisconnect()
         hSocket = INVALID_SOCKET;
         vRecv.clear();
     }
+
+    // in case this fails, we'll empty the recv buffer when the CNode is deleted
+    TRY_LOCK(cs_vRecvMsg, lockRecv);
+    if (lockRecv)
+        vRecvMsg.clear();
+
+    // if this was the sync node, we'll need a new one
+    if (this == pnodeSync)
+        pnodeSync = NULL;
 }
 
 void CNode::Cleanup()
@@ -693,9 +702,126 @@ void CNode::copyStats(CNodeStats &stats)
     X(fInbound);
     X(nReleaseTime);
     X(nStartingHeight);
+    X(nSendBytes);
+    X(nRecvBytes);
     X(nMisbehavior);
 }
 #undef X
+
+// requires LOCK(cs_vRecvMsg)
+bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes)
+{
+    while (nBytes > 0) {
+
+        // get current incomplete message, or create a new one
+        if (vRecvMsg.empty() ||
+            vRecvMsg.back().complete())
+            vRecvMsg.push_back(CNetMessage(SER_NETWORK, nRecvVersion));
+
+        CNetMessage& msg = vRecvMsg.back();
+
+        // absorb network data
+        int handled;
+        if (!msg.in_data)
+            handled = msg.readHeader(pch, nBytes);
+        else
+            handled = msg.readData(pch, nBytes);
+
+        if (handled < 0)
+                return false;
+
+        pch += handled;
+        nBytes -= handled;
+    }
+
+    return true;
+}
+
+int CNetMessage::readHeader(const char *pch, unsigned int nBytes)
+{
+    // copy data to temporary parsing buffer
+    unsigned int nRemaining = 24 - nHdrPos;
+    unsigned int nCopy = std::min(nRemaining, nBytes);
+
+    memcpy(&hdrbuf[nHdrPos], pch, nCopy);
+    nHdrPos += nCopy;
+
+    // if header incomplete, exit
+    if (nHdrPos < 24)
+        return nCopy;
+
+    // deserialize to CMessageHeader
+    try {
+        hdrbuf >> hdr;
+    }
+    catch (std::exception &e) {
+        return -1;
+    }
+
+    // reject messages larger than MAX_SIZE
+    if (hdr.nMessageSize > MAX_SIZE)
+            return -1;
+
+    // switch state to reading message data
+    in_data = true;
+    vRecv.resize(hdr.nMessageSize);
+
+    return nCopy;
+}
+
+int CNetMessage::readData(const char *pch, unsigned int nBytes)
+{
+    unsigned int nRemaining = hdr.nMessageSize - nDataPos;
+    unsigned int nCopy = std::min(nRemaining, nBytes);
+
+    memcpy(&vRecv[nDataPos], pch, nCopy);
+    nDataPos += nCopy;
+
+    return nCopy;
+}
+
+// requires LOCK(cs_vSend)
+void SocketSendData(CNode *pnode)
+{
+    std::deque<CSerializeData>::iterator it = pnode->vSendMsg.begin();
+
+    while (it != pnode->vSendMsg.end()) {
+        const CSerializeData &data = *it;
+        assert(data.size() > pnode->nSendOffset);
+        int nBytes = send(pnode->hSocket, &data[pnode->nSendOffset], data.size() - pnode->nSendOffset, MSG_NOSIGNAL | MSG_DONTWAIT);
+        if (nBytes > 0) {
+            pnode->nLastSend = GetTime();
+            pnode->nSendBytes += nBytes;
+            pnode->nSendOffset += nBytes;
+            if (pnode->nSendOffset == data.size()) {
+                pnode->nSendOffset = 0;
+                pnode->nSendSize -= data.size();
+                it++;
+            } else {
+                // could not send full message; stop sending more
+                break;
+            }
+        } else {
+            if (nBytes < 0) {
+                // error
+                int nErr = WSAGetLastError();
+                if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS)
+                {
+                    printf("socket send error %d\n", nErr);
+                    pnode->CloseSocketDisconnect();
+                }
+            }
+            // couldn't send anything at all
+            break;
+        }
+    }
+
+    if (it == pnode->vSendMsg.end()) {
+        assert(pnode->nSendOffset == 0);
+        assert(pnode->nSendSize == 0);
+    }
+    pnode->vSendMsg.erase(pnode->vSendMsg.begin(), it);
+}
 
 static int64 NodeSyncScore(const CNode *pnode) {
     return pnode->nLastRecv;
@@ -732,7 +858,9 @@ void static StartSync(const vector<CNode*> &vNodes) {
     }
 }
 
-void ThreadSocketHandler(void* parg)
+static list<CNode*> vNodesDisconnected;
+
+void ThreadSocketHandler2(void* parg)
 {
     // Make this thread recognisable as the networking thread
     RenameThread("bitcoin-net");
@@ -753,9 +881,13 @@ void ThreadSocketHandler(void* parg)
     printf("ThreadSocketHandler exited\n");
 }
 
-void ThreadSocketHandler2(void* parg)
+
+
+
+void ThreadSocketHandler(void* parg)
 {
     printf("ThreadSocketHandler started\n");
+
     list<CNode*> vNodesDisconnected;
     unsigned int nPrevNodeCount = 0;
 
@@ -771,7 +903,7 @@ void ThreadSocketHandler2(void* parg)
             BOOST_FOREACH(CNode* pnode, vNodesCopy)
             {
                 if (pnode->fDisconnect ||
-                    (pnode->GetRefCount() <= 0 && pnode->vRecv.empty() && pnode->vSend.empty()))
+                    (pnode->GetRefCount() <= 0 && pnode->vRecvMsg.empty() && pnode->nSendSize == 0 && pnode->vSend.empty()))
                 {
                     // remove from vNodes
                     vNodes.erase(remove(vNodes.begin(), vNodes.end(), pnode), vNodes.end());
@@ -803,16 +935,12 @@ void ThreadSocketHandler2(void* parg)
                         TRY_LOCK(pnode->cs_vSend, lockSend);
                         if (lockSend)
                         {
-                            TRY_LOCK(pnode->cs_vRecv, lockRecv);
+                            TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
                             if (lockRecv)
                             {
-                                TRY_LOCK(pnode->cs_mapRequests, lockReq);
-                                if (lockReq)
-                                {
-                                    TRY_LOCK(pnode->cs_inventory, lockInv);
-                                    if (lockInv)
-                                        fDelete = true;
-                                }
+                                TRY_LOCK(pnode->cs_inventory, lockInv);
+                                if (lockInv)
+                                    fDelete = true;
                             }
                         }
                     }
@@ -858,24 +986,46 @@ void ThreadSocketHandler2(void* parg)
             {
                 if (pnode->hSocket == INVALID_SOCKET)
                     continue;
-                FD_SET(pnode->hSocket, &fdsetRecv);
                 FD_SET(pnode->hSocket, &fdsetError);
                 hSocketMax = max(hSocketMax, pnode->hSocket);
                 have_fds = true;
+
+                // Implement the following logic:
+                // * If there is data to send, select() for sending data. As this only
+                //   happens when optimistic write failed, we choose to first drain the
+                //   write buffer in this case before receiving more. This avoids
+                //   needlessly queueing received data, if the remote peer is not themselves
+                //   receiving data. This means properly utilizing TCP flow control signalling.
+                // * Otherwise, if there is no (complete) message in the receive buffer,
+                //   or there is space left in the buffer, select() for receiving data.
+                // * (if neither of the above applies, there is certainly one message
+                //   in the receiver buffer ready to be processed).
+                // Together, that means that at least one of the following is always possible,
+                // so we don't deadlock:
+                // * We send some data.
+                // * We wait for data to be received (and disconnect after timeout).
+                // * We process a message in the buffer (message handler thread).
                 {
                     TRY_LOCK(pnode->cs_vSend, lockSend);
-                    if (lockSend && !pnode->vSend.empty())
+                    if (lockSend && !pnode->vSendMsg.empty()) {
                         FD_SET(pnode->hSocket, &fdsetSend);
+                        continue;
+                    }
+                }
+                {
+                    TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
+                    if (lockRecv && (
+                        pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
+                        pnode->GetTotalRecvSize() <= ReceiveFloodSize()))
+                        FD_SET(pnode->hSocket, &fdsetRecv);
                 }
             }
         }
 
-        vnThreadsRunning[THREAD_SOCKETHANDLER]--;
         int nSelect = select(have_fds ? hSocketMax + 1 : 0,
                              &fdsetRecv, &fdsetSend, &fdsetError, &timeout);
-        vnThreadsRunning[THREAD_SOCKETHANDLER]++;
-        if (fShutdown)
-            return;
+        boost::this_thread::interruption_point();
+
         if (nSelect == SOCKET_ERROR)
         {
             if (have_fds)
@@ -924,8 +1074,7 @@ void ThreadSocketHandler2(void* parg)
                 if (nErr != WSAEWOULDBLOCK)
                     printf("socket error accept failed: %d\n", nErr);
             }
-// WM            else if (nInbound >= GetArg("-maxconnections", DEFAULT_MAX_CONNECTIONS ) - /* WM - MAX_OUTBOUND_CONNECTIONS */ GetMaxOutboundConnections() )
-            else if ( nInbound >= GetMaxConnections() - GetMaxOutboundConnections() )
+            else if (nInbound >= nMaxConnections - MAX_OUTBOUND_CONNECTIONS)
             {
                 {
                     LOCK(cs_setservAddNodeAddresses);
@@ -940,9 +1089,7 @@ void ThreadSocketHandler2(void* parg)
             }
             else
             {
-                vector<CNode*> vNodesCopy;
                 printf("accepted connection %s\n", addr.ToString().c_str());
-                StartSync(vNodesCopy);
                 CNode* pnode = new CNode(hSocket, addr, "", true);
                 pnode->AddRef();
                 {
@@ -965,8 +1112,7 @@ void ThreadSocketHandler2(void* parg)
         }
         BOOST_FOREACH(CNode* pnode, vNodesCopy)
         {
-            if (fShutdown)
-                return;
+            boost::this_thread::interruption_point();
 
             //
             // Receive
@@ -975,26 +1121,19 @@ void ThreadSocketHandler2(void* parg)
                 continue;
             if (FD_ISSET(pnode->hSocket, &fdsetRecv) || FD_ISSET(pnode->hSocket, &fdsetError))
             {
-                TRY_LOCK(pnode->cs_vRecv, lockRecv);
+                TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
                 if (lockRecv)
                 {
-                    CDataStream& vRecv = pnode->vRecv;
-                    unsigned int nPos = vRecv.size();
-
-                    if (nPos > ReceiveBufferSize()) {
-                        if (!pnode->fDisconnect)
-                            printf("socket recv flood control disconnect (%"PRIszu" bytes)\n", vRecv.size());
-                        pnode->CloseSocketDisconnect();
-                    }
-                    else {
+                    {
                         // typical socket buffer is 8K-64K
                         char pchBuf[0x10000];
                         int nBytes = recv(pnode->hSocket, pchBuf, sizeof(pchBuf), MSG_DONTWAIT);
                         if (nBytes > 0)
                         {
-                            vRecv.resize(nPos + nBytes);
-                            memcpy(&vRecv[nPos], pchBuf, nBytes);
+                            if (!pnode->ReceiveMsgBytes(pchBuf, nBytes))
+                                pnode->CloseSocketDisconnect();
                             pnode->nLastRecv = GetTime();
+                            pnode->nRecvBytes += nBytes;
                         }
                         else if (nBytes == 0)
                         {
@@ -1027,34 +1166,14 @@ void ThreadSocketHandler2(void* parg)
             {
                 TRY_LOCK(pnode->cs_vSend, lockSend);
                 if (lockSend)
-                {
-                    CDataStream& vSend = pnode->vSend;
-                    if (!vSend.empty())
-                    {
-                        int nBytes = send(pnode->hSocket, &vSend[0], vSend.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
-                        if (nBytes > 0)
-                        {
-                            vSend.erase(vSend.begin(), vSend.begin() + nBytes);
-                            pnode->nLastSend = GetTime();
-                        }
-                        else if (nBytes < 0)
-                        {
-                            // error
-                            int nErr = WSAGetLastError();
-                            if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS)
-                            {
-                                printf("socket send error %d\n", nErr);
-                                pnode->CloseSocketDisconnect();
-                            }
-                        }
-                    }
-                }
+                    SocketSendData(pnode);
             }
 
+#ifndef TESTING
             //
             // Inactivity checking
             //
-            if (pnode->vSend.empty())
+            if (pnode->vSendMsg.empty())
                 pnode->nLastSendEmpty = GetTime();
             if (GetTime() - pnode->nTimeConnected > 60)
             {
@@ -1074,6 +1193,7 @@ void ThreadSocketHandler2(void* parg)
                     pnode->fDisconnect = true;
                 }
             }
+#endif
         }
         {
             LOCK(cs_vNodes);
@@ -1675,7 +1795,7 @@ bool OpenNetworkConnection(const CAddress& addrConnect, CSemaphoreGrant *grantOu
 
 
 
-void ThreadMessageHandler(void* parg)
+void ThreadMessageHandler2(void* parg)
 {
     // Make this thread recognisable as the message handling thread
     RenameThread("bitcoin-msghand");
@@ -1696,34 +1816,60 @@ void ThreadMessageHandler(void* parg)
     printf("ThreadMessageHandler exited\n");
 }
 
-void ThreadMessageHandler2(void* parg)
+void ThreadMessageHandler(void* parg)
 {
     printf("ThreadMessageHandler started\n");
+
     SetThreadPriority(THREAD_PRIORITY_BELOW_NORMAL);
-    while (!fShutdown)
+
+    while (true)
     {
+        bool fHaveSyncNode = false;
+
         vector<CNode*> vNodesCopy;
         {
             LOCK(cs_vNodes);
             vNodesCopy = vNodes;
-            BOOST_FOREACH(CNode* pnode, vNodesCopy)
+            BOOST_FOREACH(CNode* pnode, vNodesCopy) {
                 pnode->AddRef();
+                if (pnode == pnodeSync)
+                    fHaveSyncNode = true;
+            }
         }
+
+        if (!fHaveSyncNode)
+            StartSync(vNodesCopy);
 
         // Poll the connected nodes for messages
         CNode* pnodeTrickle = NULL;
         if (!vNodesCopy.empty())
             pnodeTrickle = vNodesCopy[GetRand(vNodesCopy.size())];
+
+        bool fSleep = true;
+
         BOOST_FOREACH(CNode* pnode, vNodesCopy)
         {
+            if (pnode->fDisconnect)
+                continue;
+
             // Receive messages
             {
-                TRY_LOCK(pnode->cs_vRecv, lockRecv);
+                TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
                 if (lockRecv)
-                    ProcessMessages(pnode);
+                {
+                    if (!ProcessMessages(pnode))
+                        pnode->CloseSocketDisconnect();
+
+                    if (pnode->nSendSize < SendBufferSize())
+                    {
+                        if (!pnode->vRecvGetData.empty() || (!pnode->vRecvMsg.empty() && pnode->vRecvMsg[0].complete()))
+                        {
+                            fSleep = false;
+                        }
+                    }
+                }
             }
-            if (fShutdown)
-                return;
+            boost::this_thread::interruption_point();
 
             // Send messages
             {
@@ -1731,8 +1877,7 @@ void ThreadMessageHandler2(void* parg)
                 if (lockSend)
                     SendMessages(pnode, pnode == pnodeTrickle);
             }
-            if (fShutdown)
-                return;
+            boost::this_thread::interruption_point();
         }
 
         {
@@ -1741,16 +1886,8 @@ void ThreadMessageHandler2(void* parg)
                 pnode->Release();
         }
 
-        // Wait and allow messages to bunch up.
-        // Reduce vnThreadsRunning so StopNode has permission to exit while
-        // we're sleeping, but we must always check fShutdown after doing this.
-        vnThreadsRunning[THREAD_MESSAGEHANDLER]--;
-        Sleep(100);
-        if (fRequestShutdown)
-            StartShutdown();
-        vnThreadsRunning[THREAD_MESSAGEHANDLER]++;
-        if (fShutdown)
-            return;
+        if (fSleep)
+            Sleep(100);
     }
 }
 

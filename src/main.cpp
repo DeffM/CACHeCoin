@@ -2736,8 +2736,7 @@ bool CBlock::AcceptBlock()
     {
        nNewGetTime = nNewGetTime + nNewTimeBlock;
        if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) &&
-           GetBlockTime() < nUnixCachChainTime + (nPosTargetSpacing / 100 * nSpamHashControl) &&
-           GetBlockTime() > nUnixCachChainTime - (nPosTargetSpacing / 100 * nSpamHashControl) &&
+           GetBlockTime() == nUnixCachChainTime &&
            pindexBest->nHeight >= GetNumBlocksOfPeers())
        {
            return DoS(5, error("AcceptBlock() : incorrect %s", "proof-of-stake"));
@@ -3673,8 +3672,7 @@ bool static AlreadyHave(CTxDB& txdb, const CInv& inv)
             LOCK(mempool.cs);
             txInMap = (mempool.exists(inv.hash));
             }
-        return txInMap ||
-               mapOrphanTransactions.count(inv.hash) ||
+        return txInMap || mapOrphanTransactions.count(inv.hash) ||
                txdb.ContainsTx(inv.hash);
         }
 
@@ -3692,7 +3690,8 @@ void static ProcessGetData(CNode* pfrom)
 
     vector<CInv> vNotFound;
 
-    while (it != pfrom->vRecvGetData.end()) {
+    while (it != pfrom->vRecvGetData.end())
+    {
         // Don't bother if send buffer is too full to respond anyway
         if (pfrom->nSendSize >= SendBufferSize())
             break;
@@ -3924,18 +3923,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 addrman.Add(addrFrom, addrFrom);
                 addrman.Good(addrFrom);
             }
-        }
-
-        // Ask the first connected node for block updates
-        static int nAskedForBlocks = 0;
-        if (!pfrom->fClient && !pfrom->fOneShot &&
-            (pfrom->nStartingHeight > (nBestHeight - 144)) &&
-            (pfrom->nVersion < NOBLKS_VERSION_START ||
-             pfrom->nVersion >= NOBLKS_VERSION_END) &&
-             (nAskedForBlocks < 1 || vNodes.size() <= 1))
-        {
-            nAskedForBlocks++;
-            pfrom->PushGetBlocks(pindexBest, uint256(0));
         }
 
         // Relay alerts
@@ -4228,7 +4215,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     CTransaction& orphanTx = mapOrphanTransactions[orphanTxHash];
                     bool fMissingInputs2 = false;
                     CValidationState stateDummy;
-                    if (orphanTx.AcceptToMemoryPool(stateDummy, txdb, true, true, &fMissingInputs2))
+
+                    if (tx.AcceptToMemoryPool(stateDummy, txdb, true, true, &fMissingInputs2))
                     {
                         printf("   accepted orphan tx %s\n", orphanTxHash.ToString().substr(0,10).c_str());
                         SyncWithWallets(tx, NULL, true);
@@ -4459,9 +4447,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
 bool ProcessMessages(CNode* pfrom)
 {
-    CDataStream& vRecv = pfrom->vRecv;
-    if (vRecv.empty())
-        return true;
+    //CDataStream& vRecv = pfrom->vRecv;
+    //if (vRecv.empty())
+    //    return true;
 
     static int64 nTimeLastPrintMessageStart = 0;
     if (fDebug && GetBoolArg("-printmessagestart") && nTimeLastPrintMessageStart + 30 < GetAdjustedTime())
@@ -4490,84 +4478,68 @@ bool ProcessMessages(CNode* pfrom)
     //  (x) data
     //
 
-    loop
+    std::deque<CNetMessage>::iterator it = pfrom->vRecvMsg.begin();
+    while (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
     {
         // Don't bother if send buffer is too full to respond anyway
         if (pfrom->vSend.size() >= SendBufferSize())
-            break;
-
-        // Scan for message start
-        CDataStream::iterator pstart = search(vRecv.begin(), vRecv.end(), BEGIN(pchMessageStart), END(pchMessageStart));
-        int nHeaderSize = vRecv.GetSerializeSize(CMessageHeader());
-        if (vRecv.end() - pstart < nHeaderSize)
         {
-            if ((double)vRecv.size() + 24 > nHeaderSize)
-            {
-                printf("\n\nBAD PROCESSMESSAGE - DISCONECTED PEERS\n\n");
-                {
-                vRecv.erase(vRecv.begin(), vRecv.end() - nHeaderSize);
-                pfrom->fDisconnect = false;
-                }
-            }
+            printf("\n\nSENDSIZE > SENDBUFFERSIZE - BREAK\n\n");
             break;
         }
-        if (pstart - vRecv.begin() > 0)
-            printf("\n\nPROCESSMESSAGE SKIPPED %"PRIpdd" BYTES\n\n", pstart - vRecv.begin());
-            {
-            vRecv.erase(vRecv.begin(), pstart);
-            }
+
+        CNetMessage& msg = *it;
+
+        if (!msg.complete())
+        {
+            printf("\n\nBAD MSGCOMPLETE - BREAK\n\n");
+            break;
+        }
+
+        it++;
+
+        // Scan for message start
+        if (memcmp(msg.hdr.pchMessageStart, pchMessageStart, sizeof(pchMessageStart)) != 0)
+        {
+            printf("\n\nPROCESSMESSAGE: INVALID MESSAGESTART - BREAK\n\n");
+            fOk = false;
+            break;
+        }
 
         // Read header
-        vector<char> vHeaderSave(vRecv.begin(), vRecv.begin() + nHeaderSize);
-        CMessageHeader hdr;
-        vRecv >> hdr;
+        CMessageHeader& hdr = msg.hdr;
         if (!hdr.IsValid())
         {
-            printf("\n\nPROCESSMESSAGE: ERRORS IN HEADER %s\n\n\n", hdr.GetCommand().c_str());
+            printf("\n\nPROCESSMESSAGE: ERRORS IN HEADER - CONTINUE %s\n\n\n", hdr.GetCommand().c_str());
             continue;
         }
         string strCommand = hdr.GetCommand();
 
         // Message size
         unsigned int nMessageSize = hdr.nMessageSize;
-        std::string wait("addr"), addr(strCommand.c_str());
-        if (wait == addr)
-        {
-        if (nMessageSize > ADR_MAX_SIZE)
-        {
-            printf("ProcessMessages(%s, %u bytes) : PEERS.DAT EXCEEDS THE ALLOWABLE SIZE\n", strCommand.c_str(), nMessageSize);
-            continue;
-        }
-        }
-
-        if (nMessageSize > MAX_SIZE)
-        {
-            printf("ProcessMessages(%s, %u bytes) : nMessageSize > MAX_SIZE\n", strCommand.c_str(), nMessageSize);
-            pfrom->fDisconnect = true;
-            continue;
-        }
-
-        if (nMessageSize > vRecv.size())
-        {
-            // Rewind and wait for rest of message
-            vRecv.insert(vRecv.begin(), vHeaderSave.begin(), vHeaderSave.end());
-            break;
-        }
 
         // Checksum
+        CDataStream& vRecv = msg.vRecv;
         uint256 hash = Hash(vRecv.begin(), vRecv.begin() + nMessageSize);
         unsigned int nChecksum = 0;
         memcpy(&nChecksum, &hash, sizeof(nChecksum));
         if (nChecksum != hdr.nChecksum)
         {
-            printf("ProcessMessages(%s, %u bytes) : CHECKSUM ERROR nChecksum=%08x hdr.nChecksum=%08x\n",
-               strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
+            printf("ProcessMessages(%s, %u bytes) : CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
+            strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
             continue;
         }
 
-        // Copy message to its own buffer
-        CDataStream vMsg(vRecv.begin(), vRecv.begin() + nMessageSize, vRecv.nType, vRecv.nVersion);
-        vRecv.ignore(nMessageSize);
+        // Message size - addr
+        std::string wait("addr"), addr(strCommand.c_str());
+        if (wait == addr)
+        {
+        if (nMessageSize > ADR_MAX_SIZE)
+        {
+            printf("ProcessMessages(%s, %u bytes) : PEERS.DAT EXCEEDS THE ALLOWABLE SIZE - CONTINUE\n", strCommand.c_str(), nMessageSize);
+            continue;
+        }
+        }
 
         // Process message
         bool fRet = false;
@@ -4575,10 +4547,9 @@ bool ProcessMessages(CNode* pfrom)
         {
             {
                 LOCK(cs_main);
-                fRet = ProcessMessage(pfrom, strCommand, vMsg);
+                fRet = ProcessMessage(pfrom, strCommand, vRecv);
             }
-            if (fShutdown)
-                return true;
+            boost::this_thread::interruption_point();
         }
         catch (std::ios_base::failure& e)
         {
@@ -4597,6 +4568,9 @@ bool ProcessMessages(CNode* pfrom)
                 PrintExceptionContinue(&e, "ProcessMessages()");
             }
         }
+        catch (boost::thread_interrupted) {
+            throw;
+        }
         catch (std::exception& e) {
             PrintExceptionContinue(&e, "ProcessMessages()");
         } catch (...) {
@@ -4605,12 +4579,16 @@ bool ProcessMessages(CNode* pfrom)
 
         if (!fRet)
             printf("ProcessMessage(%s, %u bytes) FAILED\n", strCommand.c_str(), nMessageSize);
+
+        break;
     }
 
-    vRecv.Compact();
-    return true;
-}
+    // In case the connection got shut down, its receive buffer was wiped
+    if (!pfrom->fDisconnect)
+        pfrom->vRecvMsg.erase(pfrom->vRecvMsg.begin(), it);
 
+    return fOk;
+}
 
 bool SendMessages(CNode* pto, bool fSendTrickle)
 {
@@ -4631,13 +4609,18 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         }
 
         // Start block sync
-        if (pto->fStartSync) {
+        if (pto->fStartSync && !fImporting && !fReindex) {
             pto->fStartSync = false;
             pto->PushGetBlocks(pindexBest, uint256(0));
         }
 
         // Resend wallet transactions that haven't gotten in a block yet
-        ResendWalletTransactions();
+        // Except during reindex, importing and IBD, when old wallet
+        // transactions become unconfirmed and spams other nodes.
+        if (!fReindex && !fImporting && !IsInitialBlockDownload())
+        {
+            ResendWalletTransactions();
+        }
 
         // Address refresh broadcast
         static int64 nLastRebroadcast;

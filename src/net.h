@@ -30,6 +30,7 @@ extern int64 nBestHeightTime;
 
 inline unsigned int ReceiveBufferSize() { return 1000*GetArg("-maxreceivebuffer", 5*1000); }
 inline unsigned int SendBufferSize() { return 1000*GetArg("-maxsendbuffer", 1*1000); }
+inline unsigned int ReceiveFloodSize() { return 1000*GetArg("-maxreceivebuffer", 5*1000); }
 
 void AddOneShot(std::string strDest);
 bool RecvLine(SOCKET hSocket, std::string& strLine);
@@ -43,6 +44,8 @@ unsigned short GetListenPort();
 bool BindListenPort(const CService &bindAddr, std::string& strError=REF(std::string()));
 void StartNode(void* parg);
 bool StopNode();
+void SocketSendData(CNode *pnode);
+extern int nMaxConnections;
 
 enum
 {
@@ -141,11 +144,44 @@ public:
     int64 nReleaseTime;
     int nStartingHeight;
     int nMisbehavior;
+    uint64 nSendBytes;
+    uint64 nRecvBytes;
 };
 
+class CNetMessage {
+public:
+    bool in_data;                   // parsing header (false) or data (true)
 
+    CDataStream hdrbuf;             // partially received header
+    CMessageHeader hdr;             // complete header
+    unsigned int nHdrPos;
 
+    CDataStream vRecv;              // received message data
+    unsigned int nDataPos;
 
+    CNetMessage(int nTypeIn, int nVersionIn) : hdrbuf(nTypeIn, nVersionIn), vRecv(nTypeIn, nVersionIn) {
+        hdrbuf.resize(24);
+        in_data = false;
+        nHdrPos = 0;
+        nDataPos = 0;
+    }
+
+    bool complete() const
+    {
+        if (!in_data)
+            return false;
+        return (hdr.nMessageSize == nDataPos);
+    }
+
+    void SetVersion(int nVersionIn)
+    {
+        hdrbuf.SetVersion(nVersionIn);
+        vRecv.SetVersion(nVersionIn);
+    }
+
+    int readHeader(const char *pch, unsigned int nBytes);
+    int readData(const char *pch, unsigned int nBytes);
+};
 
 /** Information about a peer */
 class CNode
@@ -153,20 +189,27 @@ class CNode
 public:
     // socket
     uint64 nServices;
-    size_t nSendSize;
+    size_t nSendSize; // total size of all vSendMsg entries
+    size_t nSendOffset; // offset inside the first vSendMsg already sent
     SOCKET hSocket;
     CDataStream vSend;
     CDataStream vRecv;
     CCriticalSection cs_vSend;
     CCriticalSection cs_vRecv;
+    CCriticalSection cs_vRecvMsg;
+    std::deque<CSerializeData> vSendMsg;
+    uint64 nSendBytes;
+    uint64 nRecvBytes;
     int64 nLastSend;
     int64 nLastRecv;
     int64 nLastSendEmpty;
     int64 nTimeConnected;
     int nHeaderStart;
+    int nRecvVersion;
     unsigned int nMessageStart;
     CAddress addr;
     std::deque<CInv> vRecvGetData;
+    std::deque<CNetMessage> vRecvMsg;
     std::string addrName;
     CService addrLocal;
     int nVersion;
@@ -219,6 +262,9 @@ public:
         hSocket = hSocketIn;
         nLastSend = 0;
         nLastRecv = 0;
+        nSendBytes = 0;
+        nRecvBytes = 0;
+        nRecvVersion = MIN_PROTO_VERSION;
         nLastSendEmpty = GetTime();
         nTimeConnected = GetTime();
         nHeaderStart = -1;
@@ -234,6 +280,8 @@ public:
         fSuccessfullyConnected = false;
         fDisconnect = false;
         nRefCount = 0;
+        nSendSize = 0;
+        nSendOffset = 0;
         nReleaseTime = 0;
         hashContinue = 0;
         pindexLastGetBlocksBegin = 0;
@@ -269,6 +317,26 @@ public:
     int GetRefCount()
     {
         return std::max(nRefCount, 0) + (GetTime() < nReleaseTime ? 1 : 0);
+    }
+
+    // requires LOCK(cs_vRecvMsg)
+    unsigned int GetTotalRecvSize()
+    {
+        unsigned int total = 0;
+        BOOST_FOREACH(const CNetMessage &msg, vRecvMsg)
+            total += msg.vRecv.size() + 24;
+        return total;
+    }
+
+    // requires LOCK(cs_vRecvMsg)
+    bool ReceiveMsgBytes(const char *pch, unsigned int nBytes);
+
+    // requires LOCK(cs_vRecvMsg)
+    void SetRecvVersion(int nVersionIn)
+    {
+        nRecvVersion = nVersionIn;
+        BOOST_FOREACH(CNetMessage &msg, vRecvMsg)
+            msg.SetVersion(nVersionIn);
     }
 
     CNode* AddRef(int64 nTimeout=0)
@@ -341,32 +409,29 @@ public:
 
 
 
-    void BeginMessage(const char* pszCommand)
+    // TODO: Document the postcondition of this function.  Is cs_vSend locked?
+    void BeginMessage(const char* pszCommand) EXCLUSIVE_LOCK_FUNCTION(cs_vSend)
     {
         ENTER_CRITICAL_SECTION(cs_vSend);
-        if (nHeaderStart != -1)
-            AbortMessage();
-        nHeaderStart = vSend.size();
+        assert(vSend.size() == 0);
         vSend << CMessageHeader(pszCommand, 0);
-        nMessageStart = vSend.size();
         if (fDebug)
             printf("sending: %s ", pszCommand);
     }
 
-    void AbortMessage()
+    // TODO: Document the precondition of this function.  Is cs_vSend locked?
+    void AbortMessage() UNLOCK_FUNCTION(cs_vSend)
     {
-        if (nHeaderStart < 0)
-            return;
-        vSend.resize(nHeaderStart);
-        nHeaderStart = -1;
-        nMessageStart = -1;
+        vSend.clear();
+
         LEAVE_CRITICAL_SECTION(cs_vSend);
 
         if (fDebug)
             printf("(aborted)\n");
     }
 
-    void EndMessage()
+    // TODO: Document the precondition of this function.  Is cs_vSend locked?
+    void EndMessage() UNLOCK_FUNCTION(cs_vSend)
     {
         if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
         {
@@ -375,38 +440,33 @@ public:
             return;
         }
 
-        if (nHeaderStart < 0)
+        if (vSend.size() == 0)
             return;
 
         // Set the size
-        unsigned int nSize = vSend.size() - nMessageStart;
-        memcpy((char*)&vSend[nHeaderStart] + CMessageHeader::MESSAGE_SIZE_OFFSET, &nSize, sizeof(nSize));
+        unsigned int nSize = vSend.size() - CMessageHeader::HEADER_SIZE;
+        memcpy((char*)&vSend[CMessageHeader::MESSAGE_SIZE_OFFSET], &nSize, sizeof(nSize));
 
         // Set the checksum
-        uint256 hash = Hash(vSend.begin() + nMessageStart, vSend.end());
+        uint256 hash = Hash(vSend.begin() + CMessageHeader::HEADER_SIZE, vSend.end());
         unsigned int nChecksum = 0;
         memcpy(&nChecksum, &hash, sizeof(nChecksum));
-        assert(nMessageStart - nHeaderStart >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
-        memcpy((char*)&vSend[nHeaderStart] + CMessageHeader::CHECKSUM_OFFSET, &nChecksum, sizeof(nChecksum));
+        assert(vSend.size () >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
+        memcpy((char*)&vSend[CMessageHeader::CHECKSUM_OFFSET], &nChecksum, sizeof(nChecksum));
 
         if (fDebug) {
             printf("(%d bytes)\n", nSize);
         }
 
-        nHeaderStart = -1;
-        nMessageStart = -1;
-        LEAVE_CRITICAL_SECTION(cs_vSend);
-    }
+        std::deque<CSerializeData>::iterator it = vSendMsg.insert(vSendMsg.end(), CSerializeData());
+        vSend.GetAndClear(*it);
+        nSendSize += (*it).size();
 
-    void EndMessageAbortIfEmpty()
-    {
-        if (nHeaderStart < 0)
-            return;
-        int nSize = vSend.size() - nMessageStart;
-        if (nSize > 0)
-            EndMessage();
-        else
-            AbortMessage();
+        // If write queue empty, attempt "optimistic write"
+        if (it == vSendMsg.begin())
+            SocketSendData(this);
+
+        LEAVE_CRITICAL_SECTION(cs_vSend);
     }
 
 

@@ -153,6 +153,7 @@ HEADERS += src/qt/bitcoingui.h \
     src/bloom.h \
     src/hash.h \
     src/checkqueue.h \
+    src/threadsafety.h \
     src/mruset.h \
     src/json/json_spirit_writer_template.h \
     src/json/json_spirit_writer.h \
