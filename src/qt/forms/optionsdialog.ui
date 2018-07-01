@@ -97,12 +97,22 @@
         </widget>
        </item>
        <item>
-        <widget class="QCheckBox" name="cpuMining">
+        <widget class="QCheckBox" name="cpuMiningPow">
          <property name="toolTip">
           <string>Enable Proof-of-Work CPU mining (generating/minting) of CACHeCoins (NOT to be confused with Proof-of-Stake!).</string>
          </property>
          <property name="text">
-          <string>&amp;Enable CPU mining</string>
+          <string>&amp;Enable POW CPU mining</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+       <widget class="QCheckBox" name="cpuMiningPos">
+         <property name="toolTip">
+          <string>Enable Proof-of-Stake CPU mining (generating/minting) of CACHeCoins.</string>
+         </property>
+         <property name="text">
+          <string>&amp;Enable POS CPU mining</string>
          </property>
         </widget>
        </item>

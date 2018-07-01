@@ -1521,27 +1521,6 @@ void static ProcessOneShot()
     }
 }
 
-// ppcoin: stake minter thread
-void static ThreadStakeMinter(void* parg)
-{
-    printf("ThreadStakeMinter started\n");
-    CWallet* pwallet = (CWallet*)parg;
-    try
-    {
-        vnThreadsRunning[THREAD_MINTER]++;
-        BitcoinMiner(pwallet, true);
-        vnThreadsRunning[THREAD_MINTER]--;
-    }
-    catch (std::exception& e) {
-        vnThreadsRunning[THREAD_MINTER]--;
-        PrintException(&e, "ThreadStakeMinter()");
-    } catch (...) {
-        vnThreadsRunning[THREAD_MINTER]--;
-        PrintException(NULL, "ThreadStakeMinter()");
-    }
-    printf("ThreadStakeMinter exiting, %d threads remaining\n", vnThreadsRunning[THREAD_MINTER]);
-}
-
 void ThreadOpenConnections2(void* parg)
 {
     printf("ThreadOpenConnections started\n");
@@ -2102,7 +2081,7 @@ void StartNode(void* parg)
 
     // Get addresses from IRC and advertise ours
     //if (!NewThread(ThreadIRCSeed, NULL))
-        //printf("Error: NewThread(ThreadIRCSeed) failed\n");
+    //    printf("Error: NewThread(ThreadIRCSeed) failed\n");
 
     // Send and receive from sockets, accept connections
     if (!NewThread(ThreadSocketHandler, NULL))
@@ -2125,11 +2104,12 @@ void StartNode(void* parg)
         printf("Error; NewThread(ThreadDumpAddress) failed\n");
 
     // ppcoin: mint proof-of-stake blocks in the background
-    if (!NewThread(ThreadStakeMinter, pwalletMain))
-        printf("Error: NewThread(ThreadStakeMinter) failed\n");
+    //boost::thread_group NewThread;
+    //if (!NewThread.create_thread(boost::bind(&ThreadStakeMinterCach, pwalletMain)))
+    //    printf("Error: NewThread(ThreadStakeMinter) failed\n");
 
     // Generate coins in the background
-    GenerateBitcoins(GetBoolArg("-gen", false), pwalletMain);
+    GenerateBitcoins(GetBoolArg("-powgen", false), pwalletMain);
 }
 
 bool StopNode()

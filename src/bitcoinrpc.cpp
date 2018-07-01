@@ -191,6 +191,54 @@ Value stop(const Array& params, bool fHelp)
     StartShutdown();
     return "CACHeCoin server stopping";
 }
+Value setposgensingle(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() != 0)
+        throw runtime_error(
+            "generatestake\n"
+            "generate a single proof of stake block"
+            );
+
+    if (GetBoolArg("-posgen", true))
+        throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
+
+    printf("ThreadStakeMinterSingle started\n");
+
+    try
+    {
+        BitcoinMinerPos(pwalletMain, true, true);
+    }
+    catch (boost::thread_interrupted) {
+        printf("stakemintersingle thread interrupt\n");
+    } catch (std::exception& e) {
+        PrintException(&e, "ThreadStakeMinterSingle()");
+    } catch (...) {
+        PrintException(NULL, "ThreadStakeMinterSingle()");
+    }
+    printf("ThreadStakeMinterSingle exiting\n");
+
+    if (hashSingleStakeBlock == 0)
+        return "Loading wallet data - again later";
+        else return hashSingleStakeBlock.ToString();
+}
+Value setposgenfull(const Array& params, bool fHelp)
+{
+    if (fHelp)
+        throw runtime_error(
+            "generatestake\n"
+            "generate a more proof of stake blocks"
+            );
+
+    if (GetBoolArg("-posgen", true))
+        throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
+        else if (!GetBoolArg("-posgen", true))
+                 nSetPosGenFull = 1;
+                 else
+                      nSetPosGenFull = 2;
+    boost::thread_group NewThread;
+    MintStake(NewThread, pwalletMain);
+    return "OK - generate a more proof of stake blocks";
+}
 Value getprofitestimate(const Array& params, bool fHelp)
  {
      if(fHelp || params.size() > 1)
@@ -313,6 +361,8 @@ static const CRPCCommand vRPCCommands[] =
     { "getcheckpoint",          &getcheckpoint,          true,   false },
     { "getprofitestimate",      &getprofitestimate,      true,   false },
     { "addnode",                &addnode,                true,   true },
+    { "setposgensingle",        &setposgensingle,        true,   false },
+    { "setposgenfull",          &setposgenfull,          true,   false },
     { "reservebalance",         &reservebalance,         false,  true },
     { "checkwallet",            &checkwallet,            false,  true },
     { "repairwallet",           &repairwallet,           false,  true },

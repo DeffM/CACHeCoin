@@ -169,8 +169,10 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
             return QVariant(bDisplayAddresses);
         case DetachDatabases:
             return QVariant(bitdb.GetDetach());
-        case CPUMining:
-            return QVariant(GetBoolArg("-gen"));
+        case CPUMiningPow:
+            return QVariant(GetBoolArg("-powgen"));
+        case CPUMiningPos:
+            return QVariant(GetBoolArg("-posgen"));
         case Language:
             return settings.value("language", "");
         case CoinControlFeatures:
@@ -261,10 +263,18 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             settings.setValue("detachDB", fDetachDB);
             }
             break;
-        case CPUMining: {
-            bool fCPUMining = value.toBool();
-            GenerateBitcoins(fCPUMining, pwalletMain);
-            mapArgs["-gen"] = (fCPUMining ? "1" : "0");
+        case CPUMiningPow: {
+            bool fCPUMiningPow = value.toBool();
+            GenerateBitcoins(fCPUMiningPow, pwalletMain);
+            mapArgs["-powgen"] = (fCPUMiningPow ? "1" : "0");
+            }
+            break;
+        case CPUMiningPos: {
+            bool fCPUMiningPos = value.toBool();
+            boost::thread_group NewThread;
+            (MintStake(NewThread, pwalletMain), fCPUMiningPos);
+            //BitcoinMinerPos(pwalletMain, fCPUMiningPos);
+            mapArgs["-posgen"] = (fCPUMiningPos ? "1" : "0");
             }
             break;
         case Language:

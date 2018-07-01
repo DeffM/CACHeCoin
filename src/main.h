@@ -84,6 +84,7 @@ extern bool fReindex;
 extern unsigned int nTransactionsUpdated;
 extern uint64 nLastBlockTx;
 extern uint64 nLastBlockSize;
+extern int nSetPosGenFull;
 extern int64 nUnixCachChainTime;
 extern int64 nLastCoinStakeSearchInterval;
 extern int64 nLastCoinPowSearchInterval;
@@ -115,6 +116,7 @@ extern unsigned int nNodeLifespan;
 extern unsigned int nLimitationDistr;
 extern unsigned char pchMessageStart[4];
 extern std::map<uint256, CBlock*> mapOrphanBlocks;
+extern uint256 hashSingleStakeBlock;
 
 // Settings
 extern int64 nTransactionFee;
@@ -158,6 +160,7 @@ void ThreadScriptCheck(void* parg);
 void ThreadScriptCheckQuit();
 
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
+void MintStake(boost::thread_group& NewThread, CWallet* pwallet);
 CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake=false, bool fProofOfWork=false);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
@@ -177,7 +180,8 @@ uint256 WantedByOrphan(const CBlock* pblockOrphan);
 const CBlockIndex* GetLastBlockIndexPow(const CBlockIndex* powpindex, bool fProofOfWork);
 const CBlockIndex* GetLastBlockIndexPos(const CBlockIndex* pospindex, bool fProofOfStake);
 const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfStake);
-void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
+void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
+void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
 void ResendWalletTransactions();
 
 // cachecoin: calculate Nfactor using timestamp

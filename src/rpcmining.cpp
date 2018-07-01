@@ -57,7 +57,7 @@ Value getgenerate(const Array& params, bool fHelp)
             "getgenerate\n"
             "Returns true or false.");
 
-    return GetBoolArg("-gen");
+    return GetBoolArg("-powgen");
 }
 
 
@@ -80,7 +80,7 @@ Value setgenerate(const Array& params, bool fHelp)
         if (nGenProcLimit == 0)
             fGenerate = false;
     }
-    mapArgs["-gen"] = (fGenerate ? "1" : "0");
+    mapArgs["-powgen"] = (fGenerate ? "1" : "0");
 
     GenerateBitcoins(fGenerate, pwalletMain);
     return Value::null;
@@ -116,7 +116,7 @@ Value getmininginfo(const Array& params, bool fHelp)
     obj.push_back(Pair("currentblocktx",(uint64_t)nLastBlockTx));
     obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
     obj.push_back(Pair("errors",        GetWarnings("statusbar")));
-    obj.push_back(Pair("generate",      GetBoolArg("-gen")));
+    obj.push_back(Pair("generate",      GetBoolArg("-powgen")));
     obj.push_back(Pair("genproclimit",  (int)GetArg("-genproclimit", -1)));
     obj.push_back(Pair("hashespersec",  gethashespersec(params, false)));
     obj.push_back(Pair("networkhashps", getnetworkhashps(params, false)));

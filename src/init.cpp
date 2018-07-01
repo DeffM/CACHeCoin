@@ -232,8 +232,10 @@ std::string HelpMessage()
         "  -?                     " + _("This help message") + "\n" +
         "  -conf=<file>           " + _("Specify configuration file (default: cachecoin.conf)") + "\n" +
         "  -pid=<file>            " + _("Specify pid file (default: cachecoind.pid)") + "\n" +
-        "  -gen                   " + _("Generate coins") + "\n" +
-        "  -gen=0                 " + _("Don't generate coins") + "\n" +
+        "  -powgen                " + _("Generate coins pow") + "\n" +
+        "  -powgen=0              " + _("Don't generate coins pow") + "\n" +
+        "  -posgen                " + _("Generate coins pos") + "\n" +
+        "  -posgen=0              " + _("Don't generate coins pos") + "\n" +
         "  -datadir=<dir>         " + _("Specify data directory") + "\n" +
         "  -dbcache=<n>           " + _("Set database cache size in megabytes (default: 25)") + "\n" +
         "  -dblogsize=<n>         " + _("Set database disk log size in megabytes (default: 100)") + "\n" +
@@ -363,6 +365,8 @@ bool AppInit2()
 #endif
 
     // ********************************************************* Step 2: parameter interactions
+
+    SoftSetBoolArg("-posgen", false);
 
     nNodeLifespan = (int)GetArg("-addrlifespan", 7);
 
@@ -921,6 +925,7 @@ bool AppInit2()
 
     // ********************************************************* Step 11: start node
 
+
     if (!CheckDiskSpace())
         return false;
 
@@ -939,6 +944,7 @@ bool AppInit2()
     if (fServer)
         NewThread(ThreadRPCServer, NULL);
 
+
     // ********************************************************* Step 12: finished
 
     uiInterface.InitMessage(_("Done loading"));
@@ -949,6 +955,14 @@ bool AppInit2()
 
      // Add wallet transactions that aren't already in a block to mapTransactions
     pwalletMain->ReacceptWalletTransactions();
+
+    boost::thread_group NewThread;
+    //if (GetBoolArg("-posgen", false))
+    //    MintStake(NewThread, pwalletMain);
+        if (GetBoolArg("-posgen", true))
+        {
+            MintStake(NewThread, pwalletMain);
+        }
 
 #if !defined(QT_GUI)
     // Loop until process is exit()ed from shutdown() function,

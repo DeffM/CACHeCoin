@@ -129,7 +129,8 @@ void OptionsDialog::setMapper()
     mapper->addMapping(ui->transactionFee, OptionsModel::Fee);
     mapper->addMapping(ui->bitcoinAtStartup, OptionsModel::StartAtStartup);
     mapper->addMapping(ui->detachDatabases, OptionsModel::DetachDatabases);
-    mapper->addMapping(ui->cpuMining, OptionsModel::CPUMining);
+    mapper->addMapping(ui->cpuMiningPow, OptionsModel::CPUMiningPow);
+    mapper->addMapping(ui->cpuMiningPos, OptionsModel::CPUMiningPos);
 
     /* Network */
     mapper->addMapping(ui->mapPortUpnp, OptionsModel::MapPortUPnP);
