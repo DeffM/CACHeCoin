@@ -195,7 +195,7 @@ Value setposgensingle(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() != 0)
         throw runtime_error(
-            "generatestake\n"
+            "setposgensingle\n"
             "generate a single proof of stake block"
             );
 
@@ -225,7 +225,7 @@ Value setposgenfull(const Array& params, bool fHelp)
 {
     if (fHelp)
         throw runtime_error(
-            "generatestake\n"
+            "setposgenfull\n"
             "generate a more proof of stake blocks"
             );
 

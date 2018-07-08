@@ -1317,6 +1317,25 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
     if (pospindexPrevPrevPrevPrevPrevPrev->pprev == NULL)
         return bnInitialHashTarget.GetCompact(); // second block 5
 
+    int64 nLastCoinPosSearchTime = GetAdjustedTime();
+
+    if(pospindexPrev->IsProofOfStake() && pospindexPrevPrev->IsProofOfStake() &&
+       pospindexPrevPrevPrev->IsProofOfStake() && pospindexPrevPrevPrevPrev->IsProofOfStake())
+    {
+    nLastCoinPosSearchInterval = ( nLastCoinPosSearchTime - PosPindexPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevTime );
+    nLastCoinPosSearchIntervalPrev = ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevPrevTime );
+    nLastCoinPosSearchIntervalPrevPrev = ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevTime );
+    }
+
+    if (pospindexPrev->IsProofOfStake() && pospindexPrevPrev->IsProofOfStake() &&
+        pospindexPrevPrevPrev->IsProofOfStake() && pospindexPrevPrevPrevPrev->IsProofOfStake())
+    {
+        nUnixCachChainTime = nLastCoinPosSearchTime - 1 + nNewTimeBlock;
+        nLastCoinWithoutPosSearchInterval = nUnixCachChainTime - PosPindexPrevTime;
+    }
+    nUnixCachChainTime = nLastCoinPosSearchTime - 1 + nNewTimeBlock;
+    nLastCoinWithoutPowSearchInterval = nUnixCachChainTime - PowPindexPrevTime;
+
     double nPosTargetSpacingTest = 0;
     if(pospindexPrev->GetBlockTime() > nPowForceTimestamp && pospindexPrev->GetBlockTime() < nPowForceTimestamp + NTest)
        nPosTargetSpacingTest = nPosTargetSpacing / nPosTargetSpacing * 600;
@@ -4952,13 +4971,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
                     pblock->vtx.push_back(txCoinPos);
                 }
             }
-            nLastCoinPosSearchInterval = ( nLastCoinPosSearchTime - PosPindexPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevTime );
-            nLastCoinPosSearchIntervalPrev = ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevPrevTime );
-            nLastCoinPosSearchIntervalPrevPrev = ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevTime );
-            nLastCoinWithoutPosSearchInterval = nLastCoinPosSearchTime - PosPindexPrevTime;
-            nLastCoinWithoutPowSearchInterval = nLastCoinPosSearchTime - PowPindexPrevTime;
             nLastCoinPosSearchTime = nSearchTime;
-            nUnixCachChainTime = GetTime() + nNewTimeBlock;
         }
      }
 
@@ -5287,8 +5300,11 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
     // Found a solution
     {
         LOCK(cs_main);
-        if (pblock->hashPrevBlock != hashBestChain)
+        if (pblock->hashPrevBlock != hashBestChain && pblock->IsProofOfWork())
             return error("BitcoinMiner : generated block is stale");
+
+        if (pblock->hashPrevBlock != hashBestChain && pblock->IsProofOfStake())
+            return error("BitcoinMiner : generated block POS accepted by the network with first thread, ignored thread two");
 
         // Remove key from key pool
         reservekey.KeepKey();
