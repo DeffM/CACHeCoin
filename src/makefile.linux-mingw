@@ -65,7 +65,8 @@ OBJS= \
     obj/key.o \
     obj/db.o \
     obj/init.o \
-    obj/irc.o \
+    obj/bloom.o \
+    obj/hash.o \
     obj/keystore.o \
     obj/main.o \
     obj/net.o \

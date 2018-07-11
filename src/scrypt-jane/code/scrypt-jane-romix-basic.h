@@ -10,8 +10,8 @@ scrypt_romix_nop(scrypt_mix_word_t *blocks, size_t nblocks) {
 }
 
 /* romix pre/post endian conversion function */
-static void asm_calling_convention
-scrypt_romix_convert_endian(scrypt_mix_word_t *blocks, size_t nblocks) {
+//static void asm_calling_convention
+//scrypt_romix_convert_endian(scrypt_mix_word_t *blocks, size_t nblocks) {
 #if !defined(CPU_LE)
 	static const union { uint8_t b[2]; uint16_t w; } endian_test = {{1,0}};
 	size_t i;
@@ -22,9 +22,9 @@ scrypt_romix_convert_endian(scrypt_mix_word_t *blocks, size_t nblocks) {
 		}
 	}
 #else
-	(void)blocks; (void)nblocks;
+//	(void)blocks; (void)nblocks;
 #endif
-}
+//}
 
 /* chunkmix test function */
 typedef void (asm_calling_convention *chunkmixfn)(scrypt_mix_word_t *Bout/*[chunkWords]*/, scrypt_mix_word_t *Bin/*[chunkWords]*/, scrypt_mix_word_t *Bxor/*[chunkWords]*/, uint32_t r);
@@ -68,7 +68,7 @@ scrypt_item(scrypt_mix_word_t *base, scrypt_mix_word_t i, scrypt_mix_word_t len)
 }
 
 /* returns a pointer to block i */
-static scrypt_mix_word_t *
-scrypt_block(scrypt_mix_word_t *base, scrypt_mix_word_t i) {
-	return base + (i * SCRYPT_BLOCK_WORDS);
-}
+//static scrypt_mix_word_t *
+//scrypt_block(scrypt_mix_word_t *base, scrypt_mix_word_t i) {
+//	return base + (i * SCRYPT_BLOCK_WORDS);
+//}

@@ -103,15 +103,16 @@ OBJS= \
     obj/crypter.o \
     obj/db.o \
     obj/init.o \
-  obj/irc.o \
-  obj/kernel.o \
+    obj/bloom.o \
+    obj/hash.o \
+    obj/kernel.o \
     obj/key.o \
     obj/keystore.o \
     obj/main.o \
     obj/net.o \
     obj/netbase.o \
     obj/noui.o \
-  obj/pbkdf2.o \
+    obj/pbkdf2.o \
     obj/protocol.o \
     obj/rpcblockchain.o \
     obj/rpcdump.o \
