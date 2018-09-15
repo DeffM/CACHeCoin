@@ -961,6 +961,7 @@ bool AppInit2()
         if (GetBoolArg("-posgen", true))
         {
             MintStake(NewThread, pwalletMain);
+            nSetMetFull = 3;
         }
 
 #if !defined(QT_GUI)

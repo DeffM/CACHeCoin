@@ -201,25 +201,13 @@ Value setposgensingle(const Array& params, bool fHelp)
 
     if (GetBoolArg("-posgen", true))
         throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
+        else if (nSetMetFull == 1 || nSetMetFull == 2 || nSetMetFull == 3 || nSetMetFull == 4)
+                 throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
+    nSetMetFull = 1;
 
-    printf("ThreadStakeMinterSingle started\n");
-
-    try
-    {
-        BitcoinMinerPos(pwalletMain, true, true);
-    }
-    catch (boost::thread_interrupted) {
-        printf("stakemintersingle thread interrupt\n");
-    } catch (std::exception& e) {
-        PrintException(&e, "ThreadStakeMinterSingle()");
-    } catch (...) {
-        PrintException(NULL, "ThreadStakeMinterSingle()");
-    }
-    printf("ThreadStakeMinterSingle exiting\n");
-
-    if (hashSingleStakeBlock == 0)
-        return "Loading wallet data - again later";
-        else return hashSingleStakeBlock.ToString();
+    boost::thread_group NewThread;
+    MintStake(NewThread, pwalletMain);
+    return "OK - generate a single proof of stake block";
 }
 Value setposgenfull(const Array& params, bool fHelp)
 {
@@ -231,10 +219,10 @@ Value setposgenfull(const Array& params, bool fHelp)
 
     if (GetBoolArg("-posgen", true))
         throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
-        else if (!GetBoolArg("-posgen", true))
-                 nSetPosGenFull = 1;
-                 else
-                      nSetPosGenFull = 2;
+        else if (nSetMetFull == 1 || nSetMetFull == 2 || nSetMetFull == 3 || nSetMetFull == 4)
+                 throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
+    nSetMetFull = 2;
+
     boost::thread_group NewThread;
     MintStake(NewThread, pwalletMain);
     return "OK - generate a more proof of stake blocks";

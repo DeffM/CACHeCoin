@@ -272,7 +272,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
         case CPUMiningPos: {
             bool fCPUMiningPos = value.toBool();
             boost::thread_group NewThread;
-            (MintStake(NewThread, pwalletMain), fCPUMiningPos);
+            (MintStakeInit(NewThread, pwalletMain), fCPUMiningPos);
             //BitcoinMinerPos(pwalletMain, fCPUMiningPos);
             mapArgs["-posgen"] = (fCPUMiningPos ? "1" : "0");
             }

@@ -84,7 +84,7 @@ extern bool fReindex;
 extern unsigned int nTransactionsUpdated;
 extern uint64 nLastBlockTx;
 extern uint64 nLastBlockSize;
-extern int nSetPosGenFull;
+extern int64 nSetMetFull;
 extern int64 nUnixCachChainTime;
 extern int64 nLastCoinStakeSearchInterval;
 extern int64 nLastCoinPowSearchInterval;
@@ -161,6 +161,7 @@ void ThreadScriptCheckQuit();
 
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
 void MintStake(boost::thread_group& NewThread, CWallet* pwallet);
+void MintStakeInit(boost::thread_group& NewThread, CWallet* pwallet);
 CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake=false, bool fProofOfWork=false);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
