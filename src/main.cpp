@@ -5304,7 +5304,13 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
             return error("BitcoinMiner : generated block is stale");
 
         if (pblock->hashPrevBlock != hashBestChain && pblock->IsProofOfStake())
-            return error("BitcoinMiner : generated block accepted by the network with first thread, ignored thread two");
+        {
+            if (pindexBest->IsProofOfStake())
+                return error("Control : generated block POS accepted by the network with first thread, ignored thread two");
+                else if (pindexBest->IsProofOfWork())
+                         return error("Control : in the network a block POW with an earlier timestamp was found");
+                         else return error("Control : forse majeure");
+        }
 
         // Remove key from key pool
         reservekey.KeepKey();
@@ -5318,7 +5324,7 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
         // Process this block the same as if we had received it from another node
         CValidationState state;
         if (!ProcessBlock(state, NULL, pblock))
-            return error("BitcoinMiner : ProcessBlock, block not accepted");
+            return error("Control : ProcessBlock, block not accepted");
     }
 
     return true;
@@ -5564,8 +5570,8 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
         //
         // Create new block
         //
-        CBlockIndex* pindexPrev = pindexBest;
 
+        CBlockIndex* pindexPrev = pindexBest;
         auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake));
 
         if (!pblock.get())
@@ -5573,10 +5579,18 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
 
         IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
 
-        if (fProofOfStake && nUnixCachChainTime > PosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
+        Sleep(1000);
+        if (fProofOfStake && nUnixCachChainTime <= PosPindexPrevTime + (nPosTargetSpacing / 100 * (nSpamHashControl + 1)))
+        {
+            printf("Control : hash outsides the controls interval\n");
+            Sleep(10000);
+        }
+        Sleep(1000);
+        if (fProofOfStake && nUnixCachChainTime > PosPindexPrevTime + (nPosTargetSpacing / 100 * (nSpamHashControl + 1)))
         {
             // ppcoin: if proof-of-stake block found then process block
-            if (pblock->IsProofOfStake())
+            Sleep(1000);
+            if (pblock->IsProofOfStake() && nUnixCachChainTime > PosPindexPrevTime + (nPosTargetSpacing / 100 * (nSpamHashControl + 1)))
             {
                 if (!pblock->SignBlock(*pwalletMain))
                 {
@@ -5584,15 +5598,15 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
                     continue;
                 }
                 strMintWarning = "";
-                printf("CPUMiner : proof-of-stake block candidate - analysis\n");
-                Sleep(40000);
+                printf("Control : proof-of-stake block candidate - analysis\n");
+                Sleep(15000);
                 printf("CPUMiner : proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
                 if (nSetMetFull == 1)
                 {
                     SetThreadPriority(THREAD_PRIORITY_NORMAL);
                     CheckWork(pblock.get(), *pwalletMain, reservekey);
                     SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                    Sleep(40000);
+                    Sleep(30000);
                     nSetMetFull = 0;
                     break;
                 }
@@ -5600,7 +5614,7 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
                 CheckWork(pblock.get(), *pwalletMain, reservekey);
                 SetThreadPriority(THREAD_PRIORITY_LOWEST);
             }
-            Sleep(40000);
+            Sleep(30000);
             continue;
         }
     }
