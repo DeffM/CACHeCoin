@@ -6,7 +6,7 @@ cd src
 make STATIC=1 -j $CPUNUM -f makefile.unix
 cd ..
 mkdir cachecoin
-cp cachecoin-qt cachecoin/
-cp src/cachecoind cachecoin/
+cp CACHE-Project-qt cachecoin/
+cp src/cacheprojectd cachecoin/
 zip -r ~/cachecoin.zip cachecoin/
 rm -rf cachecoin/

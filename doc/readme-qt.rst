@@ -1,4 +1,4 @@
-cachecoin-qt: Qt4 GUI for Bitcoin
+cacheproject-qt: Qt4 GUI for Bitcoin
 ===============================
 
 Build instructions
@@ -23,9 +23,9 @@ then execute the following:
     qmake
     make
 
-Alternatively, install Qt Creator and open the `cachecoin-qt.pro` file.
+Alternatively, install Qt Creator and open the `cacheproject-qt.pro` file.
 
-An executable named `cachecoin-qt` will be built.
+An executable named `CACHE-Project-qt` will be built.
 
 
 Windows
@@ -138,7 +138,7 @@ Ubuntu 11.10 warning
 ====================
 
 Ubuntu 11.10 has a package called 'qt-at-spi' installed by default.  At the time of writing, having that package
-installed causes cachecoin-qt to crash intermittently.  The issue has been reported as `launchpad bug 857790`_, but
+installed causes CACHE-Project-qt to crash intermittently.  The issue has been reported as `launchpad bug 857790`_, but
 isn't yet fixed.
 
 Until the bug is fixed, you can remove the qt-at-spi package to work around the problem, though this will presumably

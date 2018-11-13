@@ -34,9 +34,9 @@ QString BitcoinUnits::name(int unit)
 {
     switch(unit)
     {
-    case BTC: return QString("CACH");
-    case mBTC: return QString("mCACH");
-    case uBTC: return QString::fromUtf8("μCACH");
+    case BTC: return QString("CACHE");
+    case mBTC: return QString("mCACHE");
+    case uBTC: return QString::fromUtf8("μCACHE");
     default: return QString("???");
     }
 }
@@ -45,9 +45,9 @@ QString BitcoinUnits::description(int unit)
 {
     switch(unit)
     {
-    case BTC: return QString("CACHeCoins");
-    case mBTC: return QString("Milli-CACHeCoins (1 / 1,000)");
-    case uBTC: return QString("Micro-CACHeCoins (1 / 1,000,000)");
+    case BTC: return QString("CACHEs");
+    case mBTC: return QString("Milli-CACHEs (1 / 1,000)");
+    case uBTC: return QString("Micro-CACHEs (1 / 1,000,000)");
     default: return QString("???");
     }
 }

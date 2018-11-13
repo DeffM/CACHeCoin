@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>CACHeCoin - Debug window</string>
+   <string>'CACHE'Project - Debug window</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <item>
@@ -36,7 +36,7 @@
           </font>
          </property>
          <property name="text">
-          <string>CACHeCoin Core</string>
+          <string>'CACHE'Project Core</string>
          </property>
         </widget>
        </item>
@@ -194,6 +194,64 @@
          </property>
         </widget>
        </item>
+       <item row="10" column="2">
+        <widget class="QLabel" name="spamhashOfControlpow">
+         <property name="cursor">
+          <cursorShape>IBeamCursor</cursorShape>
+         </property>
+         <property name="text">
+          <string>N/A</string>
+         </property>
+         <property name="textFormat">
+          <enum>Qt::PlainText</enum>
+         </property>
+         <property name="textInteractionFlags">
+          <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+         </property>
+        </widget>
+       </item>
+       <item row="10" column="3">
+        <widget class="QLabel" name="label_20">
+         <property name="font">
+          <font>
+           <weight>15</weight>
+           <bold>false</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>Without block POW (sec)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="11" column="2">
+        <widget class="QLabel" name="spamhashOfControlpos">
+         <property name="cursor">
+          <cursorShape>IBeamCursor</cursorShape>
+         </property>
+         <property name="text">
+          <string>N/A</string>
+         </property>
+         <property name="textFormat">
+          <enum>Qt::PlainText</enum>
+         </property>
+         <property name="textInteractionFlags">
+          <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
+         </property>
+        </widget>
+       </item>
+       <item row="11" column="3">
+        <widget class="QLabel" name="label_21">
+         <property name="font">
+          <font>
+           <weight>15</weight>
+           <bold>false</bold>
+          </font>
+         </property>
+         <property name="text">
+          <string>Without block  POS (sec)</string>
+         </property>
+        </widget>
+       </item>
        <item row="8" column="0">
         <widget class="QLabel" name="label_8">
          <property name="text">
@@ -322,7 +380,7 @@
        <item row="15" column="0">
         <widget class="QPushButton" name="openDebugLogfileButton">
          <property name="toolTip">
-          <string>Open the CACHeCoin debug log file from the current data directory. This can take a few seconds for large log files.</string>
+          <string>Open the 'CACHE'Project debug log file from the current data directory. This can take a few seconds for large log files.</string>
          </property>
          <property name="text">
           <string>&amp;Open</string>
@@ -348,7 +406,7 @@
        <item row="17" column="0">
         <widget class="QPushButton" name="showCLOptionsButton">
          <property name="toolTip">
-          <string>Show the CACHeCoin-Qt help message to get a list with possible CACHeCoin command-line options.</string>
+          <string>Show the 'CACHE'Project-Qt help message to get a list with possible 'CACHE'Project command-line options.</string>
          </property>
          <property name="text">
           <string>&amp;Show</string>

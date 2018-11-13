@@ -6,18 +6,18 @@
     <name>AboutDialog</name>
     <message>
         <location filename="../forms/aboutdialog.ui" line="+14"/>
-        <source>About CACHeCoin</source>
-        <translation>About CACHeCoin</translation>
+        <source>About 'CACHE'Project</source>
+        <translation>About 'CACHE'Project</translation>
     </message>
     <message>
         <location line="+39"/>
-        <source>&lt;b&gt;CACHeCoin&lt;/b&gt; version</source>
-        <translation>&lt;b&gt;CACHeCoin&lt;/b&gt; version</translation>
+        <source>&lt;b&gt;'CACHE'Project&lt;/b&gt; version</source>
+        <translation>&lt;b&gt;'CACHE'Project&lt;/b&gt; version</translation>
     </message>
     <message>
         <location line="+41"/>
-        <source>Copyright © 2009-2012 The CACHeCoin developers</source>
-        <translation>Copyright © 2009-2012 The CACHeCoin developers</translation>
+        <source>Copyright © 2009-2012 The NovaCoin developers, 2018 The 'CACHE'Project developers</source>
+        <translation>Copyright © 2009-2012 The NovaCoin developers, 2018 The 'CACHE'Project developers</translation>
     </message>
     <message>
         <location line="+13"/>
@@ -64,8 +64,8 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="-46"/>
-        <source>These are your CACHeCoin addresses for receiving payments. You may want to give a different one to each sender so you can keep track of who is paying you.</source>
-        <translation>These are your CACHeCoin addresses for receiving payments. You may want to give a different one to each sender so you can keep track of who is paying you.</translation>
+        <source>These are your 'CACHE'Project addresses for receiving payments. You may want to give a different one to each sender so you can keep track of who is paying you.</source>
+        <translation>These are your 'CACHE'Project addresses for receiving payments. You may want to give a different one to each sender so you can keep track of who is paying you.</translation>
     </message>
     <message>
         <location line="+60"/>
@@ -79,8 +79,8 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="+11"/>
-        <source>Sign a message to prove you own a CACHeCoin address</source>
-        <translation>Sign a message to prove you own a CACHeCoin address</translation>
+        <source>Sign a message to prove you own a 'CACHE'Project address</source>
+        <translation>Sign a message to prove you own a 'CACHE'Project address</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -94,8 +94,8 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="-14"/>
-        <source>Verify a message to ensure it was signed with a specified CACHeCoin address</source>
-        <translation>Verify a message to ensure it was signed with a specified CACHeCoin address</translation>
+        <source>Verify a message to ensure it was signed with a specified 'CACHE'Project address</source>
+        <translation>Verify a message to ensure it was signed with a specified 'CACHE'Project address</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -252,8 +252,8 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="-56"/>
-        <source>CACHeCoin will close now to finish the encryption process. Remember that encrypting your wallet cannot fully protect your coins from being stolen by malware infecting your computer.</source>
-        <translation>CACHeCoin will close now to finish the encryption process. Remember that encrypting your wallet cannot fully protect your coins from being stolen by malware infecting your computer.</translation>
+        <source>'CACHE'Project will close now to finish the encryption process. Remember that encrypting your wallet cannot fully protect your coins from being stolen by malware infecting your computer.</source>
+        <translation>'CACHE'Project will close now to finish the encryption process. Remember that encrypting your wallet cannot fully protect your coins from being stolen by malware infecting your computer.</translation>
     </message>
     <message>
         <location line="+13"/>
@@ -366,8 +366,8 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="+4"/>
-        <source>Show information about CACHeCoin</source>
-        <translation>Show information about CACHeCoin</translation>
+        <source>Show information about 'CACHE'Project</source>
+        <translation>Show information about 'CACHE'Project</translation>
     </message>
     <message>
         <location line="+2"/>
@@ -419,13 +419,13 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="-58"/>
-        <source>Send coins to a CACHeCoin address</source>
-        <translation>Send coins to a CACHeCoin address</translation>
+        <source>Send coins to a 'CACHE'Project address</source>
+        <translation>Send coins to a 'CACHE'Project address</translation>
     </message>
     <message>
         <location line="+45"/>
-        <source>Modify configuration options for CACHeCoin</source>
-        <translation>Modify configuration options for CACHeCoin</translation>
+        <source>Modify configuration options for 'CACHE'Project</source>
+        <translation>Modify configuration options for 'CACHE'Project</translation>
     </message>
     <message>
         <location line="+14"/>
@@ -464,8 +464,8 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="-186"/>
-        <source>CACHeCoin</source>
-        <translation>CACHeCoin</translation>
+        <source>'CACHE'Project</source>
+        <translation>'CACHE'Project</translation>
     </message>
     <message>
         <location line="+0"/>
@@ -474,8 +474,8 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="+168"/>
-        <source>&amp;About CACHeCoin</source>
-        <translation>&amp;About CACHeCoin</translation>
+        <source>&amp;About 'CACHE'Project</source>
+        <translation>&amp;About 'CACHE'Project</translation>
     </message>
     <message>
         <location line="+9"/>
@@ -516,15 +516,15 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="+0"/>
         <location line="+60"/>
-        <source>CACHeCoin client</source>
-        <translation>CACHeCoin client</translation>
+        <source>'CACHE'Project client</source>
+        <translation>'CACHE'Project client</translation>
     </message>
     <message numerus="yes">
         <location line="+69"/>
-        <source>%n active connection(s) to CACHeCoin network</source>
+        <source>%n active connection(s) to 'CACHE'Project network</source>
         <translation>
-            <numerusform>%n active connection to CACHeCoin network</numerusform>
-            <numerusform>%n active connections to CACHeCoin network</numerusform>
+            <numerusform>%n active connection to 'CACHE'Project network</numerusform>
+            <numerusform>%n active connections to 'CACHE'Project network</numerusform>
         </translation>
     </message>
     <message>
@@ -621,8 +621,8 @@ Address: %4
     <message>
         <location line="-15"/>
         <location line="+15"/>
-        <source>URI can not be parsed! This can be caused by an invalid CACHeCoin address or malformed URI parameters.</source>
-        <translation>URI can not be parsed! This can be caused by an invalid CACHeCoin address or malformed URI parameters.</translation>
+        <source>URI can not be parsed! This can be caused by an invalid 'CACHE'Project address or malformed URI parameters.</source>
+        <translation>URI can not be parsed! This can be caused by an invalid 'CACHE'Project address or malformed URI parameters.</translation>
     </message>
     <message>
         <location line="+16"/>
@@ -656,8 +656,8 @@ Address: %4
     </message>
     <message>
         <location filename="../bitcoin.cpp" line="+109"/>
-        <source>A fatal error occurred. CACHeCoin can no longer continue safely and will quit.</source>
-        <translation>A fatal error occurred. CACHeCoin can no longer continue safely and will quit.</translation>
+        <source>A fatal error occurred. 'CACHE'Project can no longer continue safely and will quit.</source>
+        <translation>A fatal error occurred. 'CACHE'Project can no longer continue safely and will quit.</translation>
     </message>
 </context>
 <context>
@@ -722,8 +722,8 @@ Address: %4
     </message>
     <message>
         <location line="+5"/>
-        <source>The entered address &quot;%1&quot; is not a valid CACHeCoin address.</source>
-        <translation>The entered address &quot;%1&quot; is not a valid CACHeCoin address.</translation>
+        <source>The entered address &quot;%1&quot; is not a valid 'CACHE'Project address.</source>
+        <translation>The entered address &quot;%1&quot; is not a valid 'CACHE'Project address.</translation>
     </message>
     <message>
         <location line="+5"/>
@@ -741,8 +741,8 @@ Address: %4
     <message>
         <location filename="../guiutil.cpp" line="+419"/>
         <location line="+12"/>
-        <source>CACHeCoin-Qt</source>
-        <translation>CACHeCoin-Qt</translation>
+        <source>'CACHE'Project-Qt</source>
+        <translation>'CACHE'Project-Qt</translation>
     </message>
     <message>
         <location line="-12"/>
@@ -804,13 +804,13 @@ Address: %4
     </message>
     <message>
         <location line="+31"/>
-        <source>Automatically start CACHeCoin after logging in to the system.</source>
-        <translation>Automatically start CACHeCoin after logging in to the system.</translation>
+        <source>Automatically start 'CACHE'Project after logging in to the system.</source>
+        <translation>Automatically start 'CACHE'Project after logging in to the system.</translation>
     </message>
     <message>
         <location line="+3"/>
-        <source>&amp;Start CACHeCoin on system login</source>
-        <translation>&amp;Start CACHeCoin on system login</translation>
+        <source>&amp;Start 'CACHE'Project on system login</source>
+        <translation>&amp;Start 'CACHE'Project on system login</translation>
     </message>
     <message>
         <location line="+7"/>
@@ -829,8 +829,8 @@ Address: %4
     </message>
     <message>
         <location line="+6"/>
-        <source>Automatically open the CACHeCoin client port on the router. This only works when your router supports UPnP and it is enabled.</source>
-        <translation>Automatically open the CACHeCoin client port on the router. This only works when your router supports UPnP and it is enabled.</translation>
+        <source>Automatically open the 'CACHE'Project client port on the router. This only works when your router supports UPnP and it is enabled.</source>
+        <translation>Automatically open the 'CACHE'Project client port on the router. This only works when your router supports UPnP and it is enabled.</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -839,8 +839,8 @@ Address: %4
     </message>
     <message>
         <location line="+7"/>
-        <source>Connect to the CACHeCoin network through a SOCKS proxy (e.g. when connecting through Tor).</source>
-        <translation>Connect to the CACHeCoin network through a SOCKS proxy (e.g. when connecting through Tor).</translation>
+        <source>Connect to the 'CACHE'Project network through a SOCKS proxy (e.g. when connecting through Tor).</source>
+        <translation>Connect to the 'CACHE'Project network through a SOCKS proxy (e.g. when connecting through Tor).</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -914,8 +914,8 @@ Address: %4
     </message>
     <message>
         <location line="+13"/>
-        <source>The user interface language can be set here. This setting will take effect after restarting CACHeCoin.</source>
-        <translation>The user interface language can be set here. This setting will take effect after restarting CACHeCoin.</translation>
+        <source>The user interface language can be set here. This setting will take effect after restarting 'CACHE'Project.</source>
+        <translation>The user interface language can be set here. This setting will take effect after restarting 'CACHE'Project.</translation>
     </message>
     <message>
         <location line="+11"/>
@@ -929,8 +929,8 @@ Address: %4
     </message>
     <message>
         <location line="+9"/>
-        <source>Whether to show CACHeCoin addresses in the transaction list or not.</source>
-        <translation>Whether to show CACHeCoin addresses in the transaction list or not.</translation>
+        <source>Whether to show 'CACHE'Project addresses in the transaction list or not.</source>
+        <translation>Whether to show 'CACHE'Project addresses in the transaction list or not.</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -966,8 +966,8 @@ Address: %4
     <message>
         <location line="-9"/>
         <location line="+9"/>
-        <source>This setting will take effect after restarting CACHeCoin.</source>
-        <translation>This setting will take effect after restarting CACHeCoin.</translation>
+        <source>This setting will take effect after restarting 'CACHE'Project.</source>
+        <translation>This setting will take effect after restarting 'CACHE'Project.</translation>
     </message>
     <message>
         <location line="+29"/>
@@ -985,8 +985,8 @@ Address: %4
     <message>
         <location line="+33"/>
         <location line="+183"/>
-        <source>The displayed information may be out of date. Your wallet automatically synchronizes with the CACHeCoin network after a connection is established, but this process has not completed yet.</source>
-        <translation>The displayed information may be out of date. Your wallet automatically synchronizes with the CACHeCoin network after a connection is established, but this process has not completed yet.</translation>
+        <source>The displayed information may be out of date. Your wallet automatically synchronizes with the 'CACHE'Project network after a connection is established, but this process has not completed yet.</source>
+        <translation>The displayed information may be out of date. Your wallet automatically synchronizes with the 'CACHE'Project network after a connection is established, but this process has not completed yet.</translation>
     </message>
     <message>
         <location line="-141"/>
@@ -1201,8 +1201,8 @@ Address: %4
     </message>
     <message>
         <location line="+7"/>
-        <source>Show the CACHeCoin-Qt help message to get a list with possible CACHeCoin command-line options.</source>
-        <translation>Show the CACHeCoin-Qt help message to get a list with possible CACHeCoin command-line options.</translation>
+        <source>Show the 'CACHE'Project-Qt help message to get a list with possible 'CACHE'Project command-line options.</source>
+        <translation>Show the 'CACHE'Project-Qt help message to get a list with possible 'CACHE'Project command-line options.</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -1221,13 +1221,13 @@ Address: %4
     </message>
     <message>
         <location line="-104"/>
-        <source>CACHeCoin - Debug window</source>
-        <translation>CACHeCoin - Debug window</translation>
+        <source>'CACHE'Project - Debug window</source>
+        <translation>'CACHE'Project - Debug window</translation>
     </message>
     <message>
         <location line="+25"/>
-        <source>CACHeCoin Core</source>
-        <translation>CACHeCoin Core</translation>
+        <source>'CACHE'Project Core</source>
+        <translation>'CACHE'Project Core</translation>
     </message>
     <message>
         <location line="+279"/>
@@ -1236,8 +1236,8 @@ Address: %4
     </message>
     <message>
         <location line="+7"/>
-        <source>Open the CACHeCoin debug log file from the current data directory. This can take a few seconds for large log files.</source>
-        <translation>Open the CACHeCoin debug log file from the current data directory. This can take a few seconds for large log files.</translation>
+        <source>Open the 'CACHE'Project debug log file from the current data directory. This can take a few seconds for large log files.</source>
+        <translation>Open the 'CACHE'Project debug log file from the current data directory. This can take a few seconds for large log files.</translation>
     </message>
     <message>
         <location line="+102"/>
@@ -1246,8 +1246,8 @@ Address: %4
     </message>
     <message>
         <location filename="../rpcconsole.cpp" line="-33"/>
-        <source>Welcome to the CACHeCoin RPC console.</source>
-        <translation>Welcome to the CACHeCoin RPC console.</translation>
+        <source>Welcome to the 'CACHE'Project RPC console.</source>
+        <translation>Welcome to the 'CACHE'Project RPC console.</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -1430,8 +1430,8 @@ Address: %4
     </message>
     <message>
         <location filename="../sendcoinsentry.cpp" line="+1"/>
-        <source>Enter a CACHeCoin address (e.g. C9H3tANhMroxU4rCre4bkoeDRhHKRSGwsi)</source>
-        <translation>Enter a CACHeCoin address (e.g. C9H3tANhMroxU4rCre4bkoeDRhHKRSGwsi)</translation>
+        <source>Enter a 'CACHE'Project address (e.g. C9H3tANhMroxU4rCre4bkoeDRhHKRSGwsi)</source>
+        <translation>Enter a 'CACHE'Project address (e.g. C9H3tANhMroxU4rCre4bkoeDRhHKRSGwsi)</translation>
     </message>
 </context>
 <context>
@@ -1491,8 +1491,8 @@ Address: %4
     </message>
     <message>
         <location line="+21"/>
-        <source>Sign the message to prove you own this CACHeCoin address</source>
-        <translation>Sign the message to prove you own this CACHeCoin address</translation>
+        <source>Sign the message to prove you own this 'CACHE'Project address</source>
+        <translation>Sign the message to prove you own this 'CACHE'Project address</translation>
     </message>
     <message>
         <location line="+17"/>
@@ -1523,8 +1523,8 @@ Address: %4
     </message>
     <message>
         <location line="+40"/>
-        <source>Verify the message to ensure it was signed with the specified CACHeCoin address</source>
-        <translation>Verify the message to ensure it was signed with the specified CACHeCoin address</translation>
+        <source>Verify the message to ensure it was signed with the specified 'CACHE'Project address</source>
+        <translation>Verify the message to ensure it was signed with the specified 'CACHE'Project address</translation>
     </message>
     <message>
         <location line="+17"/>
@@ -1534,8 +1534,8 @@ Address: %4
     <message>
         <location filename="../signverifymessagedialog.cpp" line="+27"/>
         <location line="+3"/>
-        <source>Enter a CACHeCoin address (e.g. C9H3tANhMroxU4rCre4bkoeDRhHKRSGwsi)</source>
-        <translation>Enter a CACHeCoin address (e.g. C9H3tANhMroxU4rCre4bkoeDRhHKRSGwsi)</translation>
+        <source>Enter a 'CACHE'Project address (e.g. C9H3tANhMroxU4rCre4bkoeDRhHKRSGwsi)</source>
+        <translation>Enter a 'CACHE'Project address (e.g. C9H3tANhMroxU4rCre4bkoeDRhHKRSGwsi)</translation>
     </message>
     <message>
         <location line="-2"/>
@@ -1544,8 +1544,8 @@ Address: %4
     </message>
     <message>
         <location line="+3"/>
-        <source>Enter CACHeCoin signature</source>
-        <translation>Enter CACHeCoin signature</translation>
+        <source>Enter 'CACHE'Project signature</source>
+        <translation>Enter 'CACHE'Project signature</translation>
     </message>
     <message>
         <location line="+82"/>
@@ -2115,8 +2115,8 @@ Address: %4
     <name>bitcoin-core</name>
     <message>
         <location filename="../bitcoinstrings.cpp" line="+82"/>
-        <source>CACHeCoin version</source>
-        <translation>CACHeCoin version</translation>
+        <source>'CACHE'Project version</source>
+        <translation>'CACHE'Project version</translation>
     </message>
     <message>
         <location line="+82"/>
@@ -2145,13 +2145,13 @@ Address: %4
     </message>
     <message>
         <location line="+23"/>
-        <source>Specify configuration file (default: cachecoin.conf)</source>
-        <translation>Specify configuration file (default: cachecoin.conf)</translation>
+        <source>Specify configuration file (default: cacheproject.conf)</source>
+        <translation>Specify configuration file (default: cacheproject.conf)</translation>
     </message>
     <message>
         <location line="+3"/>
-        <source>Specify pid file (default: cachecoind.pid)</source>
-        <translation>Specify pid file (default: cachecoind.pid)</translation>
+        <source>Specify pid file (default: cacheprojectd.pid)</source>
+        <translation>Specify pid file (default: cacheprojectd.pid)</translation>
     </message>
     <message>
         <location line="-47"/>
@@ -2305,8 +2305,8 @@ Address: %4
     </message>
     <message>
         <location line="+3"/>
-        <source>Warning: Please check that your computer&apos;s date and time are correct! If your clock is wrong CACHeCoin will not work properly.</source>
-        <translation>Warning: Please check that your computer&apos;s date and time are correct! If your clock is wrong CACHeCoin will not work properly.</translation>
+        <source>Warning: Please check that your computer&apos;s date and time are correct! If your clock is wrong 'CACHE'Project will not work properly.</source>
+        <translation>Warning: Please check that your computer&apos;s date and time are correct! If your clock is wrong 'CACHE'Project will not work properly.</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -2540,13 +2540,13 @@ Address: %4
     </message>
     <message>
         <location line="-131"/>
-        <source>Cannot obtain a lock on data directory %s.  CACHeCoin is probably already running.</source>
-        <translation>Cannot obtain a lock on data directory %s.  CACHeCoin is probably already running.</translation>
+        <source>Cannot obtain a lock on data directory %s.  'CACHE'Project is probably already running.</source>
+        <translation>Cannot obtain a lock on data directory %s.  'CACHE'Project is probably already running.</translation>
     </message>
     <message>
         <location line="+57"/>
-        <source>CACHeCoin</source>
-        <translation>CACHeCoin</translation>
+        <source>'CACHE'Project</source>
+        <translation>'CACHE'Project</translation>
     </message>
     <message>
         <location line="+77"/>
@@ -2580,13 +2580,13 @@ Address: %4
     </message>
     <message>
         <location line="+1"/>
-        <source>Error loading wallet.dat: Wallet requires newer version of CACHeCoin</source>
-        <translation>Error loading wallet.dat: Wallet requires newer version of CACHeCoin</translation>
+        <source>Error loading wallet.dat: Wallet requires newer version of 'CACHE'Project</source>
+        <translation>Error loading wallet.dat: Wallet requires newer version of 'CACHE'Project</translation>
     </message>
     <message>
         <location line="+73"/>
-        <source>Wallet needed to be rewritten: restart CACHeCoin to complete</source>
-        <translation>Wallet needed to be rewritten: restart CACHeCoin to complete</translation>
+        <source>Wallet needed to be rewritten: restart 'CACHE'Project to complete</source>
+        <translation>Wallet needed to be rewritten: restart 'CACHE'Project to complete</translation>
     </message>
     <message>
         <location line="-75"/>
@@ -2655,8 +2655,8 @@ Address: %4
     </message>
     <message>
         <location line="-25"/>
-        <source>Unable to bind to %s on this computer. CACHeCoin is probably already running.</source>
-        <translation>Unable to bind to %s on this computer. CACHeCoin is probably already running.</translation>
+        <source>Unable to bind to %s on this computer. 'CACHE'Project is probably already running.</source>
+        <translation>Unable to bind to %s on this computer. 'CACHE'Project is probably already running.</translation>
     </message>
     <message>
         <location line="+55"/>

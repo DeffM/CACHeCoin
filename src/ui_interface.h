@@ -80,6 +80,10 @@ public:
     /** Block chain changed. */
     boost::signals2::signal<void ()> NotifyBlocksChanged;
 
+     /** Hash spam control changed. */
+    boost::signals2::signal<void (int newSpamHashControlPow, int newThreshold)> NotifySpamHashControlPowChanged;
+    boost::signals2::signal<void (int newSpamHashControlPos, int newThreshold)> NotifySpamHashControlPosChanged;
+
     /** Number of network connections changed. */
     boost::signals2::signal<void (int newNumConnections)> NotifyNumConnectionsChanged;
 

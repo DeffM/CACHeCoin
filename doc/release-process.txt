@@ -3,7 +3,7 @@ TODO - update the rest of these text files for CACH.
 * update translations (ping tcatm on IRC for now)
 
 * update (commit) version in sources
-  cachecoin-qt.pro
+  cacheproject-qt.pro
   src/version.h
   share/setup.nsi
   doc/README*
@@ -41,7 +41,7 @@ TODO - update the rest of these text files for CACH.
    ./bin/gbuild ../bitcoin/contrib/gitian-descriptors/deps-win32.yml
    cp build/out/bitcoin-deps-0.0.3.zip inputs/
 
-  * Build cachecoind and cachecoin-qt on Linux32, Linux64, and Win32:
+  * Build cacheprojectd and CACHE-Project-qt on Linux32, Linux64, and Win32:
    ./bin/gbuild --commit bitcoin=v${VERSION} ../bitcoin/contrib/gitian-descriptors/gitian.yml
    ./bin/gsign --signer $SIGNER --release ${VERSION} --destination ../gitian.sigs/ ../bitcoin/contrib/gitian-descriptors/gitian.yml
    pushd build/out
@@ -81,14 +81,14 @@ TODO - update the rest of these text files for CACH.
   Gavin also had trouble with the macports py27-appscript package; he
   ended up installing a version that worked with: /usr/bin/easy_install-2.7 appscript
 
-  qmake RELEASE=1 USE_UPNP=1 USE_QRCODE=1 cachecoin-qt.pro
+  qmake RELEASE=1 USE_UPNP=1 USE_QRCODE=1 cacheproject-qt.pro
   make
   export QTDIR=/opt/local/share/qt4  # needed to find translations/qt_*.qm files
   T=$(contrib/qt_translations.py $QTDIR/translations src/qt/locale)
-  python2.7 contrib/macdeploy/macdeployqtplus cachecoin-qt.app -add-qt-tr $T -dmg -fancy contrib/macdeploy/fancy.plist
+  python2.7 contrib/macdeploy/macdeployqtplus cacheproject-qt.app -add-qt-tr $T -dmg -fancy contrib/macdeploy/fancy.plist
 
  Build output expected:
-  cachecoin-qt.dmg
+  cacheproject-qt.dmg
 
 * upload builds to SourceForge
 

@@ -35,12 +35,15 @@ private slots:
     void on_tabWidget_currentChanged(int index);
     /** open the debug.log from the current datadir */
     void on_openDebugLogfileButton_clicked();
-    /** display messagebox with program parameters (same as cachecoin-qt --help) */
+    /** display messagebox with program parameters (same as cacheproject-qt --help) */
     void on_showCLOptionsButton_clicked();
 
 public slots:
     void clear();
     void message(int category, const QString &message, bool html = false);
+    /** Set hash spam control shown in the UI */
+    void setSpamHashControlPow(int count, int threshold);
+    void setSpamHashControlPos(int count, int threshold);
     /** Set number of connections shown in the UI */
     void setNumConnections(int count);
     /** Set number of blocks shown in the UI */

@@ -137,10 +137,10 @@ OBJS= \
     obj/scrypt-x86_64.o
 
 
-all: cachecoind
+all: cacheprojectd
 
-test check: test_cachecoin FORCE
-	./test_cachecoin
+test check: test_cacheproject FORCE
+	./test_cacheproject
 
 # auto-generated dependencies:
 -include obj/*.P
@@ -164,7 +164,7 @@ obj/%.o: %.cpp
 	      -e '/^$$/ d' -e 's/$$/ :/' < $(@:%.o=%.d) >> $(@:%.o=%.P); \
 	  rm -f $(@:%.o=%.d)
 
-cachecoind: $(OBJS:obj/%=obj/%)
+cacheprojectd: $(OBJS:obj/%=obj/%)
 	$(LINK) $(xCXXFLAGS) -o $@ $^ $(xLDFLAGS) $(LIBS)
 
 TESTOBJS := $(patsubst test/%.cpp,obj-test/%.o,$(wildcard test/*.cpp))
@@ -176,11 +176,11 @@ obj-test/%.o: test/%.cpp
 	      -e '/^$$/ d' -e 's/$$/ :/' < $(@:%.o=%.d) >> $(@:%.o=%.P); \
 	  rm -f $(@:%.o=%.d)
 
-test_cachecoin: $(TESTOBJS) $(filter-out obj/init.o,$(OBJS:obj/%=obj/%))
+test_cacheproject: $(TESTOBJS) $(filter-out obj/init.o,$(OBJS:obj/%=obj/%))
 	$(LINK) $(xCXXFLAGS) -o $@ $(LIBPATHS) $^ -Wl,-B$(LMODE) -lboost_unit_test_framework $(xLDFLAGS) $(LIBS)
 
 clean:
-	-rm -f cachecoind test_cachecoin
+	-rm -f cacheprojectd test_cacheproject
 	-rm -f obj/*.o
 	-rm -f obj-test/*.o
 	-rm -f obj/*.P

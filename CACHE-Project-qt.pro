@@ -1,6 +1,6 @@
 TEMPLATE = app
-TARGET = cachecoin-qt
-VERSION = 0.7.6
+TARGET = CACHE-Project-qt
+VERSION = 0.7.2
 INCLUDEPATH += src src/json src/qt
 DEFINES += QT_GUI BOOST_THREAD_USE_LIB BOOST_SPIRIT_THREADSAFE BOOST_THREAD_PROVIDES_GENERIC_SHARED_MUTEX_ON_WIN __NO_SYSTEM_INCLUDES SCRYPT_CHACHA SCRYPT_KECCAK512
 CONFIG += no_include_pwd
@@ -10,27 +10,27 @@ CONFIG += thread
 # use: qmake BOOST_LIB_SUFFIX=-mt
 # for boost thread win32 with _win32 sufix
 # use: BOOST_THREAD_LIB_SUFFIX=_win32-...
-# or when linking against a specific BerkelyDB version: BDB_LIB_SUFFIX=-5.1
+# or when linking against a specific BerkelyDB version: BDB_LIB_SUFFIX=-4.8
 
 # Dependency library locations can be customized with:
 #    BOOST_INCLUDE_PATH, BOOST_LIB_PATH, BDB_INCLUDE_PATH,
 #    BDB_LIB_PATH, OPENSSL_INCLUDE_PATH and OPENSSL_LIB_PATH respectively
 windows:LIBS += -lshlwapi
 LIBS += $$join(BOOST_LIB_PATH,,-L,) $$join(BDB_LIB_PATH,,-L,) $$join(OPENSSL_LIB_PATH,,-L,) $$join(QRENCODE_LIB_PATH,,-L,)
-LIBS += -lssl -lcrypto -ldb_cxx$$BDB_LIB_SUFFIX -Lc:/deps/qrencode-3.4.4/.libs
+LIBS += -lssl -lcrypto -ldb_cxx$$BDB_LIB_SUFFIX -L/c/deps/qrencode/.libs
 windows:{LIBS += -lws2_32 -lole32 -loleaut32 -luuid -lgdi32
-LIBS += -lboost_system-mgw81-mt-s-1_55 -lboost_filesystem-mgw81-mt-s-1_55 -lboost_program_options-mgw81-mt-s-1_55 -lboost_thread-mgw81-mt-s-1_55
-BOOST_LIB_SUFFIX=-mgw81-mt-s-1_55
-BOOST_INCLUDE_PATH=c:/deps/boost_1_55_0
-BOOST_LIB_PATH=c:/deps/boost_1_55_0/stage/lib
-BDB_INCLUDE_PATH=c:/deps/db-5.0.32.NC/build_windows
-BDB_LIB_PATH=c:/deps/db-5.0.32.NC/build_windows
-QRENCODE_INCLUDE_PATH=c:/deps/qrencode-3.4.4
-QRENCODE_LIB_PATH=c:/deps/qrencode-3.4.4/.libs
-MINIUPNPC_INCLUDE_PATH=c:/deps
-MINIUPNPC_LIB_PATH=c:/deps/miniupnpc
-OPENSSL_INCLUDE_PATH=c:/deps/openssl-OpenSSL_1_0_2n/include
-OPENSSL_LIB_PATH=c:/deps/openssl-OpenSSL_1_0_2n
+LIBS += -lboost_system-mgw48-mt-s-1_55 -lboost_filesystem-mgw48-mt-s-1_55 -lboost_program_options-mgw48-mt-s-1_55 -lboost_thread-mgw48-mt-s-1_55
+BOOST_LIB_SUFFIX=-mgw48-mt-s-1_55
+BOOST_INCLUDE_PATH=/c/deps/boost
+BOOST_LIB_PATH=/c/deps/boost/stage/lib
+BDB_INCLUDE_PATH=/c/deps/db/build_unix
+BDB_LIB_PATH=/c/deps/db/build_unix
+QRENCODE_INCLUDE_PATH=/c/deps/qrencode/
+QRENCODE_LIB_PATH=/c/deps/qrencode/.libs
+MINIUPNPC_INCLUDE_PATH=/c/deps/
+MINIUPNPC_LIB_PATH=/c/deps/miniupnpc
+OPENSSL_INCLUDE_PATH=/c/deps/openssl/include
+OPENSSL_LIB_PATH=/c/deps/openssl
 }
 OBJECTS_DIR = build
 MOC_DIR = build
@@ -295,7 +295,7 @@ SOURCES += src/qt/test/test_main.cpp \
 HEADERS += src/qt/test/uritests.h
 DEPENDPATH += src/qt/test
 QT += testlib
-TARGET = cachecoin-qt_test
+TARGET = CACHE-Project-qt_test
 DEFINES += BITCOIN_QT_TEST
 }
 
@@ -320,12 +320,12 @@ QMAKE_EXTRA_COMPILERS += TSQM
 
 # "Other files" to show in Qt Creator
 OTHER_FILES += \
-    doc/*.rst doc/*.txt doc/README README.md res/cachecoin-qt.rc src/test/*.cpp src/test/*.h src/qt/test/*.cpp src/qt/test/*.h
+    doc/*.rst doc/*.txt doc/README README.md res/CACHE-Project-qt.rc src/test/*.cpp src/test/*.h src/qt/test/*.cpp src/qt/test/*.h
 
 # platform specific defaults, if not overridden on command line
 isEmpty(BOOST_LIB_SUFFIX) {
     macx:BOOST_LIB_SUFFIX = -mt
-    windows:BOOST_LIB_SUFFIX = -mgw81-mt-s-1_55
+    windows:BOOST_LIB_SUFFIX = -mgw44-mt-s-1_50
 }
 
 isEmpty(BOOST_THREAD_LIB_SUFFIX) {
@@ -333,15 +333,15 @@ isEmpty(BOOST_THREAD_LIB_SUFFIX) {
 }
 
 isEmpty(BDB_LIB_PATH) {
-    macx:BDB_LIB_PATH = /opt/local/lib/db51
+    macx:BDB_LIB_PATH = /opt/local/lib/db48
 }
 
 isEmpty(BDB_LIB_SUFFIX) {
-    macx:BDB_LIB_SUFFIX = -5.1
+    macx:BDB_LIB_SUFFIX = -4.8
 }
 
 isEmpty(BDB_INCLUDE_PATH) {
-    macx:BDB_INCLUDE_PATH = /opt/local/include/db51
+    macx:BDB_INCLUDE_PATH = /opt/local/include/db48
 }
 
 isEmpty(BOOST_LIB_PATH) {
@@ -376,7 +376,7 @@ macx:OBJECTIVE_SOURCES += src/qt/macdockiconhandler.mm
 macx:LIBS += -framework Foundation -framework ApplicationServices -framework AppKit
 macx:DEFINES += MAC_OSX MSG_NOSIGNAL=0
 macx:ICON = src/qt/res/icons/bitcoin.icns
-macx:TARGET = "cachecoin-qt"
+macx:TARGET = "CACHE-Project-qt"
 macx:QMAKE_CFLAGS_THREAD += -pthread
 macx:QMAKE_LFLAGS_THREAD += -pthread
 macx:QMAKE_CXXFLAGS_THREAD += -pthread

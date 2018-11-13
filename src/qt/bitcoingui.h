@@ -67,6 +67,8 @@ private:
     SignVerifyMessageDialog *signVerifyMessageDialog;
 
     QLabel *labelEncryptionIcon;
+    QLabel *labelSpamHashControlPowIcon;
+    QLabel *labelSpamHashControlPosIcon;
     QLabel *labelConnectionsIcon;
     QLabel *labelBlocksIcon;
     QLabel *progressBarLabel;
@@ -108,6 +110,9 @@ private:
     void createTrayIcon();
 
 public slots:
+    /** Set spam hash control shown in the UI */
+    void setSpamHashControlPow(int count, int threshold);
+    void setSpamHashControlPos(int count, int threshold);
     /** Set number of connections shown in the UI */
     void setNumConnections(int count);
     /** Set number of blocks shown in the UI */

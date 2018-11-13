@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>About CACHeCoin</string>
+   <string>About 'CACHE'Project</string>
   </property>
   <layout class="QHBoxLayout" name="horizontalLayout_2">
    <item>
@@ -50,7 +50,7 @@
           <cursorShape>IBeamCursor</cursorShape>
          </property>
          <property name="text">
-          <string>&lt;b&gt;CACHeCoin&lt;/b&gt; version</string>
+          <string>&lt;b&gt;'CACHE'Project&lt;/b&gt; version</string>
          </property>
          <property name="textInteractionFlags">
           <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
@@ -91,7 +91,7 @@
         <cursorShape>IBeamCursor</cursorShape>
        </property>
        <property name="text">
-        <string>Copyright © 2009-2012 The NovaCoin developers, 2013 The CACHeCoin developers</string>
+        <string>Copyright © 2009-2012 The NovaCoin developers, 2018 The 'CACHE'Project developers</string>
        </property>
        <property name="textInteractionFlags">
         <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>

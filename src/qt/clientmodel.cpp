@@ -32,6 +32,16 @@ ClientModel::~ClientModel()
     unsubscribeFromCoreSignals();
 }
 
+int ClientModel::getSpamHashControlPow() const
+{
+    return nLastCoinWithoutPowSearchInterval;
+}
+
+int ClientModel::getSpamHashControlPos() const
+{
+    return nLastCoinWithoutPosSearchInterval;
+}
+
 int ClientModel::getNumConnections() const
 {
     return vNodes.size();
@@ -67,6 +77,16 @@ void ClientModel::updateTimer()
 
         emit numBlocksChanged(newNumBlocks, newNumBlocksOfPeers);
     }
+}
+
+void ClientModel::updateSpamHashControlPow(int SpamHashControlPow, int InHashControlPow)
+{
+    emit spamHashControlPowChanged(SpamHashControlPow, InHashControlPow);
+}
+
+void ClientModel::updateSpamHashControlPos(int SpamHashControlPos, int InHashControlPos)
+{
+    emit spamHashControlPosChanged(SpamHashControlPos, InHashControlPos);
 }
 
 void ClientModel::updateNumConnections(int numConnections)
@@ -152,6 +172,20 @@ static void NotifyNumConnectionsChanged(ClientModel *clientmodel, int newNumConn
                               Q_ARG(int, newNumConnections));
 }
 
+static void NotifySpamHashControlPowChanged(ClientModel *clientmodel, int newSpamHashControlPow, int newThreshold)
+{
+    // Too noisy: OutputDebugStringF("NotifyNumConnectionsChanged %i\n", newNumConnections);
+    QMetaObject::invokeMethod(clientmodel, "updateSpamHashControlPow", Qt::QueuedConnection,
+                              Q_ARG(int, newSpamHashControlPow), Q_ARG(int, newThreshold));
+}
+
+static void NotifySpamHashControlPosChanged(ClientModel *clientmodel, int newSpamHashControlPos, int newThreshold)
+{
+    // Too noisy: OutputDebugStringF("NotifyNumConnectionsChanged %i\n", newNumConnections);
+    QMetaObject::invokeMethod(clientmodel, "updateSpamHashControlPos", Qt::QueuedConnection,
+                              Q_ARG(int, newSpamHashControlPos), Q_ARG(int, newThreshold));
+}
+
 static void NotifyAlertChanged(ClientModel *clientmodel, const uint256 &hash, ChangeType status)
 {
     OutputDebugStringF("NotifyAlertChanged %s status=%i\n", hash.GetHex().c_str(), status);
@@ -164,6 +198,8 @@ void ClientModel::subscribeToCoreSignals()
 {
     // Connect signals to client
     uiInterface.NotifyBlocksChanged.connect(boost::bind(NotifyBlocksChanged, this));
+    uiInterface.NotifySpamHashControlPowChanged.connect(boost::bind(NotifySpamHashControlPowChanged, this, _1, _2));
+    uiInterface.NotifySpamHashControlPosChanged.connect(boost::bind(NotifySpamHashControlPosChanged, this, _1, _2));
     uiInterface.NotifyNumConnectionsChanged.connect(boost::bind(NotifyNumConnectionsChanged, this, _1));
     uiInterface.NotifyAlertChanged.connect(boost::bind(NotifyAlertChanged, this, _1, _2));
 }
@@ -172,6 +208,8 @@ void ClientModel::unsubscribeFromCoreSignals()
 {
     // Disconnect signals from client
     uiInterface.NotifyBlocksChanged.disconnect(boost::bind(NotifyBlocksChanged, this));
+    uiInterface.NotifySpamHashControlPowChanged.disconnect(boost::bind(NotifySpamHashControlPowChanged, this, _1, _2));
+    uiInterface.NotifySpamHashControlPosChanged.disconnect(boost::bind(NotifySpamHashControlPosChanged, this, _1, _2));
     uiInterface.NotifyNumConnectionsChanged.disconnect(boost::bind(NotifyNumConnectionsChanged, this, _1));
     uiInterface.NotifyAlertChanged.disconnect(boost::bind(NotifyAlertChanged, this, _1, _2));
 }

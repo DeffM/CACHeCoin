@@ -185,7 +185,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBloc
 void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
 void ResendWalletTransactions();
 
-// cachecoin: calculate Nfactor using timestamp
+// cacheproject: calculate Nfactor using timestamp
 unsigned char GetNfactor(int64 nTimestamp);
 
 
@@ -1416,7 +1416,7 @@ public:
     CBlockIndex* pnext;
     unsigned int nFile;
     unsigned int nBlockPos;
-    uint256 nChainTrust;  // cachecoin
+    uint256 nChainTrust;  // cacheproject
     CBigNum bnChainTrust; // ppcoin: trust score of block chain
     int nHeight;
 

@@ -79,10 +79,10 @@
        <item>
         <widget class="QCheckBox" name="bitcoinAtStartup">
          <property name="toolTip">
-          <string>Automatically start CACHeCoin after logging in to the system.</string>
+          <string>Automatically start 'CACHE'Project after logging in to the system.</string>
          </property>
          <property name="text">
-          <string>&amp;Start CACHeCoin on system login</string>
+          <string>&amp;Start 'CACHE'Project on system login</string>
          </property>
         </widget>
        </item>
@@ -99,7 +99,7 @@
        <item>
         <widget class="QCheckBox" name="cpuMiningPow">
          <property name="toolTip">
-          <string>Enable Proof-of-Work CPU mining (generating/minting) of CACHeCoins (NOT to be confused with Proof-of-Stake!).</string>
+          <string>Enable Proof-of-Work CPU mining (generating/minting) of CACHEs (NOT to be confused with Proof-of-Stake!).</string>
          </property>
          <property name="text">
           <string>&amp;Enable POW CPU mining</string>
@@ -109,7 +109,7 @@
        <item>
        <widget class="QCheckBox" name="cpuMiningPos">
          <property name="toolTip">
-          <string>Enable Proof-of-Stake CPU mining (generating/minting) of CACHeCoins.</string>
+          <string>Enable Proof-of-Stake CPU mining (generating/minting) of CACHEs.</string>
          </property>
          <property name="text">
           <string>&amp;Enable POS CPU mining</string>
@@ -139,7 +139,7 @@
        <item>
         <widget class="QCheckBox" name="mapPortUpnp">
          <property name="toolTip">
-          <string>Automatically open the CACHeCoin client port on the router. This only works when your router supports UPnP and it is enabled.</string>
+          <string>Automatically open the 'CACHE'Project client port on the router. This only works when your router supports UPnP and it is enabled.</string>
          </property>
          <property name="text">
           <string>Map port using &amp;UPnP</string>
@@ -149,7 +149,7 @@
        <item>
         <widget class="QCheckBox" name="connectSocks">
          <property name="toolTip">
-          <string>Connect to the CACHeCoin network through a SOCKS proxy (e.g. when connecting through Tor).</string>
+          <string>Connect to the 'CACHE'Project network through a SOCKS proxy (e.g. when connecting through Tor).</string>
          </property>
          <property name="text">
           <string>&amp;Connect through SOCKS proxy:</string>
@@ -323,7 +323,7 @@
          <item>
           <widget class="QValueComboBox" name="lang">
            <property name="toolTip">
-            <string>The user interface language can be set here. This setting will take effect after restarting CACHeCoin.</string>
+            <string>The user interface language can be set here. This setting will take effect after restarting 'CACHE'Project.</string>
            </property>
           </widget>
          </item>
@@ -356,7 +356,7 @@
         <item>
         <widget class="QCheckBox" name="displayAddresses">
          <property name="toolTip">
-          <string>Whether to show CACHeCoin addresses in the transaction list or not.</string>
+          <string>Whether to show 'CACHE'Project addresses in the transaction list or not.</string>
          </property>
          <property name="text">
           <string>&amp;Display addresses in transaction list</string>

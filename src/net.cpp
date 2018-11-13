@@ -39,6 +39,7 @@ using namespace boost;
 void ThreadMessageHandler2(void* parg);
 void ThreadSocketHandler2(void* parg);
 void ThreadOpenConnections2(void* parg);
+void ThreadAnalyzerHandler(void* parg);
 void ThreadOpenAddedConnections2(void* parg);
 #ifdef USE_UPNP
 void ThreadMapPort2(void* parg);
@@ -1278,7 +1279,7 @@ void ThreadMapPort2(void* parg)
             }
         }
 
-        string strDesc = "CACHeCoin " + FormatFullVersion();
+        string strDesc = "'CACHE'Project " + FormatFullVersion();
 #ifndef UPNPDISCOVER_SUCCESS
         /* miniupnpc 1.5 */
         r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype,
@@ -1367,7 +1368,7 @@ void MapPort()
 // The first name is used as information source for addrman.
 // The second name should resolve to a list of seed addresses.
 static const char *strDNSSeed[][2] = {
-    //{"cachecoin.org", "seed.novacoin.su"},    // WM - Umm...  FIXME
+    //{"cacheproject.net", "seed.novacoin.su"},    // WM - Umm...  FIXME
 };
 
 void ThreadDNSAddressSeed(void* parg)
@@ -1962,7 +1963,7 @@ bool BindListenPort(const CService &addrBind, string& strError)
     {
         int nErr = WSAGetLastError();
         if (nErr == WSAEADDRINUSE)
-            strError = strprintf(_("Unable to bind to %s on this computer. CACHeCoin is probably already running."), addrBind.ToString().c_str());
+            strError = strprintf(_("Unable to bind to %s on this computer. 'CACHE'Project is probably already running."), addrBind.ToString().c_str());
         else
             strError = strprintf(_("Unable to bind to %s on this computer (bind returned error %d, %s)"), addrBind.ToString().c_str(), nErr, strerror(nErr));
         printf("%s\n", strError.c_str());
@@ -2080,8 +2081,8 @@ void StartNode(void* parg)
         MapPort();
 
     // Get addresses from IRC and advertise ours
-    //if (!NewThread(ThreadIRCSeed, NULL))
-    //    printf("Error: NewThread(ThreadIRCSeed) failed\n");
+    if (!NewThread(ThreadAnalyzerHandler, NULL))
+        printf("Error: NewThread(ThreadAnalyzerHandler) failed\n");
 
     // Send and receive from sockets, accept connections
     if (!NewThread(ThreadSocketHandler, NULL))

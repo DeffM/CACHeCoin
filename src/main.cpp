@@ -106,7 +106,7 @@ map<uint256, set<uint256> > mapOrphanTransactionsByPrev;
 // Constant stuff for coinbase transactions we create:
 CScript COINBASE_FLAGS;
 
-const string strMessageMagic = "CacheCoin Signed Message:\n";
+const string strMessageMagic = "'CACHE'Project Signed Message:\n";
 
 double dHashesPerSec = 0;
 int64 nHPSTimerStart = 0;
@@ -1083,7 +1083,7 @@ uint256 WantedByOrphan(const CBlock* pblockOrphan)
     return pblockOrphan->hashPrevBlock;
 }
 
-// cachecoin: increasing Nfactor gradually
+// cacheproject: increasing Nfactor gradually
 const unsigned char minNfactor = 4;
 const unsigned char maxNfactor = 30;
 
@@ -1191,8 +1191,8 @@ unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fPr
     double nActualSpacingTotalsPow = ( nActualTimeIntervalLongPowVeryFirst + nActualTimeIntervalLongPowFirst ) / 2;
     double nActualTimeIntervalNvar = nActualTimeIntervalLongPowVeryFirst; // ( nActualSpacingTotalsPow + nActualTimeIntervalLongPowSecond ) / 2;
 
-    // cachecoin retarget
-    // VALM-Cach /logical analysis - mathematically variable/
+    // cacheproject retarget
+    // VALM-Cache /logical analysis - mathematically variable/
     int64 nActualSpacingPow = 0;
     double nVar = nPowTargetSpacingTest / 3;
     int64 nNonAccelerating = 0; // sec +0-
@@ -1317,24 +1317,17 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
     if (pospindexPrevPrevPrevPrevPrevPrev->pprev == NULL)
         return bnInitialHashTarget.GetCompact(); // second block 5
 
-    int64 nLastCoinPosSearchTime = GetAdjustedTime();
+    int64 nLastCoinSearchTime = GetAdjustedTime();
 
     if(pospindexPrev->IsProofOfStake() && pospindexPrevPrev->IsProofOfStake() &&
        pospindexPrevPrevPrev->IsProofOfStake() && pospindexPrevPrevPrevPrev->IsProofOfStake())
     {
-    nLastCoinPosSearchInterval = ( nLastCoinPosSearchTime - PosPindexPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevTime );
-    nLastCoinPosSearchIntervalPrev = ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevPrevTime );
-    nLastCoinPosSearchIntervalPrevPrev = ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevPrevTime ) - ( nLastCoinPosSearchTime - PosPindexPrevPrevPrevTime );
+    nLastCoinPosSearchInterval = ( nLastCoinSearchTime - PosPindexPrevPrevTime ) - ( nLastCoinSearchTime - PosPindexPrevTime );
+    nLastCoinPosSearchIntervalPrev = ( nLastCoinSearchTime - PosPindexPrevPrevPrevTime ) - ( nLastCoinSearchTime - PosPindexPrevPrevTime );
+    nLastCoinPosSearchIntervalPrevPrev = ( nLastCoinSearchTime - PosPindexPrevPrevPrevPrevTime ) - ( nLastCoinSearchTime - PosPindexPrevPrevPrevTime );
     }
 
-    if (pospindexPrev->IsProofOfStake() && pospindexPrevPrev->IsProofOfStake() &&
-        pospindexPrevPrevPrev->IsProofOfStake() && pospindexPrevPrevPrevPrev->IsProofOfStake())
-    {
-        nUnixCachChainTime = nLastCoinPosSearchTime - 1 + nNewTimeBlock;
-        nLastCoinWithoutPosSearchInterval = nUnixCachChainTime - PosPindexPrevTime;
-    }
-    nUnixCachChainTime = nLastCoinPosSearchTime - 1 + nNewTimeBlock;
-    nLastCoinWithoutPowSearchInterval = nUnixCachChainTime - PowPindexPrevTime;
+    nUnixCachChainTime = nLastCoinSearchTime - 1 + nNewTimeBlock;
 
     double nPosTargetSpacingTest = 0;
     if(pospindexPrev->GetBlockTime() > nPowForceTimestamp && pospindexPrev->GetBlockTime() < nPowForceTimestamp + NTest)
@@ -1353,8 +1346,8 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
     double nActualSpacingTotalsPos = ( nActualTimeIntervalLongPosVeryFirst + nActualTimeIntervalLongPosFirst ) / 2;
     double nActualTimeIntervalNvar = nActualTimeIntervalLongPosVeryFirst; // ( nActualSpacingTotalsPos + nActualTimeIntervalLongPosSecond ) / 2;
 
-    // cachecoin retarget
-    // VALM-Cach /logical analysis - mathematically variable/
+    // cacheproject retarget
+    // VALM-Cache /logical analysis - mathematically variable/
     int64 nActualSpacingPos = 0;
     double nVar = nPosTargetSpacingTest / 3;
     int64 nNonAccelerating = 0; // sec +0-
@@ -1530,7 +1523,7 @@ int64 GetProofOfWorkReward(unsigned int nBits)
     CBigNum bnTargetLimit = bnProofOfWorkLimit;
     bnTargetLimit.SetCompact(bnTargetLimit.GetCompact());
 
-    // cachecoin subsidy
+    // cacheproject subsidy
     CBigNum bnLowerBound = CENT;
     CBigNum bnUpperBound = bnMinSubsidyLimit;
     while (bnLowerBound + CENT <= bnUpperBound)
@@ -1612,6 +1605,69 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits)
         return error("CheckProofOfWork() : hash doesn't match nBits");
 
     return true;
+}
+
+void ThreadAnalyzerHandlerInit(void* parg)
+{
+    // Make this thread recognisable as the networking thread
+    RenameThread("'CACHE'Project Analyzer Handler");
+
+    try
+    {
+        vnThreadsRunning[THREAD_ANALYZERHANDLER]++;
+        ThreadAnalyzerHandlerInit(parg);
+        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
+    }
+    catch (std::exception& e) {
+        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
+        PrintException(&e, "ThreadAnalyzerHandler()");
+    } catch (...) {
+        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
+        throw; // support pthread_cancel()
+    }
+    printf("ThreadAnalyzerHandler exited\n");
+}
+
+void ThreadAnalyzerHandler(void* parg)
+{
+    printf("ThreadAnalyzerHandler started\n");
+
+    int64 nPrevTimeCount = 0;
+    int64 nPrevTimeCount2 = 0;
+    int64 nThresholdPow = 0;
+    int64 nThresholdPos = 0;
+
+    loop
+    {
+         int64 nTimeCount = GetTime() + nNewTimeBlock;
+         int64 nTimeCount2 = GetTime() + nNewTimeBlock;
+               nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
+               nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
+         int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
+         int64 nPosPrevTime = pindexBest->GetBlockTime();
+         if (nTimeCount != nPrevTimeCount)
+         {
+             nPrevTimeCount = nTimeCount;
+             uiInterface.NotifySpamHashControlPowChanged(nTimeCount - nPowPrevTime, nThresholdPow);
+             nLastCoinWithoutPowSearchInterval = nTimeCount - nPowPrevTime;
+         }
+         if (nTimeCount2 != nPrevTimeCount2)
+         {
+             if (pindexBest->IsProofOfStake())
+             {
+                 nPrevTimeCount2 = nTimeCount2;
+                 uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - nPosPrevTime, nThresholdPos);
+                 nLastCoinWithoutPosSearchInterval = nTimeCount2 - nPosPrevTime;
+             }
+             if (pindexBest->IsProofOfWork())
+             {
+                 nPrevTimeCount2 = nTimeCount2;
+                 uiInterface.NotifySpamHashControlPosChanged((nTimeCount - nPowPrevTime) + (nTimeCount2 - nPosPrevTime), nThresholdPos);
+                 nLastCoinWithoutPosSearchInterval = (nTimeCount - nPowPrevTime) + (nTimeCount2 - nPosPrevTime);
+             }
+         }
+         Sleep(3000);
+    }
 }
 
 // Return maximum amount of blocks that other nodes claim to have
@@ -3283,7 +3339,7 @@ bool CheckDiskSpace(uint64 nAdditionalBytes)
         string strMessage = _("Warning: Disk space is low!");
         strMiscWarning = strMessage;
         printf("*** %s\n", strMessage.c_str());
-        uiInterface.ThreadSafeMessageBox(strMessage, "CACHeCoin", CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
+        uiInterface.ThreadSafeMessageBox(strMessage, "'CACHE'Project", CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
         StartShutdown();
         return false;
     }

@@ -6,14 +6,14 @@
 #include "version.h"
 
 // Name of client reported in the 'version' message. Report the same name
-// for both cacheoind and cachecoin-qt, to make it harder for attackers to
+// for both cacheoind and cacheproject-qt, to make it harder for attackers to
 // target servers or GUI users specifically.
 
 // WM - const std::string CLIENT_NAME("Satoshi");
-const std::string CLIENT_NAME("CACHecoin-WM");
+const std::string CLIENT_NAME("'CACHE'Project 2018");
 
 // Client version number
-#define CLIENT_VERSION_SUFFIX   "-cach-wm-beta"
+#define CLIENT_VERSION_SUFFIX   "-cache-2018-beta-one"
 
 
 // The following part of the code determines the CLIENT_BUILD variable.

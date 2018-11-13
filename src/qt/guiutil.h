@@ -95,7 +95,7 @@ namespace GUIUtil
     bool GetStartOnSystemStartup();
     bool SetStartOnSystemStartup(bool fAutoStart);
 
-    /** Help message for cachecoin-qt, shown with --help. */
+    /** Help message for cacheproject-qt, shown with --help. */
     class HelpMessageBox : public QMessageBox
     {
         Q_OBJECT

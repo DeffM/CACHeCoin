@@ -7,19 +7,19 @@ CXX ?= g++
 USE_UPNP:=-
 USE_IPV6:=1
 
-BOOST_SUFFIX?=-mgw81-mt-s-1_55
+BOOST_SUFFIX?=-mgw48-mt-s-1_55
 
 INCLUDEPATHS= \
  -I"$(CURDIR)" \
  -I"$(CURDIR)/scrypt-jane" \
- -I"c:/deps/boost_1_55_0" \
- -I"c:/deps/db-5.0.32.NC/build_windows" \
- -I"c:/deps/openssl-OpenSSL_1_0_2n"	
+ -I"c:/deps/boost" \
+ -I"c:/deps/db/build_unix" \
+ -I"c:/deps/openssl"	
 
 LIBPATHS= \
- -L"c:/deps/boost_1_55_0/stage/lib" \
- -L"c:/deps/db-5.0.32.NC/build_windows" \
- -L"c:/deps/openssl-OpenSSL_1_0_2n"
+ -L"c:/deps/boost/stage/lib" \
+ -L"c:/deps/db/build_unix" \
+ -L"c:/deps/openssl"
 
 LIBS= \
  -l boost_system$(BOOST_SUFFIX) \
@@ -64,7 +64,7 @@ ifndef USE_UPNP
 	override USE_UPNP = -
 endif
 ifneq (${USE_UPNP}, -)
- INCLUDEPATHS += -I"c:/deps"
+ INCLUDEPATHS += -I"c:/deps/miniupnpc"
  LIBPATHS += -L"c:/deps/miniupnpc"
  LIBS += -l miniupnpc -l iphlpapi
  DEFS += -DSTATICLIB -DUSE_UPNP=$(USE_UPNP)
@@ -130,12 +130,12 @@ OBJS= \
     obj/wallet.o \
     obj/walletdb.o 
 
-all: cachecoind.exe
+all: cacheprojectd.exe
 
-test check: test_cachecoin.exe FORCE
-	test_cachecoin.exe
+test check: test_cacheproject.exe FORCE
+	test_cacheproject.exe
 
-DEFS += $(addprefix -I,c:/deps/openssl-OpenSSL_1_0_2n/include)
+DEFS += $(addprefix -I,c:/deps/openssl/include)
 
 obj/scrypt-jane.o: scrypt-jane/scrypt-jane.c 
 	g++ -c -frandom-seed=$@ $(CFLAGS) -MMD -o $@ $<
@@ -146,7 +146,7 @@ obj/%.o: %.cpp $(HEADERS)
 obj/scrypt-x86.o: scrypt-x86.S
 	$(CXX) -c -frandom-seed=$@ $(xCXXFLAGS) -MMD -o $@ $<
 
-cachecoind.exe: $(OBJS:obj/%=obj/%)
+cacheprojectd.exe: $(OBJS:obj/%=obj/%)
 	g++ $(CFLAGS) $(LDFLAGS) -o $@ $(LIBPATHS) $^ $(LIBS)
 
 TESTOBJS := $(patsubst test/%.cpp,obj-test/%.o,$(wildcard test/*.cpp))
@@ -154,11 +154,11 @@ TESTOBJS := $(patsubst test/%.cpp,obj-test/%.o,$(wildcard test/*.cpp))
 obj-test/%.o: test/%.cpp $(HEADERS)
 	g++ -c $(TESTDEFS) $(CFLAGS) -o $@ $<
 
-test_cachecoin.exe: $(TESTOBJS) $(filter-out obj/init.o,$(OBJS:obj/%=obj/%))
+test_cacheproject.exe: $(TESTOBJS) $(filter-out obj/init.o,$(OBJS:obj/%=obj/%))
 	g++ $(CFLAGS) $(LDFLAGS) -o $@ $(LIBPATHS) $^ -lboost_unit_test_framework$(BOOST_SUFFIX) $(LIBS)
 
 clean:
-	-del /Q cachecoind test_cachecoin
+	-del /Q cacheprojectd test_cacheproject
 	-del /Q obj\*
 	-del /Q obj-test\*
 

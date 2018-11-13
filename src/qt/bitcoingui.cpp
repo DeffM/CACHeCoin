@@ -69,7 +69,7 @@ BitcoinGUI::BitcoinGUI(QWidget *parent):
     rpcConsole(0)
 {
     resize(850, 550);
-    setWindowTitle(tr("CACHeCoin") + " - " + tr("Wallet"));
+    setWindowTitle(tr("'CACHE'Project") + " - " + tr("Wallet"));
 #ifndef Q_OS_MAC
     qApp->setWindowIcon(QIcon(":icons/bitcoin"));
     setWindowIcon(QIcon(":icons/bitcoin"));
@@ -123,16 +123,22 @@ BitcoinGUI::BitcoinGUI(QWidget *parent):
     // Status bar notification icons
     QFrame *frameBlocks = new QFrame();
     frameBlocks->setContentsMargins(0,0,0,0);
-    frameBlocks->setMinimumWidth(56);
-    frameBlocks->setMaximumWidth(56);
+    frameBlocks->setMinimumWidth(98);
+    frameBlocks->setMaximumWidth(98);
     QHBoxLayout *frameBlocksLayout = new QHBoxLayout(frameBlocks);
     frameBlocksLayout->setContentsMargins(3,0,3,0);
     frameBlocksLayout->setSpacing(3);
     labelEncryptionIcon = new QLabel();
+    labelSpamHashControlPowIcon = new QLabel();
+    labelSpamHashControlPosIcon = new QLabel();
     labelConnectionsIcon = new QLabel();
     labelBlocksIcon = new QLabel();
     frameBlocksLayout->addStretch();
     frameBlocksLayout->addWidget(labelEncryptionIcon);
+    frameBlocksLayout->addStretch();
+    frameBlocksLayout->addWidget(labelSpamHashControlPowIcon);
+    frameBlocksLayout->addStretch();
+    frameBlocksLayout->addWidget(labelSpamHashControlPosIcon);
     frameBlocksLayout->addStretch();
     frameBlocksLayout->addWidget(labelConnectionsIcon);
     frameBlocksLayout->addStretch();
@@ -199,7 +205,7 @@ void BitcoinGUI::createActions()
     tabGroup->addAction(overviewAction);
 
     sendCoinsAction = new QAction(QIcon(":/icons/send"), tr("&Send coins"), this);
-    sendCoinsAction->setToolTip(tr("Send coins to a CACHeCoin address"));
+    sendCoinsAction->setToolTip(tr("Send coins to a 'CACHE'Project address"));
     sendCoinsAction->setCheckable(true);
     sendCoinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_2));
     tabGroup->addAction(sendCoinsAction);
@@ -237,14 +243,14 @@ void BitcoinGUI::createActions()
     quitAction->setToolTip(tr("Quit application"));
     quitAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Q));
     quitAction->setMenuRole(QAction::QuitRole);
-    aboutAction = new QAction(QIcon(":/icons/bitcoin"), tr("&About CACHeCoin"), this);
-    aboutAction->setToolTip(tr("Show information about CACHeCoin"));
+    aboutAction = new QAction(QIcon(":/icons/bitcoin"), tr("&About 'CACHE'Project"), this);
+    aboutAction->setToolTip(tr("Show information about 'CACHE'Project"));
     aboutAction->setMenuRole(QAction::AboutRole);
     aboutQtAction = new QAction(QIcon(":/trolltech/qmessagebox/images/qtlogo-64.png"), tr("About &Qt"), this);
     aboutQtAction->setToolTip(tr("Show information about Qt"));
     aboutQtAction->setMenuRole(QAction::AboutQtRole);
     optionsAction = new QAction(QIcon(":/icons/options"), tr("&Options..."), this);
-    optionsAction->setToolTip(tr("Modify configuration options for CACHeCoin"));
+    optionsAction->setToolTip(tr("Modify configuration options for 'CACHE'Project"));
     optionsAction->setMenuRole(QAction::PreferencesRole);
     toggleHideAction = new QAction(QIcon(":/icons/bitcoin"), tr("&Show / Hide"), this);
     encryptWalletAction = new QAction(QIcon(":/icons/lock_closed"), tr("&Encrypt Wallet..."), this);
@@ -338,7 +344,7 @@ void BitcoinGUI::setClientModel(ClientModel *clientModel)
 #endif
             if(trayIcon)
             {
-                trayIcon->setToolTip(tr("CACHeCoin client") + QString(" ") + tr("[testnet]"));
+                trayIcon->setToolTip(tr("'CACHE'Project client") + QString(" ") + tr("[testnet]"));
                 trayIcon->setIcon(QIcon(":/icons/toolbar_testnet"));
                 toggleHideAction->setIcon(QIcon(":/icons/toolbar_testnet"));
             }
@@ -347,6 +353,12 @@ void BitcoinGUI::setClientModel(ClientModel *clientModel)
         }
 
         // Keep up to date with client
+        setSpamHashControlPow(clientModel->getSpamHashControlPow(), false);
+        connect(clientModel, SIGNAL(spamHashControlPowChanged(int, int)), this, SLOT(setSpamHashControlPow(int, int)));
+
+        setSpamHashControlPos(clientModel->getSpamHashControlPos(), false);
+        connect(clientModel, SIGNAL(spamHashControlPosChanged(int, int)), this, SLOT(setSpamHashControlPos(int, int)));
+
         setNumConnections(clientModel->getNumConnections());
         connect(clientModel, SIGNAL(numConnectionsChanged(int)), this, SLOT(setNumConnections(int)));
 
@@ -398,7 +410,7 @@ void BitcoinGUI::createTrayIcon()
     trayIcon = new QSystemTrayIcon(this);
     trayIconMenu = new QMenu(this);
     trayIcon->setContextMenu(trayIconMenu);
-    trayIcon->setToolTip(tr("CACHeCoin client"));
+    trayIcon->setToolTip(tr("'CACHE'Project client"));
     trayIcon->setIcon(QIcon(":/icons/toolbar"));
     connect(trayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)),
             this, SLOT(trayIconActivated(QSystemTrayIcon::ActivationReason)));
@@ -455,6 +467,32 @@ void BitcoinGUI::aboutClicked()
     dlg.exec();
 }
 
+void BitcoinGUI::setSpamHashControlPow(int count, int threshold)
+{
+    QString icon;
+    if (count > threshold)
+    {
+        icon = ":/icons/powgo";
+    }
+        else icon = ":/icons/powstop";
+
+    labelSpamHashControlPowIcon->setPixmap(QIcon(icon).pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+    labelSpamHashControlPowIcon->setToolTip(tr("%n sec. without block pow in 'CACHE'Project network", "", count));
+}
+
+void BitcoinGUI::setSpamHashControlPos(int count, int threshold)
+{
+    QString icon;
+    if (count > threshold)
+    {
+        icon = ":/icons/posgo";
+    }
+        else icon = ":/icons/posstop";
+
+    labelSpamHashControlPosIcon->setPixmap(QIcon(icon).pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+    labelSpamHashControlPosIcon->setToolTip(tr("%n sec. without block pos in 'CACHE'Project network", "", count));
+}
+
 void BitcoinGUI::setNumConnections(int count)
 {
     QString icon;
@@ -467,7 +505,7 @@ void BitcoinGUI::setNumConnections(int count)
     default: icon = ":/icons/connect_4"; break;
     }
     labelConnectionsIcon->setPixmap(QIcon(icon).pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
-    labelConnectionsIcon->setToolTip(tr("%n active connection(s) to CACHeCoin network", "", count));
+    labelConnectionsIcon->setToolTip(tr("%n active connection(s) to 'CACHE'Project network", "", count));
 }
 
 void BitcoinGUI::setNumBlocks(int count, int nTotalBlocks)
@@ -757,7 +795,7 @@ void BitcoinGUI::dropEvent(QDropEvent *event)
         if (nValidUrisFound)
             gotoSendCoinsPage();
         else
-            notificator->notify(Notificator::Warning, tr("URI handling"), tr("URI can not be parsed! This can be caused by an invalid CACHeCoin address or malformed URI parameters."));
+            notificator->notify(Notificator::Warning, tr("URI handling"), tr("URI can not be parsed! This can be caused by an invalid 'CACHE'Project address or malformed URI parameters."));
     }
 
     event->acceptProposedAction();
@@ -772,7 +810,7 @@ void BitcoinGUI::handleURI(QString strURI)
         gotoSendCoinsPage();
     }
     else
-        notificator->notify(Notificator::Warning, tr("URI handling"), tr("URI can not be parsed! This can be caused by an invalid CACHeCoin address or malformed URI parameters."));
+        notificator->notify(Notificator::Warning, tr("URI handling"), tr("URI can not be parsed! This can be caused by an invalid 'CACHE'Project address or malformed URI parameters."));
 }
 
 void BitcoinGUI::setEncryptionStatus(int status)

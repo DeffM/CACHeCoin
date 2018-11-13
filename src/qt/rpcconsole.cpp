@@ -259,6 +259,8 @@ void RPCConsole::setClientModel(ClientModel *model)
     if(model)
     {
         // Subscribe to information, replies, messages, errors
+        connect(model, SIGNAL(spamHashControlPowChanged(int, int)), this, SLOT(setSpamHashControlPow(int, int)));
+        connect(model, SIGNAL(spamHashControlPosChanged(int, int)), this, SLOT(setSpamHashControlPos(int, int)));
         connect(model, SIGNAL(numConnectionsChanged(int)), this, SLOT(setNumConnections(int)));
         connect(model, SIGNAL(numBlocksChanged(int,int)), this, SLOT(setNumBlocks(int,int)));
 
@@ -268,6 +270,8 @@ void RPCConsole::setClientModel(ClientModel *model)
         ui->buildDate->setText(model->formatBuildDate());
         ui->startupTime->setText(model->formatClientStartupTime());
 
+        setSpamHashControlPow(model->getSpamHashControlPow(), false);
+        setSpamHashControlPos(model->getSpamHashControlPos(), false);
         setNumConnections(model->getNumConnections());
         ui->isTestNet->setChecked(model->isTestNet());
 
@@ -312,7 +316,7 @@ void RPCConsole::clear()
                 "b { color: #006060; } "
                 );
 
-    message(CMD_REPLY, (tr("Welcome to the CACHeCoin RPC console.") + "<br>" +
+    message(CMD_REPLY, (tr("Welcome to the 'CACHE'Project RPC console.") + "<br>" +
                         tr("Use up and down arrows to navigate history, and <b>Ctrl-L</b> to clear screen.") + "<br>" +
                         tr("Type <b>help</b> for an overview of available commands.")), true);
 }
@@ -331,6 +335,16 @@ void RPCConsole::message(int category, const QString &message, bool html)
         out += GUIUtil::HtmlEscape(message, true);
     out += "</td></tr></table>";
     ui->messagesWidget->append(out);
+}
+
+void RPCConsole::setSpamHashControlPow(int count, int threshold)
+{
+    ui->spamhashOfControlpow->setText(QString::number(count));
+}
+
+void RPCConsole::setSpamHashControlPos(int count, int threshold)
+{
+    ui->spamhashOfControlpos->setText(QString::number(count));
 }
 
 void RPCConsole::setNumConnections(int count)

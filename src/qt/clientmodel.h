@@ -23,6 +23,8 @@ public:
 
     OptionsModel *getOptionsModel();
 
+    int getSpamHashControlPow() const;
+    int getSpamHashControlPos() const;
     int getNumConnections() const;
     int getNumBlocks() const;
     int getNumBlocksAtStartup();
@@ -56,6 +58,8 @@ private:
     void subscribeToCoreSignals();
     void unsubscribeFromCoreSignals();
 signals:
+    void spamHashControlPowChanged(int count, int threshold);
+    void spamHashControlPosChanged(int count, int threshold);
     void numConnectionsChanged(int count);
     void numBlocksChanged(int count, int countOfPeers);
 
@@ -64,6 +68,8 @@ signals:
 
 public slots:
     void updateTimer();
+    void updateSpamHashControlPow(int numConnections, int InHashControlPow);
+    void updateSpamHashControlPos(int numConnections, int InHashControlPow);
     void updateNumConnections(int numConnections);
     void updateAlert(const QString &hash, int status);
 };
