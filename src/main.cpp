@@ -1662,8 +1662,8 @@ void ThreadAnalyzerHandler(void* parg)
              if (pindexBest->IsProofOfWork())
              {
                  nPrevTimeCount2 = nTimeCount2;
-                 uiInterface.NotifySpamHashControlPosChanged((nTimeCount - nPowPrevTime) + (nTimeCount2 - nPosPrevTime), nThresholdPos);
-                 nLastCoinWithoutPosSearchInterval = (nTimeCount - nPowPrevTime) + (nTimeCount2 - nPosPrevTime);
+                 uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - pindexBest->pprev->GetBlockTime(), nThresholdPos);
+                 nLastCoinWithoutPosSearchInterval = nTimeCount2 - pindexBest->pprev->GetBlockTime();
              }
          }
          Sleep(3000);
