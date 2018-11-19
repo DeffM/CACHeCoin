@@ -1,18 +1,29 @@
-CACHoin official development tree
+'CACHE' Project official development tree
 ---------------------------------------
 
-https://github.com/kalgecin/CACHeCoin
+https://github.com/DeffM/CACHeCoin
 
 
-CACHeCoin - a hybrid scrypt PoW + PoS based cryptocurrency forked from NovaCoin
-by GitHub user kalgecin.
+CACHE Project - a hybrid scrypt-jane PoW + PoS based cryptocurrency.
 
 
-* Uses the scrypt + chacha20/8 (N,1,1) hashing algorithm.
-* N increases over time to increase memory requirements.
-* 15 minute PoW block targets.
-* The PoW subsidy decreases as difficulty increases.
-* Maximum PoW reward is 100 coins.
+* Scrypt Jane mining algorithm - Nf 19
+* Two consensuses mechanism - Proof of Work & Proof of Stake
+* Preferred consensus device - CPU
+* Total supply - 2000000000
+* Difficulty adjustment algorithm for two consensuses divided
+* Algorithm - VALM-Cache (logical analysis, mathematically variable)
+* Block time  Proof of Work - 15  minutes
+* Block time Proof of Stake - 10 minutes
+* Difficulty adjustment - each block according to the results of three intervals
+* Spam-Hash control function added
+* Subsidy algorithm modified - proportional to the difficulty (min 40 CACHE, max 80 CACHE)
+* Block maturity - 520 confirms
+* Transaction maturity - 6 confirmations
+* Coin age to Stake - 7 days
+* Coins per annum - 10%
+* RPCPort - 2224
+* Network Port - 2225
 
 Development process
 ===========================
@@ -27,7 +38,7 @@ or are controversial.
 
 The master branch is regularly built and tested, but is not guaranteed
 to be completely stable. Tags are regularly created to indicate new
-official, stable release versions of CACHoin.
+official, stable release versions of CACHE Project.
 
 Feature branches are created when there are major new features being
 worked on by several people.
@@ -45,6 +56,6 @@ labeled 'stale'.
 To compile on ubuntu:
 sudo apt-get update
 sudo apt-get install git build-essential libboost-all-dev libdb++-dev libminiupnpc-dev libcurl4-openssl-dev
-git clone https://github.com/kalgecin/CACHeCoin.git
+git clone https://github.com/DeffM/CACHeCoin.git
 cd CACHeCoin/src
 make -f makefile.unix 
