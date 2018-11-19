@@ -1639,12 +1639,14 @@ void ThreadAnalyzerHandler(void* parg)
 
     loop
     {
-         int64 nTimeCount = GetTime() + nNewTimeBlock;
-         int64 nTimeCount2 = GetTime() + nNewTimeBlock;
-               nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
-               nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
-         int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
-         int64 nPosPrevTime = pindexBest->GetBlockTime();
+       int64 nTimeCount = GetTime() + nNewTimeBlock;
+       int64 nTimeCount2 = GetTime() + nNewTimeBlock;
+             nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
+             nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
+       int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
+       int64 nPosPrevTime = pindexBest->GetBlockTime();
+       if (pindexBest->nHeight > 2018)
+	   {   
          if (nTimeCount != nPrevTimeCount)
          {
              nPrevTimeCount = nTimeCount;
@@ -1666,7 +1668,8 @@ void ThreadAnalyzerHandler(void* parg)
                  nLastCoinWithoutPosSearchInterval = nTimeCount2 - pindexBest->pprev->GetBlockTime();
              }
          }
-         Sleep(3000);
+	   } 
+       Sleep(3000);
     }
 }
 

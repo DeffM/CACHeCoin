@@ -136,6 +136,7 @@ class CTxIndex;
 class CScriptCheck;
 struct CDiskBlockPos;
 
+void ThreadAnalyzerHandlerInit(void* parg);
 void RegisterWallet(CWallet* pwalletIn);
 void UnregisterWallet(CWallet* pwalletIn);
 void SyncWithWallets(const CTransaction& tx, const CBlock* pblock = NULL, bool fUpdate = false, bool fConnect = true);

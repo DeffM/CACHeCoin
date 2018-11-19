@@ -4,22 +4,22 @@
 
 CXX ?= g++
 
-USE_UPNP:=-
+USE_UPNP:=1
 USE_IPV6:=1
 
-BOOST_SUFFIX?=-mgw48-mt-s-1_55
+BOOST_SUFFIX?=-mgw81-mt-s-1_55
 
 INCLUDEPATHS= \
  -I"$(CURDIR)" \
  -I"$(CURDIR)/scrypt-jane" \
- -I"c:/deps/boost" \
- -I"c:/deps/db/build_unix" \
- -I"c:/deps/openssl"	
+ -I"c:/deps/boost_1_55_0" \
+ -I"c:/deps/db-5.0.32.NC/build_windows" \
+ -I"c:/deps/openssl-OpenSSL_1_0_2n"	
 
 LIBPATHS= \
- -L"c:/deps/boost/stage/lib" \
- -L"c:/deps/db/build_unix" \
- -L"c:/deps/openssl"
+ -L"c:/deps/boost_1_55_0/stage/lib" \
+ -L"c:/deps/db-5.0.32.NC/build_windows" \
+ -L"c:/deps/openssl-OpenSSL_1_0_2n"
 
 LIBS= \
  -l boost_system$(BOOST_SUFFIX) \
@@ -64,7 +64,7 @@ ifndef USE_UPNP
 	override USE_UPNP = -
 endif
 ifneq (${USE_UPNP}, -)
- INCLUDEPATHS += -I"c:/deps/miniupnpc"
+ INCLUDEPATHS += -I"c:/deps"
  LIBPATHS += -L"c:/deps/miniupnpc"
  LIBS += -l miniupnpc -l iphlpapi
  DEFS += -DSTATICLIB -DUSE_UPNP=$(USE_UPNP)
@@ -135,7 +135,7 @@ all: cacheprojectd.exe
 test check: test_cacheproject.exe FORCE
 	test_cacheproject.exe
 
-DEFS += $(addprefix -I,c:/deps/openssl/include)
+DEFS += $(addprefix -I,c:/deps/openssl-OpenSSL_1_0_2n/include)
 
 obj/scrypt-jane.o: scrypt-jane/scrypt-jane.c 
 	g++ -c -frandom-seed=$@ $(CFLAGS) -MMD -o $@ $<

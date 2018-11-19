@@ -977,7 +977,7 @@ static std::string FormatException(std::exception* pex, const char* pszThread)
     char pszModule[MAX_PATH] = "";
     GetModuleFileNameA(NULL, pszModule, sizeof(pszModule));
 #else
-    const char* pszModule = "'CACHE'Project";
+    const char* pszModule = "'cache'project";
 #endif
     if (pex)
         return strprintf(
@@ -1028,8 +1028,8 @@ boost::filesystem::path GetDefaultDataDir()
     namespace fs = boost::filesystem;
     // Windows < Vista: C:\Documents and Settings\Username\Application Data\'CACHE'Project
     // Windows >= Vista: C:\Users\Username\AppData\Roaming\'CACHE'Project
-    // Mac: ~/Library/Application Support/'CACHE'Project
-    // Unix: ~/.'CACHE'Project
+    // Mac: ~/Library/Application Support/cache'project
+    // Unix: ~/.'cache'project
 #ifdef WIN32
     // Windows
     return GetSpecialFolderPath(CSIDL_APPDATA) / "'CACHE'Project";
@@ -1044,10 +1044,10 @@ boost::filesystem::path GetDefaultDataDir()
     // Mac
     pathRet /= "Library/Application Support";
     fs::create_directory(pathRet);
-    return pathRet / "'CACHE'Project";
+    return pathRet / "'cache'project";
 #else
     // Unix
-    return pathRet / ".'CACHE'Project";
+    return pathRet / ".'cache'project";
 #endif
 #endif
 }
@@ -1208,29 +1208,6 @@ void ShrinkDebugFile()
         }
     }
 }
-
-void ShrinkPeersDat()
-{
-    boost::filesystem::path pathLog = GetDataDir() / "peers.dat";
-    FILE* file = fopen(pathLog.string().c_str(), "r");
-    if (file && GetFilesize(file) > 250000)
-    {
-        char pch[50];
-        fseek(file, -sizeof(pch), SEEK_END);
-        int nBytes = fread(pch, 1, sizeof(pch), file);
-        fclose(file);
-
-        file = fopen(pathLog.string().c_str(), "w");
-        if (file)
-        {
-            fwrite(pch, 1, nBytes, file);
-            fclose(file);
-        }
-    }
-}
-
-
-
 
 
 

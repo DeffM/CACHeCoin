@@ -527,9 +527,6 @@ bool AppInit2()
     printf("Used data directory %s\n", strDataDir.c_str());
     printf("Using at most %i connections (%i file descriptors available)\n", nMaxConnections, nFD);
     std::ostringstream strErrors;
-    if (GetBoolArg("-shrinkpeersdat", fDebug))
-        ShrinkPeersDat();
-
     if (fDaemon)
         fprintf(stdout, "'CACHE'Project server starting\n");
 
