@@ -776,6 +776,10 @@ public:
      */
     bool FetchInputs(CTxDB& txdb, const std::map<uint256, CTxIndex>& mapTestPool,
                      bool fBlock, bool fMiner, MapPrevTx& inputsRet, bool& fInvalid);
+    bool ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const std::map<uint256,
+                               CTxIndex>& mapTestPool, bool fBlock, bool fMiner, MapPrevTx& inputsRet,
+                               bool& fInvalid);
+
 
     /** Sanity check previous transactions, then, if all checks succeed,
         mark them as spent by this transaction.
@@ -792,10 +796,11 @@ public:
         @param[in] fStrictPayToScriptHash	true if fully validating p2sh transactions
         @return Returns true if all checks succeed
      */
-    bool ConnectInputs(CTxDB& txdb, MapPrevTx inputs, std::map<uint256, CTxIndex>& mapTestPool,
-                       const CDiskTxPos& posThisTx, const CBlockIndex* pindexBlock, bool fBlock, bool fMiner,
-                       bool fScriptChecks=true, unsigned int flags=STRICT_FLAGS,
-                       std::vector<CScriptCheck> *pvChecks = NULL, bool fStrictPayToScriptHash=true);
+    bool ConnectInputs(CValidationState &state, CTxDB& txdb, MapPrevTx inputs, std::map<uint256,
+                       CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx, const CBlockIndex* pindexBlock,
+                       bool fBlock, bool fMiner, bool fScriptChecks=true, unsigned int flags=STRICT_FLAGS |
+                       SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, std::vector<CScriptCheck> *pvChecks = NULL,
+                       bool fStrictPayToScriptHash=true);
     bool ClientConnectInputs();
     bool CheckTransaction(CValidationState &state) const;
     bool AcceptToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
@@ -879,9 +884,7 @@ public:
     int GetDepthInMainChain() const { CBlockIndex *pindexRet; return GetDepthInMainChain(pindexRet); }
     bool IsInMainChain() const { return GetDepthInMainChain() > 0; }
     int GetBlocksToMaturity() const;
-    bool AcceptToMemoryPool(CTxDB& txdb, bool fCheckInputs=true,
-                            bool fLimitFree=true);
-    bool AcceptToMemoryPool();
+    bool AcceptToMemoryPool(CValidationState& state, CTxDB& txdb, bool fCheckInputs=true, bool fLimitFree=true);
 };
 
 

@@ -681,8 +681,7 @@ public:
 
     void AddSupportingTransactions(CTxDB& txdb);
 
-    bool AcceptWalletTransaction(CTxDB& txdb, bool fCheckInputs=true);
-    bool AcceptWalletTransaction();
+    bool AcceptWalletTransaction(CValidationState& state, CTxDB& txdb, bool fCheckInputs=true);
 
     void RelayWalletTransaction(CTxDB& txdb);
     void RelayWalletTransaction();
