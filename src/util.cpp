@@ -977,7 +977,7 @@ static std::string FormatException(std::exception* pex, const char* pszThread)
     char pszModule[MAX_PATH] = "";
     GetModuleFileNameA(NULL, pszModule, sizeof(pszModule));
 #else
-    const char* pszModule = "'cache'project";
+    const char* pszModule = "CACHEproject";
 #endif
     if (pex)
         return strprintf(
@@ -1026,13 +1026,13 @@ void PrintExceptionContinue(std::exception* pex, const char* pszThread)
 boost::filesystem::path GetDefaultDataDir()
 {
     namespace fs = boost::filesystem;
-    // Windows < Vista: C:\Documents and Settings\Username\Application Data\'CACHE'Project
-    // Windows >= Vista: C:\Users\Username\AppData\Roaming\'CACHE'Project
-    // Mac: ~/Library/Application Support/cache'project
-    // Unix: ~/.'cache'project
+    // Windows < Vista: C:\Documents and Settings\Username\Application Data\CACHEproject
+    // Windows >= Vista: C:\Users\Username\AppData\Roaming\CACHEproject
+    // Mac: ~/Library/Application Support/CACHEproject
+    // Unix: ~/.CACHEproject
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_APPDATA) / "'CACHE'Project";
+    return GetSpecialFolderPath(CSIDL_APPDATA) / "CACHEproject";
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -1044,10 +1044,10 @@ boost::filesystem::path GetDefaultDataDir()
     // Mac
     pathRet /= "Library/Application Support";
     fs::create_directory(pathRet);
-    return pathRet / "'cache'project";
+    return pathRet / "CACHEproject";
 #else
     // Unix
-    return pathRet / ".'cache'project";
+    return pathRet / ".CACHEproject";
 #endif
 #endif
 }
