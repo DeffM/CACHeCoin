@@ -35,6 +35,8 @@ CCriticalSection cs_main;
 CTxMemPool mempool;
 unsigned int nTransactionsUpdated = 0;
 
+std::string waitTxSpam = "Until now spam activity is absent";
+
 map<uint256, CBlockIndex*> mapBlockIndex;
 set<pair<COutPoint, unsigned int> > setStakeSeen;
 uint256 hashGenesisBlock = hashGenesisBlockOfficial;
@@ -1650,37 +1652,68 @@ void ThreadAnalyzerHandler(void* parg)
 }
 
 bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const map<uint256, CTxIndex>& mapTestPool,
-                                         bool fBlock, bool fMiner, MapPrevTx& inputsRet, bool& fInvalid)
+                                         const CBlockIndex* pindexBlock, bool fBlock, bool fMiner, MapPrevTx& inputsRet,
+                                         bool& fInvalid, bool fScriptChecks, std::vector<CScriptCheck> *pvChecks,
+                                         unsigned int flags)
 {
-
      // Basic checks that don't depend on any context
     if (vin.empty())
-        return state.DoS(10, error("'Transaction' - ThreadAnalyzerHandler() : vin empty"));
+    {
+        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+        return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : vin empty"));
+    }
+
     if (vout.empty())
-        return state.DoS(10, error("'Transaction' - ThreadAnalyzerHandler() : vout empty"));
+    {
+        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+        return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : vout empty"));
+    }
+
     // Time (prevent mempool memory exhaustion attack)
     if (nTime > GetAdjustedTime() + nMaxClockDrift)
-        return state.DoS(10, error("'Transaction' - ThreadAnalyzerHandler() : timestamp is too far into the future"));
+    {
+        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+        return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : timestamp is too far into the future"));
+    }
+
     // Size limits
     if (::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
-        return state.DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : size limits failed"));
+    {
+        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+        return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : size limits failed"));
+    }
 
     // Check for negative or overflow output values
     int64 nValueOut = 0;
     BOOST_FOREACH(const CTxOut& txout, vout)
     {
         if (txout.IsEmpty() && (!IsCoinBase()) && (!IsCoinStake()))
-            return state.DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : txout empty for user transaction"));
+        {
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout empty for user transaction"));
+        }
         if (txout.nValue < 0)
-            return DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : txout.nValue is negative"));
+        {
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue is negative"));
+        }
         // ppcoin: enforce minimum output amount
         if ((!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
-            return state.DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : txout.nValue below minimum"));
+        {
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue below minimum"));
+        }
         if (txout.nValue > MAX_MONEY)
-            return state.DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : txout.nValue too high"));
+        {
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue too high"));
+        }
         nValueOut += txout.nValue;
         if (!MoneyRange(nValueOut))
-            return state.DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : txout total out of range"));
+        {
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout total out of range"));
+        }
     }
 
     // Check for duplicate inputs
@@ -1688,20 +1721,29 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
     BOOST_FOREACH(const CTxIn& txin, vin)
     {
         if (vInOutPoints.count(txin.prevout))
-            return state.DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : duplicate inputs"));
+        {
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : duplicate inputs"));
+        }
         vInOutPoints.insert(txin.prevout);
     }
 
     if (IsCoinBase())
     {
         if (vin[0].scriptSig.size() < 2 || vin[0].scriptSig.size() > 100)
-            return state.DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : coinbase script size"));
+        {
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : coinbase script size"));
+        }
     }
     else
     {
         BOOST_FOREACH(const CTxIn& txin, vin)
             if (txin.prevout.IsNull())
-                return state.DoS(10, error("'Transaction' - ThreadAnalyzerHandler() : prevout is null"));
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : prevout is null"));
+            }
     }
 
     fInvalid = false;
@@ -1726,7 +1768,10 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             fFound = txdb.ReadTxIndex(prevout.hash, txindex);
         }
         if (!fFound)
-            return error("'Transaction' - ThreadAnalyzerHandler() : %s prev tx %s index entry not found", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+        {
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s prev tx %s index entry not found", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+        }
 
         // Read txPrev
         CTransaction& txPrev = inputsRet[prevout.hash].second;
@@ -1736,7 +1781,10 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             {
                 LOCK(mempool.cs);
                 if (!mempool.exists(prevout.hash))
-                    return error("'Transaction' - ThreadAnalyzerHandler() : %s mempool Tx prev not found %s", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                {
+                    waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                    return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s mempool Tx prev not found %s", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                }
                     txPrev = mempool.lookup(prevout.hash);
             }
             if (!fFound)
@@ -1746,7 +1794,10 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
         {
             // Get prev tx from disk
             if (!txPrev.ReadFromDisk(txindex.pos))
-                return error("'Transaction' - ThreadAnalyzerHandler() : %s ReadFromDisk prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s ReadFromDisk prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+            }
         }
     }
 
@@ -1762,7 +1813,140 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             // Revisit this if/when transaction replacement is implemented and allows
             // adding inputs:
             fInvalid = true;
-            return DoS(100, error("'Transaction' - ThreadAnalyzerHandler() : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s", GetHash().ToString().substr(0,10).c_str(), prevout.n, txPrev.vout.size(), txindex.vSpent.size(), prevout.hash.ToString().substr(0,10).c_str(), txPrev.ToString().c_str()));
+            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+            return DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s", GetHash().ToString().substr(0,10).c_str(), prevout.n, txPrev.vout.size(), txindex.vSpent.size(), prevout.hash.ToString().substr(0,10).c_str(), txPrev.ToString().c_str()));
+        }
+    }
+
+    if (!IsCoinBase())
+    {
+        if (pvChecks)
+            pvChecks->reserve(vin.size());
+
+        // While checking, GetBestBlock() refers to the parent block.
+        // This is also true for mempool checks.
+        int64 nValueIn = 0;
+        int64 nFees = 0;
+        for (unsigned int i = 0; i < vin.size(); i++)
+        {
+            const COutPoint &prevout = vin[i].prevout;
+            assert(inputsRet.count(prevout.hash) > 0);
+            const CTxIndex& txindexcoins = inputsRet[prevout.hash].first;
+            const CTransaction &txcoins = inputsRet[prevout.hash].second;
+
+            if (prevout.n >= txcoins.vout.size() || prevout.n >= txindexcoins.vSpent.size())
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return DoS(100, error("'Transaction - CheckInputs' : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s",
+                GetHash().ToString().substr(0,10).c_str(), prevout.n, txcoins.vout.size(), txindexcoins.vSpent.size(),
+                prevout.hash.ToString().substr(0,10).c_str(), txcoins.ToString().c_str()));
+            }
+
+            // If prev is coinbase or coinstake, check that it's matured
+            if (txcoins.IsCoinBase() || txcoins.IsCoinStake())
+                for (const CBlockIndex* pindex = pindexBlock; pindex && pindexBlock->nHeight - pindex->nHeight < nCoinbaseMaturity; pindex = pindex->pprev)
+                    if (pindex->nBlockPos == txindexcoins.pos.nBlockPos && pindex->nFile == txindexcoins.pos.nFile)
+                    {
+                        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                        return error("'Transaction - CheckInputs' : tried to spend %s at depth %d", txcoins.IsCoinBase() ? "coinbase" : "coinstake", pindexBlock->nHeight - pindex->nHeight);
+                    }
+
+            // ppcoin: check transaction timestamp
+            if (txcoins.nTime > nTime)
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return state.DoS(100, error("'Transaction - CheckInputs' : transaction timestamp earlier than input transaction"));
+            }
+
+            // Check for negative or overflow input values
+            nValueIn += txcoins.vout[prevout.n].nValue;
+            if (!MoneyRange(txcoins.vout[prevout.n].nValue) || !MoneyRange(nValueIn))
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return state.DoS(100, error("'Transaction - CheckInputs' : txin values out of range"));
+            }
+        }
+
+        if (IsCoinStake())
+        {
+            // ppcoin: coin stake tx earns reward instead of paying fee
+            uint64 nCoinAge;
+            if (!GetCoinAge(txdb, nCoinAge))
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return error("'Transaction - CheckInputs' : %s unable to get coin age for coinstake", GetHash().ToString().c_str());
+            }
+
+            int64 nStakeReward = GetValueOut() - nValueIn;
+            if (nStakeReward > GetProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE)
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return state.DoS(100, error("'Transaction - CheckInputs' : %s stake reward exceeded", GetHash().ToString().c_str()));
+            }
+        }
+        else
+        {
+            if (nValueIn < GetValueOut())
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return state.DoS(100, error("'Transaction - CheckInputs' : %s value in < value out", GetHash().ToString().c_str()));
+            }
+
+            // Tally transaction fees
+            int64 nTxFee = nValueIn - GetValueOut();
+            if (nTxFee < 0)
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return state.DoS(100, error("'Transaction - CheckInputs' : %s nTxFee < 0", GetHash().ToString().c_str()));
+            }
+            // ppcoin: enforce transaction fees for every block
+            if (nTxFee < GetMinFee())
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return state.DoS(100, error("'Transaction - CheckInputs' : %s not paying required fee=%s, paid=%s", GetHash().ToString().c_str(), FormatMoney(GetMinFee()).c_str(), FormatMoney(nTxFee).c_str()));
+            }
+            nFees += nTxFee;
+            if (!MoneyRange(nFees))
+            {
+                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
+                return state.DoS(100, error("'Transaction - CheckInputs' : nFees out of range"));
+            }
+        }
+
+        // The first loop above does all the inexpensive checks.
+        // Only if ALL inputs pass do we perform expensive ECDSA signature checks.
+        // Helps prevent CPU exhaustion attacks.
+
+        // Skip ECDSA signature verification when connecting blocks
+        // before the last block chain checkpoint. This is safe because block merkle hashes are
+        // still computed and checked, and any change will be caught at the next checkpoint.
+        if (fScriptChecks)
+        {
+            for (unsigned int i = 0; i < vin.size(); i++)
+            {
+                const COutPoint &prevout = vin[i].prevout;
+                const CTransaction &txcoins = inputsRet[prevout.hash].second;
+
+                // Verify signature
+                CScriptCheck check(txcoins, *this, i, flags, 0);
+                if (pvChecks)
+                {
+                    pvChecks->push_back(CScriptCheck());
+                    check.swap(pvChecks->back());
+                }
+                else if (!check())
+                {
+                    if (flags & SCRIPT_VERIFY_STRICTENC)
+                    {
+                        // For now, check whether the failure was caused by non-canonical
+                        // encodings or not; if so, don't trigger DoS protection.
+                        CScriptCheck check(txcoins, *this, i, flags & (~SCRIPT_VERIFY_STRICTENC), 0);
+                        if (check())
+                            return state.Invalid();
+                    }
+                    return state.DoS(100,false);
+                }
+            }
         }
     }
     return true;
@@ -3990,7 +4174,7 @@ unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
-    static map<CService, CPubKey> mapReuseKey;
+    //static map<CService, CPubKey> mapReuseKey;
     RandAddSeedPerfmon();
     if (fDebug) {
         printf("%s ", DateTimeStrFormat(GetTime()).c_str());
@@ -4015,10 +4199,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             return false;
         }
 
-        int64_t nTime;
+        int64 nTime;
         CAddress addrMe;
         CAddress addrFrom;
-        uint64_t nNonce = 1;
+        uint64 nNonce = 1;
         vRecv >> pfrom->nVersion >> pfrom->nServices >> nTime >> addrMe;
         if (pfrom->nVersion < MIN_PROTO_VERSION)
         {
@@ -4142,7 +4326,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     else if (strCommand == "verack")
     {
-        pfrom->vRecv.SetVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
+        pfrom->SetRecvVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
     }
 
 
@@ -4162,8 +4346,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         // Store the new addresses
         vector<CAddress> vAddrOk;
-        int64_t nNow = GetAdjustedTime();
-        int64_t nSince = nNow - 10 * 60;
+        int64 nNow = GetAdjustedTime();
+        int64 nSince = nNow - (10 * 60);
         BOOST_FOREACH(CAddress& addr, vAddr)
         {
             boost::this_thread::interruption_point();
@@ -4182,8 +4366,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     static uint256 hashSalt;
                     if (hashSalt == 0)
                         hashSalt = GetRandHash();
-                    uint64_t hashAddr = addr.GetHash();
-                    uint256 hashRand = hashSalt ^ (hashAddr<<32) ^ ((GetTime()+hashAddr)/24 * 60 * 60);
+                    uint64 hashAddr = addr.GetHash();
+                    uint256 hashRand = hashSalt ^ (hashAddr<<32) ^ ((GetTime()+hashAddr) / (24 * 60 * 60));
                     hashRand = Hash(BEGIN(hashRand), END(hashRand));
                     multimap<uint256, CNode*> mapMix;
                     BOOST_FOREACH(CNode* pnode, vNodes)
@@ -4217,20 +4401,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     {
         vector<CInv> vInv;
         vRecv >> vInv;
+        CTxDB txdb("r");
+
         if (vInv.size() > MAX_INV_SZ)
         {
             pfrom->Misbehaving(20);
             return error("message inv size() = %"PRIszu"", vInv.size());
         }
-
-        map<uint256, CTxIndex> mapUnused;
-        CDataStream vMsg(vRecv);
-        CValidationState state;
-        MapPrevTx mapInputs;
-        CTxDB txdb("r");
-        CTransaction tx;
-
-        //bool fInvalid = false;
 
         // find last block in inv vector
         unsigned int nLastBlock = std::numeric_limits<uint32_t>::max();
@@ -4249,15 +4426,33 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             pfrom->AddInventoryKnown(inv);
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
-            if (fDebug)
-                printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
 
-            if (!fAlreadyHave) {
+            std::string wait(waitTxSpam.c_str()), spam(inv.ToString().substr(3,20).c_str());
+            if (fDebug && wait == spam)
+            {
+                printf("strCommand 'inv' - The executor of the rules performed the work\n");
+                printf("  spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                printf("  spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                return false;
+            }
+
+            if (fDebug)
+            {
+                printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
+                printf("  spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+            }
+
+            if (!fAlreadyHave)
+            {
                 if (!fImporting && !fReindex)
                     pfrom->AskFor(inv);
-            } else if (inv.type == MSG_BLOCK && mapOrphanBlocks.count(inv.hash)) {
+            }
+            else if (inv.type == MSG_BLOCK && mapOrphanBlocks.count(inv.hash))
+            {
                 pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(mapOrphanBlocks[inv.hash]));
-            } else if (nInv == nLastBlock) {
+            }
+            else if (nInv == nLastBlock)
+            {
                 // In case we are on a very long side-chain, it is possible that we already have
                 // the last block in an inv bundle sent in response to getblocks. Try to detect
                 // this situation and push another getblocks to continue.
@@ -4381,10 +4576,16 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         CInv inv(MSG_TX, tx.GetHash());
 
         bool fInvalid = false;
+        bool fScriptChecks = true;
+        std::vector<CScriptCheck> vChecks;
+        bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, false, false, mapInputs, fInvalid))
+        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, mapInputs, fInvalid,
+            fScriptChecks, nScriptCheckThreads ? &vChecks : NULL))
         {
             printf("strCommand 'tx' - The executor of the rules performed the work\n");
+            printf("  spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+            printf("  spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
             return false;
         }
 
@@ -4802,7 +5003,7 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
 
         // Keep-alive ping. We send a nonce of zero because we don't use it anywhere
         // right now.
-        if (pto->nLastSend && GetTime() - pto->nLastSend > 30 * 60 && pto->vSend.empty()) {
+        if (pto->nLastSend && GetTime() - pto->nLastSend > 30 * 60 && pto->vSendMsg.empty()) {
             uint64 nonce = 0;
             if (pto->nVersion > BIP0031_VERSION)
                 pto->PushMessage("ping", nonce);
@@ -4952,7 +5153,6 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
                     pto->PushMessage("getdata", vGetData);
                     vGetData.clear();
                 }
-                mapAlreadyAskedFor[inv] = nNow;
             }
             pto->mapAskFor.erase(pto->mapAskFor.begin());
         }

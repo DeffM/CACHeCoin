@@ -777,8 +777,10 @@ public:
     bool FetchInputs(CTxDB& txdb, const std::map<uint256, CTxIndex>& mapTestPool,
                      bool fBlock, bool fMiner, MapPrevTx& inputsRet, bool& fInvalid);
     bool ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const std::map<uint256,
-                               CTxIndex>& mapTestPool, bool fBlock, bool fMiner, MapPrevTx& inputsRet,
-                               bool& fInvalid);
+                               CTxIndex>& mapTestPool, const CBlockIndex* pindexBlock, bool fBlock,
+                               bool fMiner, MapPrevTx& inputsRet, bool& fInvalid, bool fScriptChecks=true,
+                               std::vector<CScriptCheck> *pvChecks = NULL, unsigned int flags=STRICT_FLAGS |
+                               SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC);
 
 
     /** Sanity check previous transactions, then, if all checks succeed,
