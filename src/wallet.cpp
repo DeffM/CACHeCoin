@@ -1640,7 +1640,7 @@ bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
         // Broadcast
         CTxDB txdb;
         CValidationState state;
-        if (!wtxNew.AcceptToMemoryPool(state, txdb))
+        if (!wtxNew.ThreadAnalyzerHandlerToMemoryPool(state, txdb))
         {
             // This must not fail. The transaction has already been signed and recorded.
             printf("CommitTransaction() : Error: Transaction not valid");

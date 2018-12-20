@@ -342,12 +342,17 @@ Value signrawtransaction(const Array& params, bool fHelp)
         CTransaction tempTx;
         MapPrevTx mapPrevTx;
         CTxDB txdb("r");
+        CValidationState state;
         map<uint256, CTxIndex> unused;
+        std::vector<CScriptCheck> vChecks;
         bool fInvalid;
+        bool fScriptChecks = true;
 
         // FetchInputs aborts on failure, so we go one at a time.
         tempTx.vin.push_back(mergedTx.vin[i]);
-        tempTx.FetchInputs(txdb, unused, false, false, mapPrevTx, fInvalid);
+        tempTx.ThreadAnalyzerHandler(state, txdb, unused, 0, false, false, mapPrevTx, fInvalid,
+                                     fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
+                                     SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC);
 
         // Copy results into mapPrevOut:
         BOOST_FOREACH(const CTxIn& txin, tempTx.vin)
@@ -522,7 +527,7 @@ Value sendrawtransaction(const Array& params, bool fHelp)
         // push to local node
         CTxDB txdb("r");
         CValidationState state;
-        if (!tx.AcceptToMemoryPool(state, txdb))
+        if (!tx.ThreadAnalyzerHandlerToMemoryPool(state, txdb))
             throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX rejected");
 
         SyncWithWallets(tx, NULL, true);

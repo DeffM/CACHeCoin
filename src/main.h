@@ -630,7 +630,6 @@ public:
         @return True if all outputs (scriptPubKeys) use only standard transaction forms
     */
     bool IsStandardCach(std::string& strReason) const;
-    bool IsStandard() const;
 
     /** Check for standard transaction types
         @param[in] mapInputs	Map of previous transactions that have outputs we're spending
@@ -764,18 +763,6 @@ public:
     bool ReadFromDisk(COutPoint prevout);
     bool DisconnectInputs(CTxDB& txdb);
 
-    /** Fetch from memory and/or disk. inputsRet keys are transaction hashes.
-
-     @param[in] txdb	Transaction database
-     @param[in] mapTestPool	List of pending changes to the transaction index database
-     @param[in] fBlock	True if being called to add a new best-block to the chain
-     @param[in] fMiner	True if being called by CreateNewBlock
-     @param[out] inputsRet	Pointers to this transaction's inputs
-     @param[out] fInvalid	returns true if transaction is invalid
-     @return	Returns true if all inputs are in txdb or mapTestPool
-     */
-    bool FetchInputs(CTxDB& txdb, const std::map<uint256, CTxIndex>& mapTestPool,
-                     bool fBlock, bool fMiner, MapPrevTx& inputsRet, bool& fInvalid);
     bool ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const std::map<uint256,
                                CTxIndex>& mapTestPool, const CBlockIndex* pindexBlock, bool fBlock,
                                bool fMiner, MapPrevTx& inputsRet, bool& fInvalid, bool fScriptChecks=true,
@@ -798,13 +785,15 @@ public:
         @param[in] fStrictPayToScriptHash	true if fully validating p2sh transactions
         @return Returns true if all checks succeed
      */
-    bool ConnectInputs(CValidationState &state, CTxDB& txdb, MapPrevTx inputs, std::map<uint256,
-                       CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx, const CBlockIndex* pindexBlock,
-                       bool fBlock, bool fMiner, bool fScriptChecks=true, unsigned int flags=STRICT_FLAGS |
-                       SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, std::vector<CScriptCheck> *pvChecks = NULL,
-                       bool fStrictPayToScriptHash=true);
+    bool CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, MapPrevTx inputs, std::map<uint256,
+                             CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx, const CBlockIndex* pindexBlock,
+                             bool fBlock, bool fMiner, bool fScriptChecks=true, unsigned int flags=STRICT_FLAGS |
+                             SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, std::vector<CScriptCheck> *pvChecks = NULL,
+                             bool fStrictPayToScriptHash=true);
     bool ClientConnectInputs();
     bool CheckTransaction(CValidationState &state) const;
+    bool ThreadAnalyzerHandlerToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
+                                           bool fLimitFree=true, bool* pfMissingInputs=NULL);
     bool AcceptToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
                             bool fLimitFree=true, bool* pfMissingInputs=NULL);
     bool GetCoinAge(CTxDB& txdb, uint64& nCoinAge) const;  // ppcoin: get transaction coin age
@@ -886,7 +875,7 @@ public:
     int GetDepthInMainChain() const { CBlockIndex *pindexRet; return GetDepthInMainChain(pindexRet); }
     bool IsInMainChain() const { return GetDepthInMainChain() > 0; }
     int GetBlocksToMaturity() const;
-    bool AcceptToMemoryPool(CValidationState& state, CTxDB& txdb, bool fCheckInputs=true, bool fLimitFree=true);
+    bool ThreadAnalyzerHandlerToMemoryPool(CValidationState& state, CTxDB& txdb, bool fCheckInputs=true, bool fLimitFree=true);
 };
 
 
@@ -1899,6 +1888,8 @@ public:
     std::map<COutPoint, CInPoint> mapNextTx;
 
     bool removeConflicts(const CTransaction &tx);
+    bool ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTransaction &tx,
+                               bool fCheckInputs, bool fLimitFree, bool* pfMissingInputs);
     bool accept(CValidationState &state, CTxDB& txdb, CTransaction &tx,
                 bool fCheckInputs, bool fLimitFree, bool* pfMissingInputs);
     bool addUnchecked(const uint256& hash, CTransaction &tx);
