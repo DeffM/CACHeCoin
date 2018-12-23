@@ -26,7 +26,6 @@ using namespace boost;
 //
 const int SCRYPT_SCRATCHPAD_SIZE = 131072 + 63;
 
-
 CCriticalSection cs_setpwalletRegistered;
 set<CWallet*> setpwalletRegistered;
 
@@ -34,8 +33,6 @@ CCriticalSection cs_main;
 
 CTxMemPool mempool;
 unsigned int nTransactionsUpdated = 0;
-
-std::string waitTxSpam = "Until now spam activity is absent";
 
 map<uint256, CBlockIndex*> mapBlockIndex;
 set<pair<COutPoint, unsigned int> > setStakeSeen;
@@ -118,6 +115,10 @@ uint256 hashSingleStakeBlock;
 // Settings
 int64 nTransactionFee = MIN_TX_FEE;
 bool fStakeUsePooledKeys = false;
+
+
+
+
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -1604,6 +1605,43 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
     printf("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : accepted %s (poolsz %"PRIszu")\n", hash.ToString().substr(0,10).c_str(), mapTx.size());
    }
     return true;
+}
+
+std::string waitTxSpam = " Spam is missing now";
+const unsigned int nNumberOfLines = 100;
+unsigned int nLinesSource = nNumberOfLines - 1;
+unsigned int nLinesReceiver = nNumberOfLines;
+char nSpamHashList[nNumberOfLines + 1][21];
+
+unsigned char SpamHashList()
+{
+    bool fWriting = true;
+
+    unsigned int nSearched = 0;
+    for (; nSearched <= nNumberOfLines; nSearched++)
+    {
+         if (strcmp(nSpamHashList[nSearched], waitTxSpam.substr(0,20).c_str()) == 0)
+         {
+         fWriting = false;
+         printf("'SpamHashList' - previously saved spam-hash %s\n", nSpamHashList[nSearched]);
+         }
+         //printf("'SpamHashList' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
+    }
+
+    if (fWriting)
+    {
+        unsigned int nWriting = 0;
+        for (; nWriting <= nNumberOfLines; nWriting++)
+        {
+
+            {
+            if (nLinesReceiver - nWriting != 0)
+            strcpy(nSpamHashList[nLinesReceiver - nWriting], nSpamHashList[nLinesSource - nWriting]);
+            }
+            strcpy(nSpamHashList[0], waitTxSpam.substr(0,20).c_str());
+        }
+    }
+    return false;
 }
 
 bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const map<uint256, CTxIndex>& mapTestPool,
@@ -4255,8 +4293,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         // find last block in inv vector
         unsigned int nLastBlock = std::numeric_limits<uint32_t>::max();
-        for (unsigned int nInv = 0; nInv < vInv.size(); nInv++) {
-            if (vInv[vInv.size() - 1 - nInv].type == MSG_BLOCK) {
+        for (unsigned int nInv = 0; nInv < vInv.size(); nInv++)
+        {
+            if (vInv[vInv.size() - 1 - nInv].type == MSG_BLOCK)
+            {
                 nLastBlock = vInv.size() - 1 - nInv;
                 break;
             }
@@ -4271,19 +4311,23 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-            std::string wait(waitTxSpam.c_str()), spam(inv.ToString().substr(3,20).c_str());
-            if (fDebug && wait == spam)
+            unsigned int nSearched = 0;
+            for (; nSearched <= nNumberOfLines; nSearched++)
             {
-                printf("strCommand 'inv' - The executor of the rules performed the work\n");
-                printf("  spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                printf("  spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-                return false;
+                 if(fDebug && strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
+                 {
+                    printf("strCommand 'inv' - The executor of the rules performed the work\n");
+                    printf("  strCommand 'inv' - spam hash previous: %s - %s\n", nSpamHashList[nSearched], fAlreadyHave ? "instock" : "outofstock");
+                    printf("  strCommand 'inv' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                    return false;
+                 }
+                 //printf("strCommand 'inv' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
             }
 
             if (fDebug)
             {
                 printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
-                printf("  spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                printf("  strCommand 'inv' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
             }
 
             if (!fAlreadyHave)
@@ -4426,6 +4470,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             fScriptChecks, nScriptCheckThreads ? &vChecks : NULL) || !tx.ThreadAnalyzerHandlerToMemoryPool(
             state, txdb, true, true, &fMissingInputs))
         {
+            SpamHashList();
             printf("strCommand 'tx' - The executor of the rules performed the work\n");
             printf("  spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
             printf("  spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
