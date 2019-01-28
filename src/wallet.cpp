@@ -501,14 +501,19 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn)
 // Add a transaction to the wallet, or update it.
 // pblock is optional, but should be provided if the transaction is known to be in a block.
 // If fUpdate is true, existing transactions will be updated.
-bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate, bool fFindBlock)
+bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pblock, bool fUpdate,
+                                       bool fFindBlock, bool fCheckInputs)
 {
     uint256 hash = tx.GetHash();
     {
         LOCK(cs_wallet);
+        MapPrevTx mapInputs;
+        CValidationState state;
         bool fExisted = mapWallet.count(hash);
-        if (fExisted && !fUpdate) return false;
-        if (fExisted || IsMine(tx) || IsFromMe(tx))
+        if (fExisted && !fUpdate)
+            return false;
+
+        if (fExisted || IsMine(tx) || IsFromMe(tx) || IsWatchOnlyAddress)
         {
             CWalletTx wtx(this,tx);
             // Get merkle branch if transaction was found in a block
@@ -517,7 +522,9 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             return AddToWallet(wtx);
         }
         else
+        {
             WalletUpdateSpent(tx);
+        }
     }
     return false;
 }
@@ -807,13 +814,31 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
     return ret;
 }
 
-int CWallet::ScanForWalletTransaction(const uint256& hashTx)
+int CWallet::ScanForWalletWatchAddress(CBlockIndex* pindexStart, bool fUpdate)
 {
-    CTransaction tx;
-    tx.ReadFromDisk(COutPoint(hashTx, 0));
-    if (AddToWalletIfInvolvingMe(tx, NULL, true, true))
-        return 1;
-    return 0;
+    int ret = 0;
+
+    CBlockIndex* pindex = pindexStart;
+    {
+        LOCK(cs_wallet);
+        CValidationState state;
+        int64 nDebitWatchAddress;
+        int64 nCreditWatchAddress;
+        while (pindex)
+        {
+            CBlock block;
+            block.ReadFromDisk(pindex, true);
+            BOOST_FOREACH(CTransaction& tx, block.vtx)
+            {
+                if (!block.HardForkControl(state, nCreditWatchAddress, nDebitWatchAddress))
+                    printf("CWallet() : error hardforkcontrol function\n");
+                    else if (AddToWalletIfInvolvingMe(tx, &block, fUpdate))
+                             ret++;
+            }
+            pindex = pindex->pnext;
+        }
+    }
+    return ret;
 }
 
 void CWallet::ReacceptWalletTransactions()

@@ -295,7 +295,8 @@ QString TransactionTableModel::formatTxStatus(const TransactionRecord *wtx) cons
         status = tr("Confirmed (%1 confirmations)").arg(wtx->status.depth);
         break;
     }
-    if(wtx->type == TransactionRecord::Generated || wtx->type == TransactionRecord::StakeMint)
+    if(wtx->type == TransactionRecord::Generated || wtx->type == TransactionRecord::StakeMint ||
+       wtx->type == TransactionRecord::WatchOnlyAddress)
     {
         switch(wtx->status.maturity)
         {
@@ -353,6 +354,8 @@ QString TransactionTableModel::formatTxType(const TransactionRecord *wtx) const
 {
     switch(wtx->type)
     {
+    case TransactionRecord::WatchOnlyAddress:
+        return tr("Sent Received");
     case TransactionRecord::RecvWithAddress:
         return tr("Received with");
     case TransactionRecord::RecvFromOther:
@@ -393,6 +396,7 @@ QString TransactionTableModel::formatTxToAddress(const TransactionRecord *wtx, b
 {
     switch(wtx->type)
     {
+    case TransactionRecord::WatchOnlyAddress:
     case TransactionRecord::RecvFromOther:
         return QString::fromStdString(wtx->address);
     case TransactionRecord::RecvWithAddress:
@@ -443,7 +447,8 @@ QString TransactionTableModel::formatTxAmount(const TransactionRecord *wtx, bool
 
 QVariant TransactionTableModel::txStatusDecoration(const TransactionRecord *wtx) const
 {
-    if(wtx->type == TransactionRecord::Generated || wtx->type == TransactionRecord::StakeMint)
+    if(wtx->type == TransactionRecord::Generated || wtx->type == TransactionRecord::StakeMint ||
+       wtx->type == TransactionRecord::WatchOnlyAddress)
     {
         switch(wtx->status.maturity)
         {

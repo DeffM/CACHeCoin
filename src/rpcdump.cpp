@@ -32,6 +32,56 @@ public:
     }
 };
 
+Value importwatchonlyaddress(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "importwatchonlyaddress <cacheprojectwatchonlyaddress>\n"
+            "Adds a watchonlyaddress to your wallet.");
+
+    string watchonlyaddress = params[0].get_str();
+    string strLabel = "watchonlyaddress";
+
+    CBitcoinAddress address;
+    if (!address.SetString(watchonlyaddress))
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
+
+    if (params.size() > 1)
+        strLabel = "watchonlyaddress";
+
+    string strAccount = strLabel;
+
+    bool IsWatchAddress = false;
+    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
+    {
+        const string& strName = item.second;
+        if (strName == strAccount)
+        {
+            IsWatchAddress = true;
+        }
+    }
+
+    if (IsWatchAddress)
+        throw JSONRPCError(RPC_WALLET_ERROR, "Only one watchonlyaddress.");
+
+    if (fWalletUnlockMintOnly)
+        throw JSONRPCError(RPC_WALLET_UNLOCK_NEEDED, "Wallet is unlocked for minting only.");
+
+    WatchOnlyAddress = watchonlyaddress.c_str();
+
+    {
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+
+        pwalletMain->MarkDirty();
+        pwalletMain->SetAddressBookName(CBitcoinAddress(watchonlyaddress.c_str()).Get(), strLabel);
+        if (true)
+        {
+            pwalletMain->ScanForWalletWatchAddress(pindexGenesisBlock, true);
+        }
+    }
+    return Value::null;
+}
+
 Value importprivkey(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)

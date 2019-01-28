@@ -79,6 +79,8 @@ extern uint256 nBestChainTrust;
 extern uint256 nBestInvalidTrust;
 extern uint256 hashBestChain;
 extern CBlockIndex* pindexBest;
+extern std::string WatchOnlyAddress;
+extern bool IsWatchOnlyAddress;
 extern bool fImporting;
 extern bool fReindex;
 extern unsigned int nTransactionsUpdated;
@@ -630,6 +632,11 @@ public:
         @return True if all outputs (scriptPubKeys) use only standard transaction forms
     */
     bool IsStandardCach(std::string& strReason) const;
+
+    /** HardForkControlFunction
+    */
+    bool HardForkControl(CValidationState &state, const MapPrevTx& mapInputs, int64& nCreditWatchAddress,
+                         int64& nDebitWatchAddress) const;
 
     /** Check for standard transaction types
         @param[in] mapInputs	Map of previous transactions that have outputs we're spending
@@ -1376,6 +1383,7 @@ public:
     }
 
 
+    bool HardForkControl(CValidationState &state, int64& nCreditWatchAddress, int64& nDebitWatchAddress) const;
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);

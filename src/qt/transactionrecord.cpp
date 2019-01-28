@@ -32,11 +32,14 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
     uint256 hash = wtx.GetHash();
     std::map<std::string, std::string> mapValue = wtx.mapValue;
 
-    if (wtx.IsCoinStake()) // ppcoin: coinstake transaction
-	{
-	    parts.append(TransactionRecord(hash, nTime, TransactionRecord::StakeMint, "", -nDebit, wtx.GetValueOut()));
-	}
-	else if (nNet > 0 || wtx.IsCoinBase())
+    if (wtx.IsCoinStake() && !IsWatchOnlyAddress) // ppcoin: coinstake transaction
+    {
+        if (false)
+            parts.append(TransactionRecord(hash, nTime, TransactionRecord::StakeMint, "", 0, 0));
+            else
+                parts.append(TransactionRecord(hash, nTime, TransactionRecord::StakeMint, "", -nDebit, wtx.GetValueOut()));
+    }
+    else if (nNet > 0 || wtx.IsCoinBase())
     {
         //
         // Credit
@@ -197,7 +200,8 @@ void TransactionRecord::updateStatus(const CWalletTx &wtx)
     }
 
     // For generated transactions, determine maturity
-    if(type == TransactionRecord::Generated || type == TransactionRecord::StakeMint)
+    if(type == TransactionRecord::Generated || type == TransactionRecord::StakeMint ||
+    type == TransactionRecord::WatchOnlyAddress)
     {
         int64 nCredit = wtx.GetCredit(true);
         if (nCredit == 0)
