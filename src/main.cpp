@@ -117,9 +117,16 @@ int64 nTransactionFee = MIN_TX_FEE;
 bool fStakeUsePooledKeys = false;
 
 // HardForkControlFunction
+int64 nHardForkControlAddressStartTime = 9999999999;
 std::string WatchOnlyAddress = "";
-bool IsWatchOnlyAddress = false;
-std::string HardForkControlAddresss = "CHhNoXRCZf7XWYvCc49bKb9N8RvebdnxF4";
+std::string HardForkControlAddress = "";
+std::string ScriptPubKeyHardForkOP_CHECKSIG = "";
+std::string ScriptPubKeyAddressOP_CHECKSIG = "";
+std::string ScriptPubKeyHardForkOP_HASH160 = "";
+std::string ScriptPubKeyAddressOP_HASH160 = "";
+int64 nWatchOnlyAddressCalc = 0;
+bool IsWatchOnlyAddressVtx = false;
+bool IsWatchOnlyAddressTx = false;
 int  nHardForkOneValue = 15 * COIN;
 int  nHardForkTwoValue = 10 * COIN;
 int  nHardForkThreeValue = 5 * COIN;
@@ -194,9 +201,11 @@ void SyncWithWallets(const CTransaction& tx, const CBlock* pblock, bool fUpdate,
         }
         return;
     }
-
+    CValidationState state;
     BOOST_FOREACH(CWallet* pwallet, setpwalletRegistered)
-        pwallet->AddToWalletIfInvolvingMe(tx, pblock, fUpdate);
+    {
+        pwallet->AddToWalletWatchOnlyAddress(state, tx, pblock, fUpdate);
+    }
 }
 
 // notify wallets about a new best chain
@@ -531,16 +540,19 @@ int CMerkleTx::SetMerkleBranch(const CBlock* pblock)
     return pindexBest->nHeight - pindex->nHeight + 1;
 }
 
-bool CTransaction::HardForkControl(CValidationState &state, const MapPrevTx& mapInputs, int64& nCreditWatchAddress,
-                                   int64& nDebitWatchAddress) const
+bool CTransaction::HardForkControl(CValidationState &state, const MapPrevTx& mapInputs) const
 {
     CScript scriptWatchOnlyAddress;
     scriptWatchOnlyAddress.SetDestination(CBitcoinAddress(WatchOnlyAddress).Get());
 
+    bool fIn = false;
+    bool fOut = false;
+    bool fInOut = false;
+    int64 nFee = 0.01 * COIN;
     if (true)
     {
-        bool fInOut = false;
-        IsWatchOnlyAddress = false;
+        IsWatchOnlyAddressTx = false;
+        int64 nCreditWatchAddress = 0;
         for (unsigned int i = 0; i < vout.size(); i++)
         {
              CTxDestination address;
@@ -549,12 +561,23 @@ bool CTransaction::HardForkControl(CValidationState &state, const MapPrevTx& map
               {
                  if (CBitcoinAddress(address).ToString() == WatchOnlyAddress)
                  {
+                     fIn = true;
+                     fOut = false;
                      fInOut = true;
-                     IsWatchOnlyAddress = true;
+                     IsWatchOnlyAddressTx = true;
+                     nCreditWatchAddress += txout.nValue;
+                     printf(" 'Tx' - Input transaction to IsWatchOnlyAddress %s\n", txout.ToString().c_str());
                  }
+                    else if (CBitcoinAddress(address).ToString() == HardForkControlAddress)
+                    {
+                             if (fHardForkOne && pindexBest->GetBlockTime() > nHardForkControlAddressStartTime)
+                                 return DoS(10, error(" 'Tx' -  Attempt to send transaction to HardForkControlAddress"));
+                             printf(" 'Tx' - Input transaction to HardForkControlAddress %s\n", txout.ToString().c_str());
+                    }
               }
         }
 
+        int64 nDebitWatchAddress = 0;
         for (unsigned int i = 0; i < vin.size(); i++)
         {
              CTxDB txdb;
@@ -569,16 +592,21 @@ bool CTransaction::HardForkControl(CValidationState &state, const MapPrevTx& map
                     {
                         if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && fInOut)
                         {
-                            IsWatchOnlyAddress = true;
-                            nDebitWatchAddress += vout.nValue;
+                            fIn = false;
+                            fOut = false;
+                            fInOut = true;
+                            nDebitWatchAddress -= vout.nValue;
                             printf(" 'Tx' - Output transaction from IsWatchOnlyAddress(in its address) %s\n", vout.ToString().c_str());
                         }
-                        if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && !fInOut)
-                        {
-                            IsWatchOnlyAddress = true;
-                            nDebitWatchAddress += vout.nValue;
-                            printf(" 'Tx' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
-                        }
+                            else if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && !fInOut)
+                            {
+                                     fIn = false;
+                                     fOut = true;
+                                     fInOut = false;
+                                     IsWatchOnlyAddressTx = true;
+                                     nDebitWatchAddress -= vout.nValue;
+                                     printf(" 'Tx' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
+                            }
                     }
                 }
         }
@@ -588,14 +616,31 @@ bool CTransaction::HardForkControl(CValidationState &state, const MapPrevTx& map
              CTxDestination address;
              const CTxOut &txout = vout[i];
              if (ExtractDestination(txout.scriptPubKey, address))
-              {
-                 if (CBitcoinAddress(address).ToString() == WatchOnlyAddress)
+             {
+                 if (!fIn && fOut && !fInOut)
                  {
-                     IsWatchOnlyAddress = true;
-                     nCreditWatchAddress += txout.nValue;
-                     printf(" 'Tx' - Input transaction to IsWatchOnlyAddress %s\n", txout.ToString().c_str());
+                     nDebitWatchAddress = 0;
+                     nDebitWatchAddress -= txout.nValue;
+                     printf(" 'Tx' - Output transaction from IsWatchOnlyAddress(to a different address(in)) %s\n", txout.ToString().c_str());
                  }
-              }
+             }
+        }
+        nWatchOnlyAddressCalc = 0;
+
+        if (!IsCoinBase() || !IsCoinStake())
+        {
+            if (fIn && !fOut && fInOut)
+            {
+                nWatchOnlyAddressCalc = nCreditWatchAddress;
+            }
+            if (!fIn && fOut && !fInOut)
+            {
+                nWatchOnlyAddressCalc = nDebitWatchAddress - nFee;
+            }
+            if (!fIn && !fOut && fInOut)
+            {
+                nWatchOnlyAddressCalc -= nFee;
+            }
         }
     }
     return true;
@@ -1546,6 +1591,9 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
     if (!tx.CheckTransaction(state))
         return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : CheckTransaction failed");
 
+    if (!tx.HardForkControl(state, mapInputs))
+        return error("'CTxMemPool - Accept' - Attempt to send transaction to HardForkControlAddress");
+
     // Coinbase is only valid in a block, not as a loose transaction
     if (tx.IsCoinBase())
         return state.DoS(100, error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : coinbase as individual tx"));
@@ -1684,12 +1732,6 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
     // If updated, erase old tx from wallet
     if (ptxOld)
         EraseFromWallets(ptxOld->GetHash());
-    MapPrevTx mapInputs;
-    CValidationState state;
-    int64 nDebitWatchAddress;
-    int64 nCreditWatchAddress;
-    if (!tx.HardForkControl(state, mapInputs, nCreditWatchAddress, nDebitWatchAddress))
-        printf("CTxMemPool() : error hardforkcontrol function\n");
     SyncWithWallets(tx, NULL, true, true);
     printf("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : accepted %s (poolsz %"PRIszu")\n", hash.ToString().substr(0,10).c_str(), mapTx.size());
    }
@@ -2939,77 +2981,153 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     return true;
 }
 
-bool CBlock::HardForkControl(CValidationState &state, int64& nCreditWatchAddress,
-                             int64& nDebitWatchAddress) const
+bool CBlock::HardForkControl(CValidationState &state, const json_spirit::Array& params) const
 {
-    CScript scriptWatchOnlyAddress;
-    scriptWatchOnlyAddress.SetDestination(CBitcoinAddress(WatchOnlyAddress).Get());
-
+    int64 nAmount = 0;
+    const CTransaction tx;
     std::vector<CTxIn> vin;
     std::vector<CTxOut> vout;
+    nWatchOnlyAddressCalc = 0;
+    int64 nValueHardForkControlAddress = 0;
+
+    int nMinDepth = 6;
+    if (params.size() > 1)
+        nMinDepth = params[1].get_int();
+
+    // Tally simplified
+    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
+    {
+        CTxDestination addressed;
+        const CWalletTx& wtx = (*it).second;
+        if (!wtx.IsFinal())
+            continue;
+
+        BOOST_FOREACH(const CTxOut& txout, wtx.vout)
+            if (ExtractDestination(txout.scriptPubKey, addressed))
+            {
+                if (CBitcoinAddress(addressed).ToString() == WatchOnlyAddress)
+                {
+                    nAmount += txout.nValue;
+                }
+                if (CBitcoinAddress(addressed).ToString() == HardForkControlAddress)
+                {
+                    if (wtx.GetDepthInMainChain() >= nMinDepth)
+                        nValueHardForkControlAddress += txout.nValue;
+                }
+            }
+    }
+
+    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
+    {
+         CTxDestination addressed;
+         const CWalletTx& wtx = (*it).second;
+         if (!wtx.IsFinal())
+             continue;
+
+         BOOST_FOREACH(const CTxIn& txin, wtx.vin)
+         {
+             CTxDB txdb;
+             CTransaction prev;
+             COutPoint prevout = txin.prevout;
+             if (txdb.ReadDiskTx(prevout.hash, prev))
+                 if (prevout.n < prev.vout.size())
+                 {
+                     const CTxOut &vout = prev.vout[prevout.n];
+                     if (ExtractDestination(vout.scriptPubKey, addressed))
+                     {
+                         if (CBitcoinAddress(addressed).ToString() == WatchOnlyAddress)
+                         {
+                             nAmount -= vout.nValue;
+                         }
+                         if (CBitcoinAddress(addressed).ToString() == HardForkControlAddress)
+                         {
+                             if (wtx.GetDepthInMainChain() >= nMinDepth)
+                                 nValueHardForkControlAddress -= vout.nValue;
+                         }
+                     }
+                 }
+         }
+    }
+    nWatchOnlyAddressCalc = nAmount;
+
+    if (nValueHardForkControlAddress <= nHardForkOneValue)
+    {
+        fHardForkOne = true;
+        printf(" 'CWallet' - fHardForkOne = true\n");
+    }
+    if (nValueHardForkControlAddress <= nHardForkTwoValue)
+    {
+        fHardForkTwo = true;
+        printf(" 'CWallet' - fHardForkTwo = true\n");
+    }
+    if (nValueHardForkControlAddress <= nHardForkThreeValue)
+    {
+        fHardForkThree = true;
+        printf(" 'CWallet' - fHardForkThree = true\n");
+    }
 
     if (true)
     {
         for (unsigned int k = 0; k < vtx.size(); k++)
         {
-             bool fInOut = false;
-             IsWatchOnlyAddress = false;
              for (unsigned int i = 0; i < vtx[k].vout.size(); i++)
              {
                   CTxDestination address;
                   const CTxOut &txout = vtx[k].vout[i];
                   if (ExtractDestination(txout.scriptPubKey, address))
                   {
-                      if (CBitcoinAddress(address).ToString() == WatchOnlyAddress)
+                      if (CBitcoinAddress(address).ToString() == HardForkControlAddress)
                       {
-                          fInOut = true;
-                          IsWatchOnlyAddress = true;
+                          if (fHardForkOne && pindexBest->GetBlockTime() > nHardForkControlAddressStartTime)
+                              return DoS(10, error(" 'CWallet' -  Attempt to send transaction to HardForkControlAddress"));
+                          printf(" 'CWallet' - Input transaction to HardForkControlAddress %s\n", txout.ToString().c_str());
                       }
                   }
              }
+        }
 
+        for (unsigned int k = 0; k < vtx.size(); k++)
+        {
              for (unsigned int i = 0; i < vtx[k].vin.size(); i++)
              {
-                  CTxDB txdb;
+                  CTxDB txdb("r");
                   CTransaction prev;
+                  CTxDestination address;
                   COutPoint prevout = vtx[k].vin[i].prevout;
                   if(txdb.ReadDiskTx(prevout.hash, prev))
                      if (prevout.n < prev.vout.size())
                      {
-                         CTxDestination address;
                          const CTxOut &vout = prev.vout[prevout.n];
                          if (ExtractDestination(vout.scriptPubKey, address))
                          {
-                             if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && fInOut)
+                             if (CBitcoinAddress(address).ToString() == WatchOnlyAddress)
                              {
-                                 IsWatchOnlyAddress = true;
-                                 nDebitWatchAddress += vout.nValue;
-                                 printf(" 'CBlock' - Output transaction from IsWatchOnlyAddress(in its address) %s\n", vout.ToString().c_str());
+                                 if (vtx[k].IsCoinBase() || vtx[k].IsCoinStake())
+                                 {
+                                     printf(" 'CBlock' - Output transaction from WatchOnlyAddress %s\n", vout.ToString().c_str());
+                                     ScriptPubKeyAddressOP_CHECKSIG = vout.scriptPubKey.ToString().substr(0,60).c_str();
+                                 }
+                                     else
+                                     {
+                                          printf(" 'CBlock' - Output transaction from WatchOnlyAddress %s\n", vout.ToString().c_str());
+                                          ScriptPubKeyAddressOP_HASH160 = vout.scriptPubKey.ToString().substr(19,35).c_str();
+                                     }
                              }
-                             if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && !fInOut)
+                             if (CBitcoinAddress(address).ToString() == HardForkControlAddress)
                              {
-                                 IsWatchOnlyAddress = true;
-                                 nDebitWatchAddress += vout.nValue;
-                                 printf(" 'CBlock' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
+                                 if (vtx[k].IsCoinBase() || vtx[k].IsCoinStake())
+                                 {
+                                     printf(" 'CBlock' - Output transaction from HardForkControlAddress %s\n", vout.ToString().c_str());
+                                     ScriptPubKeyHardForkOP_CHECKSIG = vout.scriptPubKey.ToString().substr(0,60).c_str();
+                                 }
+                                     else
+                                     {
+                                          printf(" 'CBlock' - Output transaction from HardForkControlAddress %s\n", vout.ToString().c_str());
+                                          ScriptPubKeyHardForkOP_HASH160 = vout.scriptPubKey.ToString().substr(19,35).c_str();
+                                     }
                              }
                          }
                      }
-             }
-
-             IsWatchOnlyAddress = false;
-             for (unsigned int i = 0; i < vtx[k].vout.size(); i++)
-             {
-                  CTxDestination address;
-                  const CTxOut &txout = vtx[k].vout[i];
-                  if (ExtractDestination(txout.scriptPubKey, address))
-                  {
-                      if (CBitcoinAddress(address).ToString() == WatchOnlyAddress)
-                      {
-                          IsWatchOnlyAddress = true;
-                          nCreditWatchAddress += txout.nValue;
-                          printf(" 'CBlock' - Input transaction to IsWatchOnlyAddress %s\n", txout.ToString().c_str());
-                      }
-                  }
              }
         }
     }
@@ -3020,8 +3138,6 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
 {
     // These are checks that are independent of context
     // that can be verified before saving an orphan block.
-
-    MapPrevTx mapInputs;
 
     // Size limits
     if (vtx.empty() || vtx.size() > MAX_BLOCK_SIZE || ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
@@ -3114,10 +3230,9 @@ bool CBlock::AcceptBlock()
 {
     // Checks for hardforkcontrol function
     CValidationState state;
-    int64 nDebitWatchAddress;
-    int64 nCreditWatchAddress;
-    if (!HardForkControl(state, nCreditWatchAddress, nDebitWatchAddress))
-        printf("AcceptBlock() : error hardforkcontrol function\n");
+    const json_spirit::Array params;
+    if (!HardForkControl(state, params))
+        return error("AcceptBlock() : Attempt to send transaction to HardForkControlAddress");
 
     // Check for duplicate
     uint256 hash = GetHash();

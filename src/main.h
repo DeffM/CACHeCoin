@@ -10,6 +10,7 @@
 #include "net.h"
 #include "script.h"
 #include "scrypt_mine.h"
+#include "json/json_spirit_utils.h"
 
 #include <list>
 
@@ -73,6 +74,7 @@ extern unsigned int nStakeMinAge;
 extern int nCoinbaseMaturity;
 extern int nBestHeight;
 extern int64 nBestHeightTime;
+extern int64 nWatchOnlyAddressCalc;
 extern CBigNum bnBestChainTrust;
 extern CBigNum bnBestInvalidTrust;
 extern uint256 nBestChainTrust;
@@ -80,7 +82,13 @@ extern uint256 nBestInvalidTrust;
 extern uint256 hashBestChain;
 extern CBlockIndex* pindexBest;
 extern std::string WatchOnlyAddress;
-extern bool IsWatchOnlyAddress;
+extern std::string HardForkControlAddress;
+extern std::string ScriptPubKeyHardForkOP_CHECKSIG;
+extern std::string ScriptPubKeyAddressOP_CHECKSIG;
+extern std::string ScriptPubKeyHardForkOP_HASH160;
+extern std::string ScriptPubKeyAddressOP_HASH160;
+extern bool IsWatchOnlyAddressVtx;
+extern bool IsWatchOnlyAddressTx;
 extern bool fImporting;
 extern bool fReindex;
 extern unsigned int nTransactionsUpdated;
@@ -635,8 +643,7 @@ public:
 
     /** HardForkControlFunction
     */
-    bool HardForkControl(CValidationState &state, const MapPrevTx& mapInputs, int64& nCreditWatchAddress,
-                         int64& nDebitWatchAddress) const;
+    bool HardForkControl(CValidationState &state, const MapPrevTx& mapInputs) const;
 
     /** Check for standard transaction types
         @param[in] mapInputs	Map of previous transactions that have outputs we're spending
@@ -1383,7 +1390,7 @@ public:
     }
 
 
-    bool HardForkControl(CValidationState &state, int64& nCreditWatchAddress, int64& nDebitWatchAddress) const;
+    bool HardForkControl(CValidationState &state, const json_spirit::Array& params) const;
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);

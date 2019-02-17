@@ -30,6 +30,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
     int64 nDebit = wtx.GetDebit();
     int64 nNet = nCredit - nDebit;
     uint256 hash = wtx.GetHash();
+    int64 nWatchAddressCalc = wtx.GetWatchOnlyAddressCalc(true);
     std::map<std::string, std::string> mapValue = wtx.mapValue;
 
     if (wtx.IsCoinStake() && nDebit > 0) // ppcoin: coinstake transaction
@@ -74,9 +75,9 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
             }
         }
     }
-    else if (nNet == 0 || IsWatchOnlyAddress)
+    else if (nNet == 0 || IsWatchOnlyAddressVtx)
     {
-             parts.append(TransactionRecord(hash, nTime, TransactionRecord::WatchOnlyAddress, "WatchOnlyAddress", nNet, 0));
+             parts.append(TransactionRecord(hash, nTime, TransactionRecord::WatchOnlyAddress, "WatchOnlyAddress", 0, nWatchAddressCalc));
     }
     else
     {
