@@ -779,9 +779,9 @@ public:
 
     bool ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const std::map<uint256,
                                CTxIndex>& mapTestPool, const CBlockIndex* pindexBlock, bool fBlock,
-                               bool fMiner, MapPrevTx& inputsRet, bool& fInvalid, bool fScriptChecks=true,
-                               std::vector<CScriptCheck> *pvChecks = NULL, unsigned int flags=STRICT_FLAGS |
-                               SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC);
+                               bool fMiner, bool fTxOnly, MapPrevTx& inputsRet, bool& fInvalid,
+                               bool fScriptChecks=true, std::vector<CScriptCheck> *pvChecks = NULL,
+                               unsigned int flags=STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) const;
 
 
     /** Sanity check previous transactions, then, if all checks succeed,
@@ -805,7 +805,6 @@ public:
                              SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, std::vector<CScriptCheck> *pvChecks = NULL,
                              bool fStrictPayToScriptHash=true);
     bool ClientConnectInputs();
-    bool CheckTransaction(CValidationState &state) const;
     bool ThreadAnalyzerHandlerToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
                                            bool fLimitFree=true, bool* pfMissingInputs=NULL);
     bool AcceptToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,

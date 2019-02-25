@@ -646,60 +646,6 @@ bool CTransaction::HardForkControl(CValidationState &state, const MapPrevTx& map
     return true;
 }
 
-bool CTransaction::CheckTransaction(CValidationState &state) const
-{
-    // Basic checks that don't depend on any context
-    if (vin.empty())
-        return state.DoS(10, error("CTransaction::CheckTransaction() : vin empty"));
-    if (vout.empty())
-        return state.DoS(10, error("CTransaction::CheckTransaction() : vout empty"));
-    // Size limits
-    if (::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
-        return state.DoS(100, error("CTransaction::CheckTransaction() : size limits failed"));
-
-    // Check for negative or overflow output values
-    int64 nValueOut = 0;
-    for (unsigned int i = 0; i < vout.size(); i++)
-    {
-        const CTxOut& txout = vout[i];
-        if (txout.IsEmpty() && !IsCoinBase() && !IsCoinStake())
-            return state.DoS(100, error("CTransaction::CheckTransaction() : txout empty for user transaction"));
-        if (txout.nValue < 0)
-            return state.DoS(100, error("CTransaction::CheckTransaction() : txout.nValue is negative"));
-        // ppcoin: enforce minimum output amount
-        if ((!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
-            return state.DoS(100, error("CTransaction::CheckTransaction() : txout.nValue below minimum"));
-        if (txout.nValue > MAX_MONEY)
-            return state.DoS(100, error("CTransaction::CheckTransaction() : txout.nValue too high"));
-        nValueOut += txout.nValue;
-        if (!MoneyRange(nValueOut))
-            return state.DoS(100, error("CTransaction::CheckTransaction() : txout total out of range"));
-    }
-
-    // Check for duplicate inputs
-    set<COutPoint> vInOutPoints;
-    BOOST_FOREACH(const CTxIn& txin, vin)
-    {
-        if (vInOutPoints.count(txin.prevout))
-            return false;
-        vInOutPoints.insert(txin.prevout);
-    }
-
-    if (IsCoinBase())
-    {
-        if (vin[0].scriptSig.size() < 2 || vin[0].scriptSig.size() > 100)
-            return state.DoS(100, error("CTransaction::CheckTransaction() : coinbase script size"));
-    }
-    else
-    {
-        BOOST_FOREACH(const CTxIn& txin, vin)
-            if (txin.prevout.IsNull())
-                return state.DoS(10, error("CTransaction::CheckTransaction() : prevout is null"));
-    }
-
-    return true;
-}
-
 int64 CTransaction::GetMinFee(unsigned int nBlockSize, bool fAllowFree,
                               enum GetMinFee_mode mode, unsigned int nBytes) const
 {
@@ -1584,11 +1530,17 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
                                        bool* pfMissingInputs)
 {
     MapPrevTx mapInputs;
+    bool fInvalid = false;
+    bool fScriptChecks = true;
+    map<uint256, CTxIndex> mapUnused;
+    std::vector<CScriptCheck> vChecks;
 
     if (pfMissingInputs)
         *pfMissingInputs = false;
 
-    if (!tx.CheckTransaction(state))
+    if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
+                                  fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
+                                  STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
         return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : CheckTransaction failed");
 
     if (!tx.HardForkControl(state, mapInputs))
@@ -1654,7 +1606,7 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
         bool fScriptChecks = true;
         map<uint256, CTxIndex> mapUnused;
         std::vector<CScriptCheck> vChecks;
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, mapInputs, fInvalid,
+        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
                                       fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                       SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
         {
@@ -1707,7 +1659,7 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
 
         // Check against previous transactions
         // This is done last to help prevent CPU exhaustion denial-of-service attacks.
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, mapInputs, fInvalid,
+        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
                                       fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                       SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
         {
@@ -1776,9 +1728,9 @@ unsigned char SpamHashList()
 }
 
 bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const map<uint256, CTxIndex>& mapTestPool,
-                                         const CBlockIndex* pindexBlock, bool fBlock, bool fMiner, MapPrevTx& inputsRet,
+                                         const CBlockIndex* pindexBlock, bool fBlock, bool fMiner, bool fTxOnly, MapPrevTx& inputsRet,
                                          bool& fInvalid, bool fScriptChecks, std::vector<CScriptCheck> *pvChecks,
-                                         unsigned int flags)
+                                         unsigned int flags) const
 {
      // Basic checks that don't depend on any context
     if (vin.empty())
@@ -1869,6 +1821,8 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
                 return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : prevout is null"));
             }
     }
+    if (fTxOnly)
+        return true;
 
     fInvalid = false;
 
@@ -2512,7 +2466,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
         else
         {
             bool fInvalid;
-            if (!tx.ThreadAnalyzerHandler(state, txdb, mapQueuedChanges, 0, true, false, mapInputs, fInvalid,
+            if (!tx.ThreadAnalyzerHandler(state, txdb, mapQueuedChanges, 0, true, false, false, mapInputs, fInvalid,
                                           fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                           SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
                 return false;
@@ -3053,17 +3007,17 @@ bool CBlock::HardForkControl(CValidationState &state, const json_spirit::Array& 
     if (nValueHardForkControlAddress <= nHardForkOneValue)
     {
         fHardForkOne = true;
-        printf(" 'CWallet' - fHardForkOne = true\n");
+        printf(" 'CBlock' - fHardForkOne = true\n");
     }
     if (nValueHardForkControlAddress <= nHardForkTwoValue)
     {
         fHardForkTwo = true;
-        printf(" 'CWallet' - fHardForkTwo = true\n");
+        printf(" 'CBlock' - fHardForkTwo = true\n");
     }
     if (nValueHardForkControlAddress <= nHardForkThreeValue)
     {
         fHardForkThree = true;
-        printf(" 'CWallet' - fHardForkThree = true\n");
+        printf(" 'CBlock' - fHardForkThree = true\n");
     }
 
     if (true)
@@ -3079,8 +3033,8 @@ bool CBlock::HardForkControl(CValidationState &state, const json_spirit::Array& 
                       if (CBitcoinAddress(address).ToString() == HardForkControlAddress)
                       {
                           if (fHardForkOne && pindexBest->GetBlockTime() > nHardForkControlAddressStartTime)
-                              return DoS(10, error(" 'CWallet' -  Attempt to send transaction to HardForkControlAddress"));
-                          printf(" 'CWallet' - Input transaction to HardForkControlAddress %s\n", txout.ToString().c_str());
+                              return DoS(10, error(" 'CBlock' -  Attempt to send transaction to HardForkControlAddress"));
+                          printf(" 'CBlock' - Input transaction to HardForkControlAddress %s\n", txout.ToString().c_str());
                       }
                   }
              }
@@ -3139,6 +3093,13 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
     // These are checks that are independent of context
     // that can be verified before saving an orphan block.
 
+    CTxDB txdb;
+    MapPrevTx mapInputs;
+    bool fInvalid = false;
+    bool fScriptChecks = true;
+    map<uint256, CTxIndex> mapUnused;
+    std::vector<CScriptCheck> vChecks;
+
     // Size limits
     if (vtx.empty() || vtx.size() > MAX_BLOCK_SIZE || ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
         return DoS(100, error("CheckBlock() : size limits failed"));
@@ -3189,7 +3150,9 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
     // Check transactions
     BOOST_FOREACH(const CTransaction& tx, vtx)
     {
-        if (!tx.CheckTransaction(state))
+        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, true, mapInputs, fInvalid,
+                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
+                                      STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
             return DoS(tx.nDoS, error("CheckBlock() : CheckTransaction failed"));
 
         // ppcoin: check transaction timestamp
@@ -4749,9 +4712,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         std::vector<CScriptCheck> vChecks;
         bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, mapInputs, fInvalid,
-            fScriptChecks, nScriptCheckThreads ? &vChecks : NULL) || !tx.ThreadAnalyzerHandlerToMemoryPool(
-            state, txdb, true, true, &fMissingInputs))
+        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
+                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
+                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||
+            !tx.ThreadAnalyzerHandlerToMemoryPool(state, txdb, true, true, &fMissingInputs))
         {
             SpamHashList();
             printf("strCommand 'tx' - The executor of the rules performed the work\n");
@@ -5683,7 +5647,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
             CValidationState state;
             MapPrevTx mapInputs;
             bool fInvalid;
-            if (!tx.ThreadAnalyzerHandler(state, txdb, mapTestPoolTmp, 0, false, true, mapInputs, fInvalid,
+            if (!tx.ThreadAnalyzerHandler(state, txdb, mapTestPoolTmp, 0, false, true, false, mapInputs, fInvalid,
                                           fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                           SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
                 continue;

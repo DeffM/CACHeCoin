@@ -499,12 +499,12 @@ Value getblocktemplate(const Array& params, bool fHelp)
         entry.push_back(Pair("hash", txHash.GetHex()));
 
         MapPrevTx mapInputs;
-        CValidationState state;
-        map<uint256, CTxIndex> mapUnused;
         bool fInvalid = false;
+        CValidationState state;
         bool fScriptChecks = true;
+        map<uint256, CTxIndex> mapUnused;
         std::vector<CScriptCheck> vChecks;
-        if (tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, mapInputs, fInvalid,
+        if (tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
         {

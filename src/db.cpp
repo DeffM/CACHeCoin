@@ -641,6 +641,13 @@ CBlockIndex static * InsertBlockIndex(uint256 hash)
 
 bool CTxDB::LoadBlockIndex()
 {
+    CTxDB txdb;
+    MapPrevTx mapInputs;
+    bool fInvalid = false;
+    bool fScriptChecks = true;
+    map<uint256, CTxIndex> mapUnused;
+    std::vector<CScriptCheck> vChecks;
+
     if (!LoadBlockIndexGuts())
         return false;
 
@@ -766,7 +773,9 @@ bool CTxDB::LoadBlockIndex()
                                         printf("LoadBlockIndex(): *** cannot read spending transaction of %s:%i from disk\n", hashTx.ToString().c_str(), nOutput);
                                         pindexFork = pindex->pprev;
                                     }
-                                    else if (!txSpend.CheckTransaction(state))
+                                    else if (!txSpend.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, true, mapInputs, fInvalid,
+                                                                            fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
+                                                                            STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
                                     {
                                         printf("LoadBlockIndex(): *** spending transaction of %s:%i is invalid\n", hashTx.ToString().c_str(), nOutput);
                                         pindexFork = pindex->pprev;

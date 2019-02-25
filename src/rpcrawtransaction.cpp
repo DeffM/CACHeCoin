@@ -350,7 +350,7 @@ Value signrawtransaction(const Array& params, bool fHelp)
 
         // FetchInputs aborts on failure, so we go one at a time.
         tempTx.vin.push_back(mergedTx.vin[i]);
-        tempTx.ThreadAnalyzerHandler(state, txdb, unused, 0, false, false, mapPrevTx, fInvalid,
+        tempTx.ThreadAnalyzerHandler(state, txdb, unused, 0, false, false, false, mapPrevTx, fInvalid,
                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC);
 

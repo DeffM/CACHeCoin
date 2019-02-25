@@ -1040,8 +1040,16 @@ void CWallet::ResendWalletTransactions()
         BOOST_FOREACH(PAIRTYPE(const unsigned int, CWalletTx*)& item, mapSorted)
         {
             CWalletTx& wtx = *item.second;
+            CTxDB txdb;
+            MapPrevTx mapInputs;
+            bool fInvalid = false;
             CValidationState state;
-            if (wtx.CheckTransaction(state))
+            bool fScriptChecks = true;
+            map<uint256, CTxIndex> mapUnused;
+            std::vector<CScriptCheck> vChecks;
+            if (wtx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, true, mapInputs, fInvalid,
+                                          fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
+                                          STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
                 wtx.RelayWalletTransaction(txdb);
             else
                 printf("ResendWalletTransactions() : CheckTransaction failed for transaction %s\n", wtx.GetHash().ToString().c_str());
