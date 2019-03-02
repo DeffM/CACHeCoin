@@ -372,24 +372,30 @@ bool CTransaction::IsStandardCach(string& strReason) const
             strReason = "scriptsig-not-pushonly";
             return false;
         }
-        if (!txin.scriptSig.HasCanonicalPushes()) {
+        if (!txin.scriptSig.HasCanonicalPushes())
+        {
             strReason = "txin-scriptsig-not-canonicalpushes";
             return false;
         }
     }
-    BOOST_FOREACH(const CTxOut& txout, vout) {
-        if (!::IsStandardCach(txout.scriptPubKey, whichType)) {
+    BOOST_FOREACH(const CTxOut& txout, vout)
+    {
+        if (!::IsStandardCach(txout.scriptPubKey, whichType))
+        {
             strReason = "scriptpubkey";
             return false;
         }
         if (whichType == TX_NULL_DATA)
             nDataOut++;
-        else {
-            if (txout.nValue == 0) {
+        else
+        {
+            if (txout.nValue == 0)
+            {
                 strReason = "txout-value=0";
                 return false;
             }
-            if (!txout.scriptPubKey.HasCanonicalPushes()) {
+            if (!txout.scriptPubKey.HasCanonicalPushes())
+            {
                 strReason = "txout-scriptsig-not-canonicalpushes";
                 return false;
             }
@@ -397,7 +403,8 @@ bool CTransaction::IsStandardCach(string& strReason) const
     }
 
     // only one OP_RETURN txout is permitted
-    if (nDataOut > 1) {
+    if (nDataOut > 1)
+    {
         strReason = "multi-op-return";
         return false;
     }
@@ -700,7 +707,8 @@ bool CTransaction::ThreadAnalyzerHandlerToMemoryPool(CValidationState &state, CT
     try
     {
         return mempool.ThreadAnalyzerHandler(state, txdb, *this, fCheckInputs, fLimitFree, pfMissingInputs);
-    } catch(std::runtime_error &e)
+    }
+    catch(std::runtime_error &e)
     {
         return state.Abort(_("System error: ") + e.what());
     }
@@ -713,7 +721,7 @@ bool CTxMemPool::addUnchecked(const uint256& hash, CTransaction &tx)
     {
         mapTx[hash] = tx;
         for (unsigned int i = 0; i < tx.vin.size(); i++)
-            mapNextTx[tx.vin[i].prevout] = CInPoint(&mapTx[hash], i);
+             mapNextTx[tx.vin[i].prevout] = CInPoint(&mapTx[hash], i);
         nTransactionsUpdated++;
     }
     return true;
@@ -777,7 +785,7 @@ void CTxMemPool::queryHashes(std::vector<uint256>& vtxid)
     LOCK(cs);
     vtxid.reserve(mapTx.size());
     for (map<uint256, CTransaction>::iterator mi = mapTx.begin(); mi != mapTx.end(); ++mi)
-        vtxid.push_back((*mi).first);
+         vtxid.push_back((*mi).first);
 }
 
 int CMerkleTx::GetDepthInMainChain(CBlockIndex* &pindexRet) const
@@ -898,9 +906,9 @@ CBlockIndex* FindBlockByHeight(int nHeight)
     if (pblockindexFBBHLast && abs(nHeight - pblockindex->nHeight) > abs(nHeight - pblockindexFBBHLast->nHeight))
         pblockindex = pblockindexFBBHLast;
     while (pblockindex->nHeight > nHeight)
-        pblockindex = pblockindex->pprev;
+           pblockindex = pblockindex->pprev;
     while (pblockindex->nHeight < nHeight)
-        pblockindex = pblockindex->pnext;
+           pblockindex = pblockindex->pnext;
     pblockindexFBBHLast = pblockindex;
     return pblockindex;
 }
@@ -923,7 +931,7 @@ uint256 static GetOrphanRoot(const CBlock* pblock)
 {
     // Work back to the first block in the orphan chain
     while (mapOrphanBlocks.count(pblock->hashPrevBlock))
-        pblock = mapOrphanBlocks[pblock->hashPrevBlock];
+           pblock = mapOrphanBlocks[pblock->hashPrevBlock];
     return pblock->GetHash();
 }
 
@@ -987,19 +995,19 @@ static const int64 nTargetTimespanPos = nTargetSpacingWorkMaxPos * 6 * 12; // 51
 const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfStake)
 {
     while (pindex && pindex->pprev && (pindex->IsProofOfStake() != fProofOfStake))
-        pindex = pindex->pprev;
+           pindex = pindex->pprev;
     return pindex;
 }
 const CBlockIndex* GetLastBlockIndexPow(const CBlockIndex* powpindex, bool fProofOfWork)
 {
     while (powpindex && powpindex->pprev && (powpindex->IsProofOfWork() == fProofOfWork))
-        powpindex = powpindex->pprev;
+           powpindex = powpindex->pprev;
     return powpindex;
 }
 const CBlockIndex* GetLastBlockIndexPos(const CBlockIndex* pospindex, bool fProofOfStake)
 {
     while (pospindex && pospindex->pprev && (pospindex->IsProofOfStake() != fProofOfStake))
-        pospindex = pospindex->pprev;
+           pospindex = pospindex->pprev;
     return pospindex;
 }
 
@@ -1310,13 +1318,10 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
         // Proof-of-Stake blocks has own target limit since nVersion=3 supermajority on mainNet and always on testNet
         if(fTestNet)
             bnTargetLimit = bnProofOfStakeHardLimit;
-        else
-        {
- /*            if(fTestNet || (pindexLast->nHeight + 1 > 15000))
-                bnTargetLimit = bnProofOfStakeLimit;
-            else if(pindexLast->nHeight + 1 > 14060)*/ // DIFF
+            else
+             {
                 bnTargetLimit = bnProofOfStakeHardLimit;
-        }
+             }
     }
     if (pindexLast == NULL)
         return bnTargetLimit.GetCompact(); // genesis block
@@ -1435,9 +1440,9 @@ unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
     bnResult *= 2;
     while (nTime > 0 && bnResult < bnTargetLimit)
     {
-        // Maximum 200% adjustment per day...
-        bnResult *= 2;
-        nTime -= 24 * 60 * 60;
+           // Maximum 200% adjustment per day...
+           bnResult *= 2;
+           nTime -= 24 * 60 * 60;
     }
     if (bnResult > bnTargetLimit)
         bnResult = bnTargetLimit;
@@ -1471,10 +1476,13 @@ void ThreadAnalyzerHandlerInit(void* parg)
         ThreadAnalyzerHandlerInit(parg);
         vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
     }
-    catch (std::exception& e) {
+    catch (std::exception& e)
+    {
         vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
         PrintException(&e, "ThreadAnalyzerHandler()");
-    } catch (...) {
+    }
+    catch (...)
+    {
         vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
         throw; // support pthread_cancel()
     }
@@ -2389,14 +2397,16 @@ bool CBlock::DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex)
 
 static CCheckQueue<CScriptCheck> scriptcheckqueue(128);
 
-void ThreadScriptCheck(void*) {
+void ThreadScriptCheck(void*)
+{
     vnThreadsRunning[THREAD_SCRIPTCHECK]++;
     RenameThread("cachecoin-scriptch");
     scriptcheckqueue.Thread();
     vnThreadsRunning[THREAD_SCRIPTCHECK]--;
 }
 
-void ThreadScriptCheckQuit() {
+void ThreadScriptCheckQuit()
+{
     scriptcheckqueue.Quit();
 }
 
@@ -2441,9 +2451,11 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     {
         uint256 hashTx = tx.GetHash();
 
-        if (fEnforceBIP30) {
+        if (fEnforceBIP30)
+        {
             CTxIndex txindexOld;
-            if (txdb.ReadTxIndex(hashTx, txindexOld)) {
+            if (txdb.ReadTxIndex(hashTx, txindexOld))
+            {
                 BOOST_FOREACH(CDiskTxPos &pos, txindexOld.vSpent)
                     if (pos.IsNull())
                         return false;
@@ -3007,17 +3019,17 @@ bool CBlock::HardForkControl(CValidationState &state, const json_spirit::Array& 
     if (nValueHardForkControlAddress <= nHardForkOneValue)
     {
         fHardForkOne = true;
-        printf(" 'CBlock' - fHardForkOne = true\n");
+        //printf(" 'CBlock' - fHardForkOne = true\n");
     }
     if (nValueHardForkControlAddress <= nHardForkTwoValue)
     {
         fHardForkTwo = true;
-        printf(" 'CBlock' - fHardForkTwo = true\n");
+        //printf(" 'CBlock' - fHardForkTwo = true\n");
     }
     if (nValueHardForkControlAddress <= nHardForkThreeValue)
     {
         fHardForkThree = true;
-        printf(" 'CBlock' - fHardForkThree = true\n");
+        //printf(" 'CBlock' - fHardForkThree = true\n");
     }
 
     if (true)
@@ -3638,7 +3650,9 @@ uint256 CPartialMerkleTree::CalcHash(int height, unsigned int pos, const std::ve
     if (height == 0) {
         // hash at height 0 is the txids themself
         return vTxid[pos];
-    } else {
+    }
+    else
+    {
         // calculate left hash
         uint256 left = CalcHash(height-1, pos*2, vTxid), right;
         // calculate right hash if not beyong the end of the array - copy left hash otherwise1
@@ -3658,10 +3672,13 @@ void CPartialMerkleTree::TraverseAndBuild(int height, unsigned int pos, const st
         fParentOfMatch |= vMatch[p];
     // store as flag bit
     vBits.push_back(fParentOfMatch);
-    if (height==0 || !fParentOfMatch) {
+    if (height==0 || !fParentOfMatch)
+    {
         // if at height 0, or nothing interesting below, store hash and stop
         vHash.push_back(CalcHash(height, pos, vTxid));
-    } else {
+    }
+    else
+    {
         // otherwise, don't store any hash, but descend into the subtrees
         TraverseAndBuild(height-1, pos*2, vTxid, vMatch);
         if (pos*2+1 < CalcTreeWidth(height-1))
@@ -3670,15 +3687,18 @@ void CPartialMerkleTree::TraverseAndBuild(int height, unsigned int pos, const st
 }
 
 uint256 CPartialMerkleTree::TraverseAndExtract(int height, unsigned int pos, unsigned int &nBitsUsed, unsigned int &nHashUsed, std::vector<uint256> &vMatch) {
-    if (nBitsUsed >= vBits.size()) {
+    if (nBitsUsed >= vBits.size())
+    {
         // overflowed the bits array - failure
         fBad = true;
         return 0;
     }
     bool fParentOfMatch = vBits[nBitsUsed++];
-    if (height==0 || !fParentOfMatch) {
+    if (height==0 || !fParentOfMatch)
+    {
         // if at height 0, or nothing interesting below, use stored hash and do not descend
-        if (nHashUsed >= vHash.size()) {
+        if (nHashUsed >= vHash.size())
+        {
             // overflowed the hash array - failure
             fBad = true;
             return 0;
@@ -3687,7 +3707,9 @@ uint256 CPartialMerkleTree::TraverseAndExtract(int height, unsigned int pos, uns
         if (height==0 && fParentOfMatch) // in case of height 0, we have a matched txid
             vMatch.push_back(hash);
         return hash;
-    } else {
+    }
+    else
+    {
         // otherwise, descend into the subtrees to extract matched txids and hashes
         uint256 left = TraverseAndExtract(height-1, pos*2, nBitsUsed, nHashUsed, vMatch), right;
         if (pos*2+1 < CalcTreeWidth(height-1))
@@ -3715,7 +3737,8 @@ CPartialMerkleTree::CPartialMerkleTree(const std::vector<uint256> &vTxid, const 
 
 CPartialMerkleTree::CPartialMerkleTree() : nTransactions(0), fBad(true) {}
 
-uint256 CPartialMerkleTree::ExtractMatches(std::vector<uint256> &vMatch) {
+uint256 CPartialMerkleTree::ExtractMatches(std::vector<uint256> &vMatch)
+{
     vMatch.clear();
     // An empty set will not work
     if (nTransactions == 0)
@@ -3748,7 +3771,8 @@ uint256 CPartialMerkleTree::ExtractMatches(std::vector<uint256> &vMatch) {
     return hashMerkleRoot;
 }
 
-bool AbortNode(const std::string &strMessage) {
+bool AbortNode(const std::string &strMessage)
+{
     strMiscWarning = strMessage;
     printf("*** %s\n", strMessage.c_str());
     uiInterface.ThreadSafeMessageBox(strMessage, "", CClientUIInterface::OK | CClientUIInterface::MODAL);
@@ -4060,7 +4084,8 @@ bool LoadExternalBlockFile(FILE* fileIn, CDiskBlockPos *dbp)
                 }
             }
         }
-        catch (const std::exception&) {
+        catch (const std::exception&)
+        {
             printf("%s() : Deserialize or I/O error caught during load\n",
                    BOOST_CURRENT_FUNCTION);
         }
@@ -4255,14 +4280,17 @@ void static ProcessGetData(CNode* pfrom)
                 {
                     LOCK(cs_mapRelay);
                     map<CInv, CDataStream>::iterator mi = mapRelay.find(inv);
-                    if (mi != mapRelay.end()) {
+                    if (mi != mapRelay.end())
+                    {
                         pfrom->PushMessage(inv.GetCommand(), (*mi).second);
                         pushed = true;
                     }
                 }
-                if (!pushed && inv.type == MSG_TX) {
+                if (!pushed && inv.type == MSG_TX)
+                {
                     LOCK(mempool.cs);
-                    if (mempool.exists(inv.hash)) {
+                    if (mempool.exists(inv.hash))
+                    {
                         CTransaction tx = mempool.lookup(inv.hash);
                         CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
                         ss.reserve(1000);
@@ -4286,7 +4314,8 @@ void static ProcessGetData(CNode* pfrom)
 
     pfrom->vRecvGetData.erase(pfrom->vRecvGetData.begin(), it);
 
-    if (!vNotFound.empty()) {
+    if (!vNotFound.empty())
+    {
         // Let the peer know that we didn't find what it asked for, so it doesn't
         // have to wait around forever. Currently only SPV clients actually care
         // about this message: it's needed when they are recursively walking the
@@ -4307,7 +4336,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     //static map<CService, CPubKey> mapReuseKey;
     RandAddSeedPerfmon();
-    if (fDebug) {
+    if (fDebug)
+    {
         printf("%s ", DateTimeStrFormat(GetTime()).c_str());
         printf("received: %s (%" PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
     }
@@ -4347,7 +4377,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             pfrom->nVersion = 300;
         if (!vRecv.empty())
             vRecv >> addrFrom >> nNonce;
-        if (!vRecv.empty()) {
+        if (!vRecv.empty())
+        {
             vRecv >> pfrom->strSubVer;
             pfrom->cleanSubVer = SanitizeString(pfrom->strSubVer);
         }
@@ -4888,7 +4919,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                         alert.RelayTo(pnode);
                 }
             }
-            else {
+            else
+            {
                 // Small DoS penalty so peers that send us lots of
                 // duplicate/expired/invalid-signature/whatever alerts
                 // eventually get banned.
@@ -4943,7 +4975,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (vData.size() > MAX_SCRIPT_ELEMENT_SIZE)
         {
             pfrom->Misbehaving(100);
-        } else {
+        }
+        else
+        {
             LOCK(pfrom->cs_filter);
             if (pfrom->pfilter)
                 pfrom->pfilter->insert(vData);
@@ -5097,12 +5131,16 @@ bool ProcessMessages(CNode* pfrom)
                 PrintExceptionContinue(&e, "ProcessMessages()");
             }
         }
-        catch (boost::thread_interrupted) {
+        catch (boost::thread_interrupted)
+        {
             throw;
         }
-        catch (std::exception& e) {
+        catch (std::exception& e)
+        {
             PrintExceptionContinue(&e, "ProcessMessages()");
-        } catch (...) {
+        }
+        catch (...)
+        {
             PrintExceptionContinue(NULL, "ProcessMessages()");
         }
 
@@ -5129,7 +5167,8 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
 
         // Keep-alive ping. We send a nonce of zero because we don't use it anywhere
         // right now.
-        if (pto->nLastSend && GetTime() - pto->nLastSend > 30 * 60 && pto->vSendMsg.empty()) {
+        if (pto->nLastSend && GetTime() - pto->nLastSend > 30 * 60 && pto->vSendMsg.empty())
+        {
             uint64 nonce = 0;
             if (pto->nVersion > BIP0031_VERSION)
                 pto->PushMessage("ping", nonce);
@@ -5138,7 +5177,8 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         }
 
         // Start block sync
-        if (pto->fStartSync && !fImporting && !fReindex) {
+        if (pto->fStartSync && !fImporting && !fReindex)
+        {
             pto->fStartSync = false;
             pto->PushGetBlocks(pindexBest, uint256(0));
         }
@@ -5503,7 +5543,8 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
             nLastCoinStakeSearchTime = nSearchTime;
         }
      }
-     pblock->nBits = GetNextTargetRequired(pindexPrev, pblock->IsProofOfStake());
+
+    pblock->nBits = GetNextTargetRequired(pindexPrev, pblock->IsProofOfStake());
     }
 
     // Collect memory pool transactions into the block
@@ -5958,7 +5999,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBloc
                     assert(result == pblock->GetHash());
                     if (!pblock->SignBlock(*pwalletMain))
                     {
-//                        strMintWarning = strMintMessage;
+                        //strMintWarning = strMintMessage;
                         break;
                     }
                     strMintWarning = "";
@@ -6128,11 +6169,16 @@ void static ThreadStakeMinterCach(void* parg)
     {
         BitcoinMinerPos(pwallet, true, true);
     }
-    catch (boost::thread_interrupted) {
+    catch (boost::thread_interrupted)
+    {
         printf("stakemintercach thread interrupt\n");
-    } catch (std::exception& e) {
+    }
+    catch (std::exception& e)
+    {
         PrintException(&e, "ThreadStakeMinterCach()");
-    } catch (...) {
+    }
+    catch (...)
+    {
         PrintException(NULL, "ThreadStakeMinterCach()");
     }
     nSetMetFull = 0;
@@ -6150,11 +6196,16 @@ void static ThreadStakeMinterInit(void* parg)
     {
         BitcoinMinerPos(pwallet, true, true);
     }
-    catch (boost::thread_interrupted) {
+    catch (boost::thread_interrupted)
+    {
         printf("stakeminterinit thread interrupt\n");
-    } catch (std::exception& e) {
+    }
+    catch (std::exception& e)
+    {
         PrintException(&e, "ThreadStakeMinterInit()");
-    } catch (...) {
+    }
+    catch (...)
+    {
         PrintException(NULL, "ThreadStakeMinterInit()");
     }
     nSetMetFull = 0;
@@ -6183,10 +6234,13 @@ void static ThreadBitcoinMiner(void* parg)
         BitcoinMiner(pwallet, false);
         vnThreadsRunning[THREAD_MINER]--;
     }
-    catch (std::exception& e) {
+    catch (std::exception& e)
+    {
         vnThreadsRunning[THREAD_MINER]--;
         PrintException(&e, "ThreadBitcoinMiner()");
-    } catch (...) {
+    }
+    catch (...)
+    {
         vnThreadsRunning[THREAD_MINER]--;
         PrintException(NULL, "ThreadBitcoinMiner()");
     }
