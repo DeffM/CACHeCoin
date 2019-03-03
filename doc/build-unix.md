@@ -21,18 +21,18 @@ $ sudo apt-get install libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev qttools5
 ```
 
 Set USE_QRCODE to control this:
- USE_QRCODE=0   (the default) No QRCode support - libqrcode not required
- USE_QRCODE=1   QRCode support enabled
+USE_QRCODE=0   (the default) No QRCode support - libqrcode not required
+USE_QRCODE=1   QRCode support enabled
 
 Set USE_UPNP to a different value to control this:
- USE_UPNP=-    No UPnP support - miniupnp not required
- USE_UPNP=0    (the default) UPnP support turned off by default at runtime
- USE_UPNP=1    UPnP support turned on by default at runtime
+USE_UPNP=-    No UPnP support - miniupnp not required
+USE_UPNP=0    (the default) UPnP support turned off by default at runtime
+USE_UPNP=1    UPnP support turned on by default at runtime
 
 Set USE_IPV6 to a different value to control this:
- USE_IPV6=-    No IPV6 support
- USE_IPV6=0    (the default) IPV6 support turned off by default at runtime
- USE_IPV6=1    IPV6 support turned on by default at runtime
+USE_IPV6=-    No IPV6 support
+USE_IPV6=0    (the default) IPV6 support turned off by default at runtime
+USE_IPV6=1    IPV6 support turned on by default at runtime
 
 ##### build CACHE-Project-qt
 ```bash
