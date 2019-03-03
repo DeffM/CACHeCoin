@@ -5,7 +5,7 @@ Specifications
 ==============
 
 
-
+* Abbreviation - "CACHE"
 * Scrypt Jane mining algorithm - Nf 19
 * Two consensuses mechanism - Proof of Work & Proof of Stake
 * Preferred consensus device - CPU
@@ -16,7 +16,7 @@ Specifications
 * Block time Proof of Stake - 10 minutes
 * Difficulty adjustment - each block according to the results of three intervals
 * Spam-Hash control function added
-* Subsidy algorithm modified - proportional to the difficulty (min 40 CACHE, max 80 CACHE)
+* Subsidy algorithm modified - proportional to the difficulty (min 40 "CACHE", max 80 "CACHE")
 * Block maturity - 520 confirms
 * Transaction maturity - 6 confirmations
 * Coin age to Stake - 7 days
