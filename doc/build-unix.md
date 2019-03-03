@@ -1,5 +1,6 @@
-Copyright (c) 2018-2019 'CACHE'Project Developers
-Copyright (c) 2009-2014 Bitcoin Developers
+* Copyright (c) 2018-2019 'CACHE'Project Developers
+* Copyright (c) 2009-2014 Bitcoin Developers
+
 
 
 UNIX BUILD NOTES
