@@ -81,7 +81,7 @@ std::string CUnsignedAlert::ToString() const
 
 void CUnsignedAlert::print() const
 {
-    printf("%s", ToString().c_str());
+    printf("%s\n", ToString().c_str());
 }
 
 void CAlert::SetNull()

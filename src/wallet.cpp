@@ -151,7 +151,6 @@ bool CWallet::ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase,
             }
         }
     }
-
     return false;
 }
 
@@ -202,7 +201,6 @@ bool CWallet::SetMinVersion(enum WalletFeature nVersion, CWalletDB* pwalletdbIn,
         if (!pwalletdbIn)
             delete pwalletdb;
     }
-
     return true;
 }
 
@@ -616,7 +614,6 @@ bool CWallet::EraseFromWallet(uint256 hash)
     return true;
 }
 
-
 bool CWallet::IsMine(const CTxIn &txin) const
 {
     {
@@ -855,7 +852,6 @@ void CWalletTx::AddSupportingTransactions(CTxDB& txdb)
             }
         }
     }
-
     reverse(vtxPrev.begin(), vtxPrev.end());
 }
 
@@ -1067,7 +1063,6 @@ void CWallet::ResendWalletTransactions()
 // Actions
 //
 
-
 int64 CWallet::GetBalance() const
 {
     int64 nTotal = 0;
@@ -1080,7 +1075,6 @@ int64 CWallet::GetBalance() const
                 nTotal += pcoin->GetAvailableCredit();
         }
     }
-
     return nTotal;
 }
 
@@ -1308,7 +1302,6 @@ bool CWallet::SelectCoinsMinConf(int64 nTargetValue, unsigned int nSpendTime, in
             printf("total %s\n", FormatMoney(nBest).c_str());
         }
     }
-
     return true;
 }
 
@@ -1702,15 +1695,25 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             break;
         }
     }
-
     // Successfully generated coinstake
     return true;
 }
 
-
 // Call after CreateTransaction unless you want to abort
 bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
 {
+    CTxDB txdb;
+    MapPrevTx mapInputs;
+    bool fInvalid = false;
+    CValidationState state;
+    bool fScriptChecks = true;
+    map<uint256, CTxIndex> mapUnused;
+    std::vector<CScriptCheck> vChecks;
+    if (!wtxNew.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, true, mapInputs, fInvalid,
+                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
+                                      STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
+    return false;
+
     {
         LOCK2(cs_main, cs_wallet);
         printf("CommitTransaction:\n%s", wtxNew.ToString().c_str());
@@ -1746,21 +1749,16 @@ bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
         mapRequestCount[wtxNew.GetHash()] = 0;
 
         // Broadcast
-        CTxDB txdb;
-        CValidationState state;
         if (!wtxNew.ThreadAnalyzerHandlerToMemoryPool(state, txdb))
         {
             // This must not fail. The transaction has already been signed and recorded.
-            printf("CommitTransaction() : Error: Transaction not valid");
+            printf("CommitTransaction() : Error: Transaction not valid\n");
             return false;
         }
         wtxNew.RelayWalletTransaction();
     }
     return true;
 }
-
-
-
 
 string CWallet::SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew, bool fAskFee)
 {
@@ -1799,8 +1797,6 @@ string CWallet::SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew,
     return "";
 }
 
-
-
 string CWallet::SendMoneyToDestination(const CTxDestination& address, int64 nValue, CWalletTx& wtxNew, bool fAskFee)
 {
     // Check amount
@@ -1815,9 +1811,6 @@ string CWallet::SendMoneyToDestination(const CTxDestination& address, int64 nVal
 
     return SendMoney(scriptPubKey, nValue, wtxNew, fAskFee);
 }
-
-
-
 
 DBErrors CWallet::LoadWallet(bool& fFirstRunRet)
 {
@@ -1866,7 +1859,6 @@ DBErrors CWallet::ZapWalletTx()
     return DB_LOAD_OK;
 }
 
-
 bool CWallet::SetAddressBookName(const CTxDestination& address, const string& strName)
 {
     std::map<CTxDestination, std::string>::iterator mi = mapAddressBook.find(address);
@@ -1885,7 +1877,6 @@ bool CWallet::DelAddressBookName(const CTxDestination& address)
         return false;
     return CWalletDB(strWalletFile).EraseName(CBitcoinAddress(address).ToString());
 }
-
 
 void CWallet::PrintWallet(const CBlock& block)
 {
@@ -2128,7 +2119,6 @@ std::map<CTxDestination, int64> CWallet::GetAddressBalances()
             }
         }
     }
-
     return balances;
 }
 
@@ -2211,7 +2201,6 @@ set< set<CTxDestination> > CWallet::GetAddressGroupings()
         ret.insert(*uniqueGrouping);
         delete uniqueGrouping;
     }
-
     return ret;
 }
 
