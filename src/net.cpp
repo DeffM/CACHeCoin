@@ -35,16 +35,11 @@ using namespace boost;
 #define MIN_OUTBOUND_CONNECTIONS        4      // WM - Lowest we allow for -maxoutbound= parameter shall be 4 connections (never ever set below 2).
 #define MAX_OUTBOUND_CONNECTIONS        100    // WM - This no longer means what it used to.  Outbound conn count now runtime configurable.
 
-
-void ThreadMessageHandler2(void* parg);
-void ThreadSocketHandler2(void* parg);
-void ThreadOpenConnections2(void* parg);
-void ThreadAnalyzerHandler(void* parg);
-void ThreadOpenAddedConnections2(void* parg);
 #ifdef USE_UPNP
-void ThreadMapPort2(void* parg);
+void ThreadMapPort(void* parg);
 #endif
-void ThreadDNSAddressSeed2(void* parg);
+void ThreadAnalyzerHandlerInit(void* parg);
+
 bool OpenNetworkConnection(const CAddress& addrConnect, CSemaphoreGrant *grantOutbound = NULL, const char *strDest = NULL, bool fOneShot = false);
 
 
@@ -153,8 +148,6 @@ int GetMaxOutboundConnections()
     
     return count;
 }
-
-
 
 void CNode::PushGetBlocks(CBlockIndex* pindexBegin, uint256 hashEnd)
 {
@@ -861,30 +854,6 @@ void static StartSync(const vector<CNode*> &vNodes) {
 
 static list<CNode*> vNodesDisconnected;
 
-void ThreadSocketHandler2(void* parg)
-{
-    // Make this thread recognisable as the networking thread
-    RenameThread("bitcoin-net");
-
-    try
-    {
-        vnThreadsRunning[THREAD_SOCKETHANDLER]++;
-        ThreadSocketHandler2(parg);
-        vnThreadsRunning[THREAD_SOCKETHANDLER]--;
-    }
-    catch (std::exception& e) {
-        vnThreadsRunning[THREAD_SOCKETHANDLER]--;
-        PrintException(&e, "ThreadSocketHandler()");
-    } catch (...) {
-        vnThreadsRunning[THREAD_SOCKETHANDLER]--;
-        throw; // support pthread_cancel()
-    }
-    printf("ThreadSocketHandler exited\n");
-}
-
-
-
-
 void ThreadSocketHandler(void* parg)
 {
     printf("ThreadSocketHandler started\n");
@@ -1206,16 +1175,32 @@ void ThreadSocketHandler(void* parg)
     }
 }
 
+void ThreadSocketHandlerInit(void* parg)
+{
+    // Make this thread recognisable as the networking thread
+    RenameThread("bitcoin-net");
 
-
-
-
-
-
-
+    try
+    {
+        vnThreadsRunning[THREAD_SOCKETHANDLER]++;
+        ThreadSocketHandler(parg);
+        vnThreadsRunning[THREAD_SOCKETHANDLER]--;
+    }
+    catch (std::exception& e)
+    {
+        vnThreadsRunning[THREAD_SOCKETHANDLER]--;
+        PrintException(&e, "ThreadSocketHandler()");
+    }
+    catch (...)
+    {
+        vnThreadsRunning[THREAD_SOCKETHANDLER]--;
+        throw; // support pthread_cancel()
+    }
+    printf("ThreadSocketHandler exited\n");
+}
 
 #ifdef USE_UPNP
-void ThreadMapPort(void* parg)
+void ThreadMapPortInit(void* parg)
 {
     // Make this thread recognisable as the UPnP thread
     RenameThread("bitcoin-UPnP");
@@ -1223,20 +1208,23 @@ void ThreadMapPort(void* parg)
     try
     {
         vnThreadsRunning[THREAD_UPNP]++;
-        ThreadMapPort2(parg);
+        ThreadMapPort(parg);
         vnThreadsRunning[THREAD_UPNP]--;
     }
-    catch (std::exception& e) {
+    catch (std::exception& e)
+    {
         vnThreadsRunning[THREAD_UPNP]--;
         PrintException(&e, "ThreadMapPort()");
-    } catch (...) {
+    }
+    catch (...)
+    {
         vnThreadsRunning[THREAD_UPNP]--;
         PrintException(NULL, "ThreadMapPort()");
     }
     printf("ThreadMapPort exited\n");
 }
 
-void ThreadMapPort2(void* parg)
+void ThreadMapPort(void* parg)
 {
     printf("ThreadMapPort started\n");
 
@@ -1339,16 +1327,17 @@ void ThreadMapPort2(void* parg)
     }
 }
 
-void MapPort()
+void MapPort(void* parg)
 {
+    boost::thread_group StartNodeThreadGroup;
     if (fUseUPnP && vnThreadsRunning[THREAD_UPNP] < 1)
     {
-        if (!NewThread(ThreadMapPort, NULL))
-            printf("Error: ThreadMapPort(ThreadMapPort) failed\n");
+        if (!StartNodeThreadGroup.create_thread(boost::bind(&ThreadMapPortInit,  parg)))
+            printf("Error: StartNodeThreadGroup(ThreadMapPort) failed\n");
     }
 }
 #else
-void MapPort()
+void MapPort(void* parg)
 {
     // Intentionally left blank.
     // Intentionally left slightly less blank than the previous line.
@@ -1373,30 +1362,8 @@ static const char *strDNSSeed[][2] = {
 
 void ThreadDNSAddressSeed(void* parg)
 {
-    // Make this thread recognisable as the DNS seeding thread
-    RenameThread("bitcoin-dnsseed");
-
-    try
-    {
-        vnThreadsRunning[THREAD_DNSSEED]++;
-        ThreadDNSAddressSeed2(parg);
-        vnThreadsRunning[THREAD_DNSSEED]--;
-    }
-    catch (std::exception& e) {
-        vnThreadsRunning[THREAD_DNSSEED]--;
-        PrintException(&e, "ThreadDNSAddressSeed()");
-    } catch (...) {
-        vnThreadsRunning[THREAD_DNSSEED]--;
-        throw; // support pthread_cancel()
-    }
-    printf("ThreadDNSAddressSeed exited\n");
-}
-
-void ThreadDNSAddressSeed2(void* parg)
-{
     printf("ThreadDNSAddressSeed started\n");
     int found = 0;
-
 
     if( !fTestNet )
     {
@@ -1423,21 +1390,32 @@ void ThreadDNSAddressSeed2(void* parg)
             }
         }
     }
-    
-
     printf("%d addresses found from DNS seeds\n", found);
 }
 
+void ThreadDNSAddressSeedInit(void* parg)
+{
+    // Make this thread recognisable as the DNS seeding thread
+    RenameThread("bitcoin-dnsseed");
 
-
-
-
-
-
-
-
-
-
+    try
+    {
+        vnThreadsRunning[THREAD_DNSSEED]++;
+        ThreadDNSAddressSeed(parg);
+        vnThreadsRunning[THREAD_DNSSEED]--;
+    }
+    catch (std::exception& e)
+    {
+        vnThreadsRunning[THREAD_DNSSEED]--;
+        PrintException(&e, "ThreadDNSAddressSeed()");
+    }
+    catch (...)
+    {
+        vnThreadsRunning[THREAD_DNSSEED]--;
+        throw; // support pthread_cancel()
+    }
+    printf("ThreadDNSAddressSeed exited\n");
+}
 
 unsigned int pnSeed[] =
 {
@@ -1455,7 +1433,7 @@ void DumpAddresses()
            addrman.size(), GetTimeMillis() - nStart);
 }
 
-void ThreadDumpAddress2(void* parg)
+void ThreadDumpAddress(void* parg)
 {
     vnThreadsRunning[THREAD_DUMPADDRESS]++;
     while (!fShutdown)
@@ -1468,40 +1446,20 @@ void ThreadDumpAddress2(void* parg)
     vnThreadsRunning[THREAD_DUMPADDRESS]--;
 }
 
-void ThreadDumpAddress(void* parg)
+void ThreadDumpAddressInit(void* parg)
 {
     // Make this thread recognisable as the address dumping thread
     RenameThread("bitcoin-adrdump");
 
     try
     {
-        ThreadDumpAddress2(parg);
+        ThreadDumpAddress(parg);
     }
-    catch (std::exception& e) {
+    catch (std::exception& e)
+    {
         PrintException(&e, "ThreadDumpAddress()");
     }
     printf("ThreadDumpAddress exited\n");
-}
-
-void ThreadOpenConnections(void* parg)
-{
-    // Make this thread recognisable as the connection opening thread
-    RenameThread("bitcoin-opencon");
-
-    try
-    {
-        vnThreadsRunning[THREAD_OPENCONNECTIONS]++;
-        ThreadOpenConnections2(parg);
-        vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
-    }
-    catch (std::exception& e) {
-        vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
-        PrintException(&e, "ThreadOpenConnections()");
-    } catch (...) {
-        vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
-        PrintException(NULL, "ThreadOpenConnections()");
-    }
-    printf("ThreadOpenConnections exited\n");
 }
 
 void static ProcessOneShot()
@@ -1522,7 +1480,7 @@ void static ProcessOneShot()
     }
 }
 
-void ThreadOpenConnections2(void* parg)
+void ThreadOpenConnections(void* parg)
 {
     printf("ThreadOpenConnections started\n");
 
@@ -1644,28 +1602,31 @@ void ThreadOpenConnections2(void* parg)
     }
 }
 
-void ThreadOpenAddedConnections(void* parg)
+void ThreadOpenConnectionsInit(void* parg)
 {
     // Make this thread recognisable as the connection opening thread
     RenameThread("bitcoin-opencon");
 
     try
     {
-        vnThreadsRunning[THREAD_ADDEDCONNECTIONS]++;
-        ThreadOpenAddedConnections2(parg);
-        vnThreadsRunning[THREAD_ADDEDCONNECTIONS]--;
+        vnThreadsRunning[THREAD_OPENCONNECTIONS]++;
+        ThreadOpenConnections(parg);
+        vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
     }
-    catch (std::exception& e) {
-        vnThreadsRunning[THREAD_ADDEDCONNECTIONS]--;
-        PrintException(&e, "ThreadOpenAddedConnections()");
-    } catch (...) {
-        vnThreadsRunning[THREAD_ADDEDCONNECTIONS]--;
-        PrintException(NULL, "ThreadOpenAddedConnections()");
+    catch (std::exception& e)
+    {
+        vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
+        PrintException(&e, "ThreadOpenConnections()");
     }
-    printf("ThreadOpenAddedConnections exited\n");
+    catch (...)
+    {
+        vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
+        PrintException(NULL, "ThreadOpenConnections()");
+    }
+    printf("ThreadOpenConnections exited\n");
 }
 
-void ThreadOpenAddedConnections2(void* parg)
+void ThreadOpenAddedConnections(void* parg)
 {
     printf("ThreadOpenAddedConnections started\n");
 
@@ -1736,6 +1697,30 @@ void ThreadOpenAddedConnections2(void* parg)
     }
 }
 
+void ThreadOpenAddedConnectionsInit(void* parg)
+{
+    // Make this thread recognisable as the connection opening thread
+    RenameThread("bitcoin-opencon");
+
+    try
+    {
+        vnThreadsRunning[THREAD_ADDEDCONNECTIONS]++;
+        ThreadOpenAddedConnections(parg);
+        vnThreadsRunning[THREAD_ADDEDCONNECTIONS]--;
+    }
+    catch (std::exception& e)
+    {
+        vnThreadsRunning[THREAD_ADDEDCONNECTIONS]--;
+        PrintException(&e, "ThreadOpenAddedConnections()");
+    }
+    catch (...)
+    {
+        vnThreadsRunning[THREAD_ADDEDCONNECTIONS]--;
+        PrintException(NULL, "ThreadOpenAddedConnections()");
+    }
+    printf("ThreadOpenAddedConnections exited\n");
+}
+
 // if successful, this moves the passed grant to the constructed node
 bool OpenNetworkConnection(const CAddress& addrConnect, CSemaphoreGrant *grantOutbound, const char *strDest, bool fOneShot)
 {
@@ -1766,34 +1751,6 @@ bool OpenNetworkConnection(const CAddress& addrConnect, CSemaphoreGrant *grantOu
         pnode->fOneShot = true;
 
     return true;
-}
-
-
-
-
-
-
-
-
-void ThreadMessageHandler2(void* parg)
-{
-    // Make this thread recognisable as the message handling thread
-    RenameThread("bitcoin-msghand");
-
-    try
-    {
-        vnThreadsRunning[THREAD_MESSAGEHANDLER]++;
-        ThreadMessageHandler2(parg);
-        vnThreadsRunning[THREAD_MESSAGEHANDLER]--;
-    }
-    catch (std::exception& e) {
-        vnThreadsRunning[THREAD_MESSAGEHANDLER]--;
-        PrintException(&e, "ThreadMessageHandler()");
-    } catch (...) {
-        vnThreadsRunning[THREAD_MESSAGEHANDLER]--;
-        PrintException(NULL, "ThreadMessageHandler()");
-    }
-    printf("ThreadMessageHandler exited\n");
 }
 
 void ThreadMessageHandler(void* parg)
@@ -1871,10 +1828,29 @@ void ThreadMessageHandler(void* parg)
     }
 }
 
+void ThreadMessageHandlerInit(void* parg)
+{
+    // Make this thread recognisable as the message handling thread
+    RenameThread("bitcoin-msghand");
 
-
-
-
+    try
+    {
+        vnThreadsRunning[THREAD_MESSAGEHANDLER]++;
+        ThreadMessageHandler(parg);
+        vnThreadsRunning[THREAD_MESSAGEHANDLER]--;
+    }
+    catch (std::exception& e)
+    {
+        vnThreadsRunning[THREAD_MESSAGEHANDLER]--;
+        PrintException(&e, "ThreadMessageHandler()");
+    }
+    catch (...)
+    {
+        vnThreadsRunning[THREAD_MESSAGEHANDLER]--;
+        PrintException(NULL, "ThreadMessageHandler()");
+    }
+    printf("ThreadMessageHandler exited\n");
+}
 
 bool BindListenPort(const CService &addrBind, string& strError)
 {
@@ -2048,6 +2024,8 @@ void StartNode(void* parg)
     // Make this thread recognisable as the startup thread
     RenameThread("bitcoin-start");
 
+    boost::thread_group StartNodeThreadGroup;
+
     if (semOutbound == NULL) {
         // initialize semaphore
         int nMaxOutbound = min( GetMaxOutboundConnections(), GetMaxConnections() );
@@ -2063,14 +2041,6 @@ void StartNode(void* parg)
     // Start threads
     //
 
-/*
-    if (!GetBoolArg("-dnsseed", true))
-        printf("DNS seeding disabled\n");
-    else
-        if (!NewThread(ThreadDNSAddressSeed, NULL))
-            printf("Error: NewThread(ThreadDNSAddressSeed) failed\n");
-*/
-
     if (!GetBoolArg("-dnsseed", false))
         printf("DNS seeding disabled\n");
     if (GetBoolArg("-dnsseed", false))
@@ -2078,36 +2048,31 @@ void StartNode(void* parg)
 
     // Map ports with UPnP
     if (fUseUPnP)
-        MapPort();
+        MapPort(parg);
 
     // Get addresses from IRC and advertise ours
-    if (!NewThread(ThreadAnalyzerHandler, NULL))
-        printf("Error: NewThread(ThreadAnalyzerHandler) failed\n");
+    if (!StartNodeThreadGroup.create_thread(boost::bind(&ThreadAnalyzerHandlerInit,  parg)))
+        printf("Error: StartNodeThreadGroup(ThreadAnalyzerHandler) failed\n");
 
     // Send and receive from sockets, accept connections
-    if (!NewThread(ThreadSocketHandler, NULL))
-        printf("Error: NewThread(ThreadSocketHandler) failed\n");
+    if (!StartNodeThreadGroup.create_thread(boost::bind(&ThreadSocketHandlerInit,  parg)))
+        printf("Error: StartNodeThreadGroup(ThreadSocketHandler) failed\n");
 
     // Initiate outbound connections from -addnode
-    if (!NewThread(ThreadOpenAddedConnections, NULL))
-        printf("Error: NewThread(ThreadOpenAddedConnections) failed\n");
+    if (!StartNodeThreadGroup.create_thread(boost::bind(&ThreadOpenAddedConnectionsInit,  parg)))
+        printf("Error: StartNodeThreadGroup(ThreadOpenAddedConnections) failed\n");
 
     // Initiate outbound connections
-    if (!NewThread(ThreadOpenConnections, NULL))
-        printf("Error: NewThread(ThreadOpenConnections) failed\n");
+    if (!StartNodeThreadGroup.create_thread(boost::bind(&ThreadOpenConnectionsInit,  parg)))
+        printf("Error: StartNodeThreadGroup(ThreadOpenConnections) failed\n");
 
     // Process messages
-    if (!NewThread(ThreadMessageHandler, NULL))
-        printf("Error: NewThread(ThreadMessageHandler) failed\n");
+    if (!StartNodeThreadGroup.create_thread(boost::bind(&ThreadMessageHandlerInit,  parg)))
+        printf("Error: StartNodeThreadGroup(ThreadMessageHandler) failed\n");
 
     // Dump network addresses
-    if (!NewThread(ThreadDumpAddress, NULL))
-        printf("Error; NewThread(ThreadDumpAddress) failed\n");
-
-    // ppcoin: mint proof-of-stake blocks in the background
-    //boost::thread_group NewThread;
-    //if (!NewThread.create_thread(boost::bind(&ThreadStakeMinterCach, pwalletMain)))
-    //    printf("Error: NewThread(ThreadStakeMinter) failed\n");
+    if (!StartNodeThreadGroup.create_thread(boost::bind(&ThreadDumpAddressInit,  parg)))
+        printf("Error; StartNodeThreadGroup(ThreadDumpAddress) failed\n");
 
     // Generate coins in the background
     GenerateBitcoins(GetBoolArg("-powgen", false), pwalletMain);

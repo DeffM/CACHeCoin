@@ -1465,30 +1465,6 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits)
     return true;
 }
 
-void ThreadAnalyzerHandlerInit(void* parg)
-{
-    // Make this thread recognisable as the networking thread
-    RenameThread("'CACHE'Project Analyzer Handler");
-
-    try
-    {
-        vnThreadsRunning[THREAD_ANALYZERHANDLER]++;
-        ThreadAnalyzerHandlerInit(parg);
-        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
-    }
-    catch (std::exception& e)
-    {
-        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
-        PrintException(&e, "ThreadAnalyzerHandler()");
-    }
-    catch (...)
-    {
-        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
-        throw; // support pthread_cancel()
-    }
-    printf("ThreadAnalyzerHandler exited\n");
-}
-
 void ThreadAnalyzerHandler(void* parg)
 {
     printf("ThreadAnalyzerHandler started\n");
@@ -1532,6 +1508,30 @@ void ThreadAnalyzerHandler(void* parg)
        }
        Sleep(3000);
     }
+}
+
+void ThreadAnalyzerHandlerInit(void* parg)
+{
+    // Make this thread recognisable as the networking thread
+    RenameThread("'CACHE'Project Analyzer Handler");
+
+    try
+    {
+        vnThreadsRunning[THREAD_ANALYZERHANDLER]++;
+        ThreadAnalyzerHandler(parg);
+        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
+    }
+    catch (std::exception& e)
+    {
+        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
+        PrintException(&e, "ThreadAnalyzerHandler()");
+    }
+    catch (...)
+    {
+        vnThreadsRunning[THREAD_ANALYZERHANDLER]--;
+        throw; // support pthread_cancel()
+    }
+    printf("ThreadAnalyzerHandler exited\n");
 }
 
 bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTransaction &tx, bool fCheckInputs, bool fLimitFree,

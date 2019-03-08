@@ -186,6 +186,7 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
 
 bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, int role)
 {
+    void* parg;
     bool successful = true; /* set to false on parse error */
     if(role == Qt::EditRole)
     {
@@ -202,7 +203,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
         case MapPortUPnP:
             fUseUPnP = value.toBool();
             settings.setValue("fUseUPnP", fUseUPnP);
-            MapPort();
+            MapPort(parg);
             break;
         case MinimizeOnClose:
             fMinimizeOnClose = value.toBool();
