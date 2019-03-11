@@ -953,6 +953,7 @@ bool AppInit2()
 
     // ********************************************************* Step 11: start node
 
+    boost::thread_group StartNodeThreadGroup;
 
     if (!CheckDiskSpace())
         return false;
@@ -970,8 +971,8 @@ bool AppInit2()
         InitError(_("Error: could not start node"));
 
     if (fServer)
-        NewThread(ThreadRPCServer, NULL);
-
+        if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_RPCHANDLER", &ThreadRPCServer)))
+             printf("Error: StartNodeThreadGroup(ThreadRPCServer) failed\n");
 
     // ********************************************************* Step 12: finished
 

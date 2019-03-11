@@ -1577,42 +1577,6 @@ void ThreadMessageHandler()
     }
 }
 
-template <typename SubjectToListen> void GoRoundThread(const char* name,  SubjectToListen ThreadFunc)
-{
-    std::string s = strprintf("'CACHE'PROJECT_%s", name);
-    RenameThread(s.c_str());
-    try
-    {
-        std::string wait("THREAD_DUMPADDRESS"), THREAD_DUMPADDRESS(name);
-        if (wait == THREAD_DUMPADDRESS)
-        {
-            printf("%s - started\n", name);
-            while (1)
-            {
-                 Sleep(nFlushedPeersDat);
-                 ThreadFunc();
-            }
-        }
-        else
-        {
-             printf("%s - started\n", name);
-             ThreadFunc();
-             printf("%s - exited\n", name);
-        }
-    }
-    catch (boost::thread_interrupted)
-    {
-        printf("%s - interrupted\n", name);
-        throw;
-    }
-    catch (std::exception& e) {
-        PrintException(&e, name);
-    }
-    catch (...) {
-        PrintException(NULL, name);
-    }
-}
-
 #ifdef USE_UPNP
 void ThreadMapPort()
 {
@@ -1717,13 +1681,25 @@ void ThreadMapPort()
 
 void MapPort()
 {
-    boost::thread_group StartNodeThreadGroup;
-    if (fUseUPnP && vnThreadsRunning[THREAD_UPNP] < 1)
+    boost::thread* thrupnp = NULL;
+    boost::thread_group StartUPnPThreadGroup;
+
+    if (fUseUPnP)
     {
-        if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_UPNP", &ThreadMapPort)))
-            printf("Error: StartNodeThreadGroup(ThreadMapPort) failed\n");
+        if (StartUPnPThreadGroup.is_this_thread_in() == true)
+        {
+            printf("Error: StartUPnPThreadGroup(ThreadMapPort) already loaded - remove_thread\n");
+            StartUPnPThreadGroup.remove_thread(thrupnp); // Safe mode
+        }
+        else if (StartUPnPThreadGroup.is_this_thread_in() == false)
+        {
+                 StartUPnPThreadGroup.add_thread(thrupnp = (new boost::thread(boost::bind(&GoRoundThread<void (*)()>,
+                 "THREAD_UPNP", &ThreadMapPort))));
+                 printf("Accept: StartUPnPThreadGroup(ThreadMapPort) loaded\n");
+        }
     }
 }
+
 #else
 void MapPort()
 {
@@ -1899,6 +1875,9 @@ void static Discover()
         NewThread(ThreadGetMyExternalIP, NULL);
 }
 
+boost::thread* thrmsg = NULL;
+boost::thread* thrsckt = NULL;
+
 void StartNode(void* parg)
 {
     // Make this thread recognisable as the startup thread
@@ -1906,7 +1885,8 @@ void StartNode(void* parg)
 
     boost::thread_group StartNodeThreadGroup;
 
-    if (semOutbound == NULL) {
+    if (semOutbound == NULL)
+    {
         // initialize semaphore
         int nMaxOutbound = min( GetMaxOutboundConnections(), GetMaxConnections() );
         semOutbound = new CSemaphore(nMaxOutbound);
@@ -1935,8 +1915,8 @@ void StartNode(void* parg)
         printf("Error: StartNodeThreadGroup(ThreadAnalyzerHandler) failed\n");
 
     // Send and receive from sockets, accept connections
-    if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_SOCKETHANDLER", &ThreadSocketHandler)))
-        printf("Error: StartNodeThreadGroup(ThreadSocketHandler) failed\n");
+    StartNodeThreadGroup.add_thread(thrsckt = (new boost::thread(boost::bind(&GoRoundThread<void (*)()>,
+                                              "THREAD_SOCKETHANDLER", &ThreadSocketHandler))));
 
     // Initiate outbound connections from -addnode
     if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_ADDEDCONNECTIONS", &ThreadOpenAddedConnections)))
@@ -1947,8 +1927,8 @@ void StartNode(void* parg)
         printf("Error: StartNodeThreadGroup(ThreadOpenConnections) failed\n");
 
     // Process messages
-    if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_MESSAGEHANDLER", &ThreadMessageHandler)))
-        printf("Error: StartNodeThreadGroup(ThreadMessageHandler) failed\n");
+    StartNodeThreadGroup.add_thread(thrmsg = (new boost::thread(boost::bind(&GoRoundThread<void (*)()>,
+                                              "THREAD_MESSAGEHANDLER", &ThreadMessageHandler))));
 
     // Dump network addresses
     if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_DUMPADDRESS", &ThreadDumpAddress)))
@@ -1960,6 +1940,8 @@ void StartNode(void* parg)
 
 bool StopNode()
 {
+    boost::thread_group StartNodeThreadGroup;
+
     printf("StopNode()\n");
 
     fShutdown = true;
@@ -1971,6 +1953,9 @@ bool StopNode()
         LOCK(cs_main);
         ThreadScriptCheckQuit();
     }
+
+    StartNodeThreadGroup.remove_thread(thrmsg);
+    StartNodeThreadGroup.remove_thread(thrsckt);
 
     if (semOutbound)
         for( int i = 0; i < GetMaxOutboundConnections(); i++ )

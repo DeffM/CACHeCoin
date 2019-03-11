@@ -4193,7 +4193,6 @@ void static ProcessGetData(CNode* pfrom)
 
         const CInv &inv = *it;
         {
-            boost::this_thread::interruption_point();
             it++;
 
             // ppcoin: relay memory may contain blocks too
@@ -4484,8 +4483,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         int64 nSince = nNow - (10 * 60);
         BOOST_FOREACH(CAddress& addr, vAddr)
         {
-            boost::this_thread::interruption_point();
-
             if (addr.nTime <= 100000000 || addr.nTime > nNow + 10 * 60)
                 addr.nTime = nNow - 5 * 24 * 60 * 60;
             pfrom->AddAddressKnown(addr);
@@ -4557,7 +4554,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         {
             const CInv &inv = vInv[nInv];
 
-            boost::this_thread::interruption_point();
             pfrom->AddInventoryKnown(inv);
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
@@ -5086,7 +5082,6 @@ bool ProcessMessages(CNode* pfrom)
                 LOCK(cs_main);
                 fRet = ProcessMessage(pfrom, strCommand, vRecv);
             }
-            boost::this_thread::interruption_point();
         }
         catch (std::ios_base::failure& e)
         {

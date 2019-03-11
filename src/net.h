@@ -25,6 +25,7 @@ class CNode;
 class CBlockIndex;
 extern int nBestHeight;
 extern int64 nBestHeightTime;
+extern int nFlushedPeersDat;
 
 
 
@@ -759,5 +760,41 @@ inline void RelayMessage<>(const CInv& inv, const CDataStream& ss)
 class CTransaction;
 void RelayTransaction(const CTransaction& tx, const uint256& hash);
 void RelayTransaction(const CTransaction& tx, const uint256& hash, const CDataStream& ss);
+
+template <typename SubjectToListen> void GoRoundThread(const char* name,  SubjectToListen ThreadFunc)
+{
+    std::string s = strprintf("'CACHE'PROJECT_%s", name);
+    RenameThread(s.c_str());
+    try
+    {
+        std::string wait("THREAD_DUMPADDRESS"), THREAD_DUMPADDRESS(name);
+        if (wait == THREAD_DUMPADDRESS)
+        {
+            printf("%s - started\n", name);
+            while (1)
+            {
+                 Sleep(nFlushedPeersDat);
+                 ThreadFunc();
+            }
+        }
+        else
+        {
+             printf("%s - started\n", name);
+             ThreadFunc();
+             printf("%s - exited\n", name);
+        }
+    }
+    catch (boost::thread_interrupted)
+    {
+        printf("%s - interrupted\n", name);
+        throw;
+    }
+    catch (std::exception& e) {
+        PrintException(&e, name);
+    }
+    catch (...) {
+        PrintException(NULL, name);
+    }
+}
 
 #endif
