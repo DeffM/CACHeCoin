@@ -4979,9 +4979,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
 bool ProcessMessages(CNode* pfrom)
 {
-    //CDataStream& vRecv = pfrom->vRecv;
-    //if (vRecv.empty())
-    //    return true;
 
     static int64 nTimeLastPrintMessageStart = 0;
     if (fDebug && GetBoolArg("-printmessagestart") && nTimeLastPrintMessageStart + 30 < GetAdjustedTime())
@@ -5025,6 +5022,7 @@ bool ProcessMessages(CNode* pfrom)
         if (!msg.complete())
         {
             printf("\n\nBAD MSGCOMPLETE - BREAK\n\n");
+            fOk = false;
             break;
         }
 
