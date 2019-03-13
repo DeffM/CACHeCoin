@@ -47,7 +47,6 @@ unsigned int nStakeTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
 unsigned int nPowTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
 unsigned int nPosTargetSpacing = 1 * 60 * 10; // DIFF: 10-minute block spacing
 unsigned int NTest = 176500;
-int64 nSetMetFull = 0;
 int64 nSpamHashControl = 30; // % from (nPos)nPowTargetSpacing
 int64 nChainStartTime = 1388949883;
 int64 nNewTimeBlock = 0;
@@ -6107,88 +6106,67 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
                 printf("      Control : proof-of-stake block candidate - analysis\n");
                 Sleep(15000);
                 printf("CPUMiner : proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
-                if (nSetMetFull == 1)
+                if (fGenerateSingleBlock)
                 {
                     SetThreadPriority(THREAD_PRIORITY_NORMAL);
                     CheckWork(pblock.get(), *pwalletMain, reservekey);
                     SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                    Sleep(15000);
-                    nSetMetFull = 0;
+                    Sleep(20000);
+                    if (MintStakeThread != NULL)
+                        MintStakeThread->interrupt_all();
+                    delete MintStakeThread;
+                    MintStakeThread = NULL;
                     break;
                 }
                 SetThreadPriority(THREAD_PRIORITY_NORMAL);
                 CheckWork(pblock.get(), *pwalletMain, reservekey);
                 SetThreadPriority(THREAD_PRIORITY_LOWEST);
             }
-            Sleep(15000);
+            Sleep(20000);
             continue;
         }
     }
 }
 
-// ppcoin: stake minter thread
-void static ThreadStakeMinterCach(void* parg)
+void static StakeMintThread(void* parg, bool fGenerateSingleBlock)
 {
-    printf("ThreadStakeMinterCach started\n");
     CWallet* pwallet = (CWallet*)parg;
+
+    std::string s = strprintf("'CACHE'PROJECT_%s", "THREAD_MINTER");
+    RenameThread(s.c_str());
     try
     {
-        BitcoinMinerPos(pwallet, true, true);
+        printf("%s - started\n", "THREAD_MINTER");
+        BitcoinMinerPos(pwallet, true, fGenerateSingleBlock);
+        printf("%s - exited\n", "THREAD_MINTER");
     }
     catch (boost::thread_interrupted)
     {
-        printf("stakemintercach thread interrupt\n");
+        printf("%s - interrupted\n", "THREAD_MINTER");
+        throw;
     }
-    catch (std::exception& e)
-    {
-        PrintException(&e, "ThreadStakeMinterCach()");
+    catch (std::exception& e) {
+        PrintException(&e, "THREAD_MINTER");
     }
-    catch (...)
-    {
-        PrintException(NULL, "ThreadStakeMinterCach()");
-    }
-    nSetMetFull = 0;
-    printf("ThreadStakeMinterCach exiting\n");
-}
-
-void static ThreadStakeMinterInit(void* parg)
-{
-    if (nSetMetFull == 0)
-    {
-    printf("ThreadStakeMinterInit started\n");
-    nSetMetFull = 4;
-    CWallet* pwallet = (CWallet*)parg;
-    try
-    {
-        BitcoinMinerPos(pwallet, true, true);
-    }
-    catch (boost::thread_interrupted)
-    {
-        printf("stakeminterinit thread interrupt\n");
-    }
-    catch (std::exception& e)
-    {
-        PrintException(&e, "ThreadStakeMinterInit()");
-    }
-    catch (...)
-    {
-        PrintException(NULL, "ThreadStakeMinterInit()");
-    }
-    nSetMetFull = 0;
-    printf("ThreadStakeMinterInit exiting\n");
+    catch (...) {
+        PrintException(NULL, "THREAD_MINTER");
     }
 }
 
+boost::thread_group* MintStakeThread = NULL;
 // ppcoin: stake minter
-void MintStake(boost::thread_group& NewThread, CWallet* pwallet)
+void MintStake(CWallet* pwallet, bool fGenerateSingleBlock)
 {
-     // ppcoin: mint proof-of-stake blocks in the background
-     NewThread.create_thread(boost::bind(&ThreadStakeMinterCach, pwallet));
-}
 
-void MintStakeInit(boost::thread_group& NewThread, CWallet* pwallet)
-{
-     NewThread.create_thread(boost::bind(&ThreadStakeMinterInit, pwallet));
+    if (MintStakeThread == NULL)
+    {
+        delete MintStakeThread;
+        MintStakeThread = new boost::thread_group();
+        MintStakeThread->create_thread(boost::bind(&StakeMintThread, pwallet, fGenerateSingleBlock));
+    }
+    else if (MintStakeThread->size() > 0)
+             printf("THREAD_MINTER already loaded\n");
+
 }
 
 void static ThreadBitcoinMiner(void* parg)

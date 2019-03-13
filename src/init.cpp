@@ -953,7 +953,7 @@ bool AppInit2()
 
     // ********************************************************* Step 11: start node
 
-    boost::thread_group StartNodeThreadGroup;
+    boost::thread_group StartNetThreadGroup;
 
     if (!CheckDiskSpace())
         return false;
@@ -971,8 +971,8 @@ bool AppInit2()
         InitError(_("Error: could not start node"));
 
     if (fServer)
-        if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_RPCHANDLER", &ThreadRPCServer)))
-             printf("Error: StartNodeThreadGroup(ThreadRPCServer) failed\n");
+        if (!StartNetThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_RPCHANDLER", &ThreadRPCServer)))
+             printf("Error: StartNetThreadGroup(ThreadRPCServer) failed\n");
 
     // ********************************************************* Step 12: finished
 
@@ -985,14 +985,10 @@ bool AppInit2()
      // Add wallet transactions that aren't already in a block to mapTransactions
     pwalletMain->ReacceptWalletTransactions();
 
-    boost::thread_group NewThread;
-    //if (GetBoolArg("-posgen", false))
-    //    MintStake(NewThread, pwalletMain);
-        if (GetBoolArg("-posgen", true))
-        {
-            MintStake(NewThread, pwalletMain);
-            nSetMetFull = 3;
-        }
+    if (GetBoolArg("-posgen", true))
+    {
+        MintStake(pwalletMain, false);
+    }
 
 #if !defined(QT_GUI)
     // Loop until process is exit()ed from shutdown() function,

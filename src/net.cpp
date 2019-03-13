@@ -1679,32 +1679,34 @@ void ThreadMapPort()
     }
 }
 
+boost::thread_group* StartUPnPThreadGroup = NULL;
 void MapPort()
 {
-    boost::thread* thrupnp = NULL;
-    boost::thread_group StartUPnPThreadGroup;
-
     if (fUseUPnP)
     {
-        if (StartUPnPThreadGroup.is_this_thread_in() == true)
+        if (StartUPnPThreadGroup == NULL)
         {
-            printf("Error: StartUPnPThreadGroup(ThreadMapPort) already loaded - remove_thread\n");
-            StartUPnPThreadGroup.remove_thread(thrupnp); // Safe mode
+            delete StartUPnPThreadGroup;
+            StartUPnPThreadGroup = new boost::thread_group();
+            StartUPnPThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_UPNP", &ThreadMapPort));
+            printf("Accept: StartUPnPThreadGroup(ThreadMapPort) loaded\n");
+
         }
-        else if (StartUPnPThreadGroup.is_this_thread_in() == false)
-        {
-                 StartUPnPThreadGroup.add_thread(thrupnp = (new boost::thread(boost::bind(&GoRoundThread<void (*)()>,
-                 "THREAD_UPNP", &ThreadMapPort))));
-                 printf("Accept: StartUPnPThreadGroup(ThreadMapPort) loaded\n");
-        }
+        else if (StartUPnPThreadGroup->size() > 0)
+                 printf("Error: StartUPnPThreadGroup(ThreadMapPort) already loaded\n");
+    }
+    else
+    {
+         if (StartUPnPThreadGroup != NULL)
+             StartUPnPThreadGroup->interrupt_all();
+         delete StartUPnPThreadGroup;
+         StartUPnPThreadGroup = NULL;
     }
 }
 
 #else
 void MapPort()
 {
-    // Intentionally left blank.
-    // Intentionally left slightly less blank than the previous line.
 }
 #endif
 
@@ -1875,15 +1877,13 @@ void static Discover()
         NewThread(ThreadGetMyExternalIP, NULL);
 }
 
-boost::thread* thrmsg = NULL;
-boost::thread* thrsckt = NULL;
-
 void StartNode(void* parg)
 {
     // Make this thread recognisable as the startup thread
     RenameThread("bitcoin-start");
 
-    boost::thread_group StartNodeThreadGroup;
+    boost::thread_group StartNetThreadGroup;
+    boost::thread_group StartMainThreadGroup;
 
     if (semOutbound == NULL)
     {
@@ -1911,28 +1911,28 @@ void StartNode(void* parg)
         MapPort();
 
     // Get addresses from IRC and advertise ours
-    if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_ANALYZERHANDLER", &ThreadAnalyzerHandler)))
-        printf("Error: StartNodeThreadGroup(ThreadAnalyzerHandler) failed\n");
+    if (!StartNetThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_ANALYZERHANDLER", &ThreadAnalyzerHandler)))
+        printf("Error: StartNetThreadGroup(ThreadAnalyzerHandler) failed\n");
 
     // Send and receive from sockets, accept connections
-    StartNodeThreadGroup.add_thread(thrsckt = (new boost::thread(boost::bind(&GoRoundThread<void (*)()>,
-                                              "THREAD_SOCKETHANDLER", &ThreadSocketHandler))));
+    if (!StartNetThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_SOCKETHANDLER", &ThreadSocketHandler)))
+        printf("Error: StartNetThreadGroup(ThreadSocketHandler) failed\n");
 
     // Initiate outbound connections from -addnode
-    if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_ADDEDCONNECTIONS", &ThreadOpenAddedConnections)))
-        printf("Error: StartNodeThreadGroup(ThreadOpenAddedConnections) failed\n");
+    if (!StartNetThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_ADDEDCONNECTIONS", &ThreadOpenAddedConnections)))
+        printf("Error: StartNetThreadGroup(ThreadOpenAddedConnections) failed\n");
 
     // Initiate outbound connections
-    if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_OPENCONNECTIONS", &ThreadOpenConnections)))
-        printf("Error: StartNodeThreadGroup(ThreadOpenConnections) failed\n");
+    if (!StartNetThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_OPENCONNECTIONS", &ThreadOpenConnections)))
+        printf("Error: StartNetThreadGroup(ThreadOpenConnections) failed\n");
 
     // Process messages
-    StartNodeThreadGroup.add_thread(thrmsg = (new boost::thread(boost::bind(&GoRoundThread<void (*)()>,
-                                              "THREAD_MESSAGEHANDLER", &ThreadMessageHandler))));
+    if (!StartNetThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_MESSAGEHANDLER", &ThreadMessageHandler)))
+        printf("Error: StartNetThreadGroup(ThreadMessageHandler) failed\n");
 
     // Dump network addresses
-    if (!StartNodeThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_DUMPADDRESS", &ThreadDumpAddress)))
-        printf("Error: StartNodeThreadGroup(ThreadDumpAddress) failed\n");
+    if (!StartNetThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_DUMPADDRESS", &ThreadDumpAddress)))
+        printf("Error: StartNetThreadGroup(ThreadDumpAddress) failed\n");
 
     // Generate coins in the background
     GenerateBitcoins(GetBoolArg("-powgen", false), pwalletMain);
@@ -1940,8 +1940,6 @@ void StartNode(void* parg)
 
 bool StopNode()
 {
-    boost::thread_group StartNodeThreadGroup;
-
     printf("StopNode()\n");
 
     fShutdown = true;
@@ -1953,9 +1951,6 @@ bool StopNode()
         LOCK(cs_main);
         ThreadScriptCheckQuit();
     }
-
-    StartNodeThreadGroup.remove_thread(thrmsg);
-    StartNodeThreadGroup.remove_thread(thrsckt);
 
     if (semOutbound)
         for( int i = 0; i < GetMaxOutboundConnections(); i++ )

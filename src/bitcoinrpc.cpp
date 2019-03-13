@@ -200,17 +200,15 @@ Value setposgensingle(const Array& params, bool fHelp)
 
     if (GetBoolArg("-posgen", true))
         throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
-        else if (nSetMetFull == 1 || nSetMetFull == 2 || nSetMetFull == 3 || nSetMetFull == 4)
+        else if (MintStakeThread != 0)
                  throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
-    nSetMetFull = 1;
 
-    boost::thread_group NewThread;
-    MintStake(NewThread, pwalletMain);
+    MintStake(pwalletMain, true);
     return "OK - generate a single proof of stake block";
 }
 Value setposgenfull(const Array& params, bool fHelp)
 {
-    if (fHelp)
+        if (fHelp)
         throw runtime_error(
             "setposgenfull\n"
             "generate a more proof of stake blocks"
@@ -218,12 +216,10 @@ Value setposgenfull(const Array& params, bool fHelp)
 
     if (GetBoolArg("-posgen", true))
         throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
-        else if (nSetMetFull == 1 || nSetMetFull == 2 || nSetMetFull == 3 || nSetMetFull == 4)
+        else if (MintStakeThread != 0)
                  throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
-    nSetMetFull = 2;
 
-    boost::thread_group NewThread;
-    MintStake(NewThread, pwalletMain);
+    MintStake(pwalletMain, false);
     return "OK - generate a more proof of stake blocks";
 }
 Value getprofitestimate(const Array& params, bool fHelp)
@@ -757,7 +753,7 @@ static void RPCAcceptHandler(boost::shared_ptr< basic_socket_acceptor<Protocol, 
                              AcceptedConnection* conn,
                              const boost::system::error_code& error)
 {
-    boost::thread_group StartNodeThreadGroup;
+    boost::thread_group StartNetThreadGroup;
 
     vnThreadsRunning[THREAD_RPCLISTENER]++;
 
@@ -788,7 +784,7 @@ static void RPCAcceptHandler(boost::shared_ptr< basic_socket_acceptor<Protocol, 
 
     // start HTTP client thread
     else if
-           (!StartNodeThreadGroup.create_thread(boost::bind(&ThreadAcceptedConnection, conn)))
+           (!StartNetThreadGroup.create_thread(boost::bind(&ThreadAcceptedConnection, conn)))
     {
             printf("Failed to create RPC server client thread\n");
             delete conn;

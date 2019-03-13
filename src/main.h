@@ -94,7 +94,6 @@ extern bool fReindex;
 extern unsigned int nTransactionsUpdated;
 extern uint64 nLastBlockTx;
 extern uint64 nLastBlockSize;
-extern int64 nSetMetFull;
 extern int64 nUnixCachChainTime;
 extern int64 nLastCoinStakeSearchInterval;
 extern int64 nLastCoinPowSearchInterval;
@@ -171,8 +170,7 @@ void ThreadScriptCheck(void* parg);
 void ThreadScriptCheckQuit();
 
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
-void MintStake(boost::thread_group& NewThread, CWallet* pwallet);
-void MintStakeInit(boost::thread_group& NewThread, CWallet* pwallet);
+void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
 CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake=false, bool fProofOfWork=false);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
@@ -195,6 +193,8 @@ const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfSta
 void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
 void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
 void ResendWalletTransactions();
+
+extern boost::thread_group* MintStakeThread;
 
 // cacheproject: calculate Nfactor using timestamp
 unsigned char GetNfactor(int64 nTimestamp);
