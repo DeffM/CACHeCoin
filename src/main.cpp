@@ -6155,16 +6155,16 @@ boost::thread_group* MintStakeThread = NULL;
 // ppcoin: stake minter
 void MintStake(CWallet* pwallet, bool fGenerateSingleBlock)
 {
-
-    if (MintStakeThread == NULL)
-    {
-        delete MintStakeThread;
-        MintStakeThread = new boost::thread_group();
-        MintStakeThread->create_thread(boost::bind(&StakeMintThread, pwallet, fGenerateSingleBlock));
-    }
-    else if (MintStakeThread->size() > 0)
-             printf("THREAD_MINTER already loaded\n");
-
+     if (MintStakeThread != NULL)
+     {
+         printf("THREAD_MINTER already loaded\n");
+     }
+     else if (MintStakeThread == NULL)
+     {
+              delete MintStakeThread;
+              MintStakeThread = new boost::thread_group();
+              MintStakeThread->create_thread(boost::bind(&StakeMintThread, pwallet, fGenerateSingleBlock));
+     }
 }
 
 void static ThreadBitcoinMiner(void* parg)
