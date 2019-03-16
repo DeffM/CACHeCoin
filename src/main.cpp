@@ -709,6 +709,7 @@ bool CTransaction::ThreadAnalyzerHandlerToMemoryPool(CValidationState &state, CT
     }
     catch(std::runtime_error &e)
     {
+        printf("ThreadAnalyzerHandlerToMemoryPool - System error\n");
         return state.Abort(_("System error: ") + e.what());
     }
 }
@@ -1530,6 +1531,7 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
     // Coinbase is only valid in a block, not as a loose transaction
     if (tx.IsCoinBase())
         return state.DoS(100, error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : coinbase as individual tx"));
+
     // ppcoin: coinstake is also only valid in a block, not as a loose transaction
     if (tx.IsCoinStake())
         return state.DoS(100, error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : coinstake as individual tx"));
@@ -1548,7 +1550,10 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
     {
         LOCK(cs);
         if (mapTx.count(hash))
+        {
+            printf("ThreadAnalyzerHandlerToMemoryPool - Is it already in the memory pool\n");
             return false;
+        }
     }
 
     // Check for conflicts with in-memory transactions
@@ -1593,6 +1598,7 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
         {
             if (fInvalid)
                 return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : Inputs found invalid tx %s", hash.ToString().substr(0,10).c_str());
+
             if (pfMissingInputs)
                 *pfMissingInputs = true;
             return false;
@@ -1672,7 +1678,7 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
 }
 
 std::string waitTxSpam = " Spam is missing now";
-const unsigned int nNumberOfLines = 100;
+const unsigned int nNumberOfLines = 250;
 unsigned int nLinesSource = nNumberOfLines - 1;
 unsigned int nLinesReceiver = nNumberOfLines;
 char nSpamHashList[nNumberOfLines + 1][21];
@@ -1687,7 +1693,7 @@ unsigned char SpamHashList()
          if (strcmp(nSpamHashList[nSearched], waitTxSpam.substr(0,20).c_str()) == 0)
          {
          fWriting = false;
-         printf("'SpamHashList' - previously saved spam-hash %s\n", nSpamHashList[nSearched]);
+         //printf("'SpamHashList' - previously saved spam-hash %s\n", nSpamHashList[nSearched]);
          }
          //printf("'SpamHashList' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
     }
@@ -1716,27 +1722,23 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
      // Basic checks that don't depend on any context
     if (vin.empty())
     {
-        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
         return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : vin empty"));
     }
 
     if (vout.empty())
     {
-        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
         return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : vout empty"));
     }
 
     // Time (prevent mempool memory exhaustion attack)
     if (nTime > GetAdjustedTime() + nMaxClockDrift)
     {
-        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
         return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : timestamp is too far into the future"));
     }
 
     // Size limits
     if (::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
     {
-        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
         return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : size limits failed"));
     }
 
@@ -1746,29 +1748,24 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
     {
         if (txout.IsEmpty() && (!IsCoinBase()) && (!IsCoinStake()))
         {
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout empty for user transaction"));
         }
         if (txout.nValue < 0)
         {
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue is negative"));
         }
         // ppcoin: enforce minimum output amount
         if ((!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
         {
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue below minimum"));
         }
         if (txout.nValue > MAX_MONEY)
         {
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue too high"));
         }
         nValueOut += txout.nValue;
         if (!MoneyRange(nValueOut))
         {
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout total out of range"));
         }
     }
@@ -1779,7 +1776,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
     {
         if (vInOutPoints.count(txin.prevout))
         {
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : duplicate inputs"));
         }
         vInOutPoints.insert(txin.prevout);
@@ -1789,7 +1785,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
     {
         if (vin[0].scriptSig.size() < 2 || vin[0].scriptSig.size() > 100)
         {
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : coinbase script size"));
         }
     }
@@ -1798,7 +1793,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
         BOOST_FOREACH(const CTxIn& txin, vin)
             if (txin.prevout.IsNull())
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : prevout is null"));
             }
     }
@@ -1828,7 +1822,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
         }
         if (!fFound)
         {
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s prev tx %s index entry not found", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
         }
 
@@ -1841,7 +1834,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
                 LOCK(mempool.cs);
                 if (!mempool.exists(prevout.hash))
                 {
-                    waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                     return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s mempool Tx prev not found %s", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
                 }
                     txPrev = mempool.lookup(prevout.hash);
@@ -1854,7 +1846,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             // Get prev tx from disk
             if (!txPrev.ReadFromDisk(txindex.pos))
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s ReadFromDisk prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
             }
         }
@@ -1872,7 +1863,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             // Revisit this if/when transaction replacement is implemented and allows
             // adding inputs:
             fInvalid = true;
-            waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
             return DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s", GetHash().ToString().substr(0,10).c_str(), prevout.n, txPrev.vout.size(), txindex.vSpent.size(), prevout.hash.ToString().substr(0,10).c_str(), txPrev.ToString().c_str()));
         }
     }
@@ -1895,7 +1885,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
 
             if (prevout.n >= txcoins.vout.size() || prevout.n >= txindexcoins.vSpent.size())
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return DoS(100, error("'Transaction - CheckInputs' : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s",
                 GetHash().ToString().substr(0,10).c_str(), prevout.n, txcoins.vout.size(), txindexcoins.vSpent.size(),
                 prevout.hash.ToString().substr(0,10).c_str(), txcoins.ToString().c_str()));
@@ -1906,14 +1895,12 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
                 for (const CBlockIndex* pindex = pindexBlock; pindex && pindexBlock->nHeight - pindex->nHeight < nCoinbaseMaturity; pindex = pindex->pprev)
                     if (pindex->nBlockPos == txindexcoins.pos.nBlockPos && pindex->nFile == txindexcoins.pos.nFile)
                     {
-                        waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                         return error("'Transaction - CheckInputs' : tried to spend %s at depth %d", txcoins.IsCoinBase() ? "coinbase" : "coinstake", pindexBlock->nHeight - pindex->nHeight);
                     }
 
             // ppcoin: check transaction timestamp
             if (txcoins.nTime > nTime)
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return state.DoS(100, error("'Transaction - CheckInputs' : transaction timestamp earlier than input transaction"));
             }
 
@@ -1921,7 +1908,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             nValueIn += txcoins.vout[prevout.n].nValue;
             if (!MoneyRange(txcoins.vout[prevout.n].nValue) || !MoneyRange(nValueIn))
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return state.DoS(100, error("'Transaction - CheckInputs' : txin values out of range"));
             }
         }
@@ -1932,14 +1918,12 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             uint64 nCoinAge;
             if (!GetCoinAge(txdb, nCoinAge))
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return error("'Transaction - CheckInputs' : %s unable to get coin age for coinstake", GetHash().ToString().c_str());
             }
 
             int64 nStakeReward = GetValueOut() - nValueIn;
             if (nStakeReward > GetProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE)
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return state.DoS(100, error("'Transaction - CheckInputs' : %s stake reward exceeded", GetHash().ToString().c_str()));
             }
         }
@@ -1947,7 +1931,6 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
         {
             if (nValueIn < GetValueOut())
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return state.DoS(100, error("'Transaction - CheckInputs' : %s value in < value out", GetHash().ToString().c_str()));
             }
 
@@ -1955,19 +1938,16 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             int64 nTxFee = nValueIn - GetValueOut();
             if (nTxFee < 0)
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return state.DoS(100, error("'Transaction - CheckInputs' : %s nTxFee < 0", GetHash().ToString().c_str()));
             }
             // ppcoin: enforce transaction fees for every block
             if (nTxFee < GetMinFee())
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return state.DoS(100, error("'Transaction - CheckInputs' : %s not paying required fee=%s, paid=%s", GetHash().ToString().c_str(), FormatMoney(GetMinFee()).c_str(), FormatMoney(nTxFee).c_str()));
             }
             nFees += nTxFee;
             if (!MoneyRange(nFees))
             {
-                waitTxSpam = (GetHash().ToString().substr(0,20).c_str());
                 return state.DoS(100, error("'Transaction - CheckInputs' : nFees out of range"));
             }
         }
@@ -4304,7 +4284,7 @@ void static ProcessGetData(CNode* pfrom)
 // a large 4-byte int at any alignment.
 unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
-bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
+bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, bool fNoOk)
 {
     //static map<CService, CPubKey> mapReuseKey;
     RandAddSeedPerfmon();
@@ -4318,7 +4298,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         printf("dropmessagestest DROPPING RECV MESSAGE\n");
         return true;
     }
-
 
 
 
@@ -4347,15 +4326,19 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         if (pfrom->nVersion == 10300)
             pfrom->nVersion = 300;
+
         if (!vRecv.empty())
             vRecv >> addrFrom >> nNonce;
+
         if (!vRecv.empty())
         {
             vRecv >> pfrom->strSubVer;
             pfrom->cleanSubVer = SanitizeString(pfrom->strSubVer);
         }
+
         if (!vRecv.empty())
             vRecv >> pfrom->nStartingHeight;
+
         if (!vRecv.empty())
             vRecv >> pfrom->fRelayTxes; // set to true after we get the first filter* message
         else
@@ -4522,6 +4505,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         addrman.Add(vAddrOk, pfrom->addr, 2 * 60 * 60);
         if (vAddr.size() < 1000)
             pfrom->fGetAddr = false;
+
         if (pfrom->fOneShot)
             pfrom->fDisconnect = true;
     }
@@ -4632,6 +4616,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         // Send the rest of the chain
         if (pindex)
             pindex = pindex->pnext;
+
         int nLimit = 500;
         printf("getblocks %d to %s limit %d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString().substr(0,20).c_str(), nLimit);
         for (; pindex; pindex = pindex->pnext)
@@ -4643,7 +4628,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 // without risk being rejected due to stake connection check
                 if (hashStop != hashBestChain && pindex->GetBlockTime() + nStakeMinAge > pindexBest->GetBlockTime())
                     pfrom->PushInventory(CInv(MSG_BLOCK, hashBestChain));
-                break;
+                    break;
             }
             pfrom->PushInventory(CInv(MSG_BLOCK, pindex->GetBlockHash()));
             if (--nLimit <= 0)
@@ -4712,11 +4697,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         std::vector<CScriptCheck> vChecks;
         bool fAlreadyHave = AlreadyHave(txdb, inv);
 
+        unsigned int nSearched = 0;
+        for (; nSearched <= nNumberOfLines; nSearched++)
+        {
+             if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
+             {
+                 printf("strCommand 'tx' - The executor of the rules performed the work\n");
+                 printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                 printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                 return false;
+             }
+        }
+
         if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
                                       fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||
-            !tx.ThreadAnalyzerHandlerToMemoryPool(state, txdb, true, true, &fMissingInputs))
+                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||!tx.ThreadAnalyzerHandlerToMemoryPool
+                                      (state, txdb, true, true, &fMissingInputs))
         {
+            waitTxSpam = inv.ToString().substr(3,20).c_str();
             SpamHashList();
             printf("strCommand 'tx' - The executor of the rules performed the work\n");
             printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
@@ -4990,6 +4988,7 @@ bool ProcessMessages(CNode* pfrom)
     }
 
     bool fOk = true;
+    bool fNoOk = false;
 
     if (!pfrom->vRecvGetData.empty())
         ProcessGetData(pfrom);
@@ -5022,8 +5021,11 @@ bool ProcessMessages(CNode* pfrom)
         if (!msg.complete())
         {
             printf("\n\nBAD MSGCOMPLETE - BREAK\n\n");
+            SpamHashList();
             fOk = false;
-            break;
+            waitTxSpam = " Spam is missing now";
+            if (fNoOk)
+                break;
         }
 
         it++;
@@ -5032,8 +5034,11 @@ bool ProcessMessages(CNode* pfrom)
         if (memcmp(msg.hdr.pchMessageStart, pchMessageStart, sizeof(pchMessageStart)) != 0)
         {
             printf("\n\nPROCESSMESSAGE: INVALID MESSAGESTART - BREAK\n\n");
+            SpamHashList();
             fOk = false;
-            break;
+            waitTxSpam = " Spam is missing now";
+            if (fNoOk)
+                break;
         }
 
         // Read header
@@ -5057,7 +5062,10 @@ bool ProcessMessages(CNode* pfrom)
         {
             printf("ProcessMessages(%s, %u bytes) : CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
             strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
-            continue;
+            SpamHashList();
+            waitTxSpam = " Spam is missing now";
+            if (fNoOk)
+                continue;
         }
 
         // Message size - addr
@@ -5077,7 +5085,7 @@ bool ProcessMessages(CNode* pfrom)
         {
             {
                 LOCK(cs_main);
-                fRet = ProcessMessage(pfrom, strCommand, vRecv);
+                fRet = ProcessMessage(pfrom, strCommand, vRecv, fNoOk);
             }
         }
         catch (std::ios_base::failure& e)
@@ -5275,9 +5283,24 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
             const CInv& inv = (*pto->mapAskFor.begin()).second;
             if (!AlreadyHave(txdb, inv))
             {
+                unsigned int nSearched = 0;
+                for (; nSearched <= nNumberOfLines; nSearched++)
+                {
+                     if (fDebugNet && (strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0))
+                     {
+                         printf("strCommand 'getdata' - The executor of the rules performed the work\n");
+                         printf("  strCommand 'getdata' - spam hash previous: %s\n", waitTxSpam.c_str());
+                         printf("  strCommand 'getdata' - spam hash actual: %s\n", inv.ToString().substr(3,20).c_str());
+                         return false;
+                     }
+                }
                 if (fDebugNet)
+                {
+                    waitTxSpam = inv.ToString().substr(3,20).c_str();
                     printf("sending getdata: %s\n", inv.ToString().c_str());
-                vGetData.push_back(inv);
+                    vGetData.push_back(inv);
+                }
+
                 if (vGetData.size() >= 1000)
                 {
                     pto->PushMessage("getdata", vGetData);
@@ -6162,6 +6185,7 @@ void MintStake(CWallet* pwallet, bool fGenerateSingleBlock)
      else if (MintStakeThread == NULL)
      {
               delete MintStakeThread;
+              MintStakeThread = NULL;
               MintStakeThread = new boost::thread_group();
               MintStakeThread->create_thread(boost::bind(&StakeMintThread, pwallet, fGenerateSingleBlock));
      }
