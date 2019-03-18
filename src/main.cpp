@@ -4284,7 +4284,9 @@ void static ProcessGetData(CNode* pfrom)
 // a large 4-byte int at any alignment.
 unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
-bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, bool fNoOk)
+bool fTxStop = false;
+
+bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     //static map<CService, CPubKey> mapReuseKey;
     RandAddSeedPerfmon();
@@ -4540,6 +4542,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             pfrom->AddInventoryKnown(inv);
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
+
+            if (fTxStop)
+                return false;
 
             unsigned int nSearched = 0;
             for (; nSearched <= nNumberOfLines; nSearched++)
@@ -4988,7 +4993,6 @@ bool ProcessMessages(CNode* pfrom)
     }
 
     bool fOk = true;
-    bool fNoOk = false;
 
     if (!pfrom->vRecvGetData.empty())
         ProcessGetData(pfrom);
@@ -5007,8 +5011,18 @@ bool ProcessMessages(CNode* pfrom)
     //
 
     std::deque<CNetMessage>::iterator it = pfrom->vRecvMsg.begin();
+    while (true)
+    {
+          if (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
+              fTxStop = false;
+              else
+                  fTxStop = true;
+          break;
+    }
     while (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
     {
+        CNetMessage& msg = *it;
+
         // Don't bother if send buffer is too full to respond anyway
         if (pfrom->vSend.size() >= SendBufferSize())
         {
@@ -5016,29 +5030,12 @@ bool ProcessMessages(CNode* pfrom)
             break;
         }
 
-        CNetMessage& msg = *it;
-
-        if (!msg.complete())
-        {
-            printf("\n\nBAD MSGCOMPLETE - BREAK\n\n");
-            SpamHashList();
-            fOk = false;
-            waitTxSpam = " Spam is missing now";
-            if (fNoOk)
-                break;
-        }
-
-        it++;
-
         // Scan for message start
         if (memcmp(msg.hdr.pchMessageStart, pchMessageStart, sizeof(pchMessageStart)) != 0)
         {
             printf("\n\nPROCESSMESSAGE: INVALID MESSAGESTART - BREAK\n\n");
-            SpamHashList();
             fOk = false;
-            waitTxSpam = " Spam is missing now";
-            if (fNoOk)
-                break;
+            break;
         }
 
         // Read header
@@ -5048,6 +5045,7 @@ bool ProcessMessages(CNode* pfrom)
             printf("\n\nPROCESSMESSAGE: ERRORS IN HEADER - CONTINUE %s\n\n\n", hdr.GetCommand().c_str());
             continue;
         }
+
         string strCommand = hdr.GetCommand();
 
         // Message size
@@ -5058,15 +5056,15 @@ bool ProcessMessages(CNode* pfrom)
         uint256 hash = Hash(vRecv.begin(), vRecv.begin() + nMessageSize);
         unsigned int nChecksum = 0;
         memcpy(&nChecksum, &hash, sizeof(nChecksum));
-        if (nChecksum != hdr.nChecksum)
+        if (!msg.complete() || nChecksum != hdr.nChecksum)
         {
+            printf("\n\nBAD MSGCOMPLETE - BREAK\n\n");
             printf("ProcessMessages(%s, %u bytes) : CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
-            strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
-            SpamHashList();
-            waitTxSpam = " Spam is missing now";
-            if (fNoOk)
-                continue;
+                   strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
+            return false;
         }
+
+        it++;
 
         // Message size - addr
         std::string wait("addr"), addr(strCommand.c_str());
@@ -5085,7 +5083,7 @@ bool ProcessMessages(CNode* pfrom)
         {
             {
                 LOCK(cs_main);
-                fRet = ProcessMessage(pfrom, strCommand, vRecv, fNoOk);
+                fRet = ProcessMessage(pfrom, strCommand, vRecv);
             }
         }
         catch (std::ios_base::failure& e)
@@ -5296,7 +5294,9 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
                 }
                 if (fDebugNet)
                 {
-                    waitTxSpam = inv.ToString().substr(3,20).c_str();
+                    std::string wait("block"), getdata(inv.ToString().substr(0,5).c_str());
+                    if (wait != getdata)
+                        waitTxSpam = inv.ToString().substr(3,20).c_str();
                     printf("sending getdata: %s\n", inv.ToString().c_str());
                     vGetData.push_back(inv);
                 }

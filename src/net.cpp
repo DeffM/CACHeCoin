@@ -113,22 +113,9 @@ int GetMaxConnections()
     // Ensure some level of sanity amount the max connection count.
     count = max( count, MIN_CONNECTIONS );
     count = min( count, MAX_CONNECTIONS );
-    
-    //printf( "GetMaxConnections() = %d\n", count );
 
     return count;
 }
-
-
-
-//
-// int GetMaxOutboundConnections( void )
-//
-//    WM - Function to determine maximum allowed outbound connections.
-//
-//    Parameters: None
-//    Returns: Maximum outbound connections allowed (int)
-//
 
 int GetMaxOutboundConnections()
 {
@@ -142,8 +129,6 @@ int GetMaxOutboundConnections()
     count = min( count, MAX_OUTBOUND_CONNECTIONS );
     count = min( count, GetMaxConnections() );
 
-    //printf( "GetMaxOutboundConnections() = %d\n", count );
-    
     return count;
 }
 
