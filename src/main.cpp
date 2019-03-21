@@ -4314,7 +4314,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             wait3 != block)
         {
             fSwitchTest = true;
-            printf("   Switch test mode ('inv' contains more than one transaction)\n");
+            printf("   Switch message verification mode ('inv' contains more than one transaction)\n");
         }
             else
                 fSwitchTest = false;
@@ -5078,7 +5078,7 @@ bool ProcessMessages(CNode* pfrom)
 
                if (nChecksum != hdr.nChecksum || !msg.complete())
                {
-                   printf("ProcessMessages(%s, %u bytes) : BAD MSGCOMPLETE IF CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
+                   printf("ProcessMessages(%s, %u bytes) : BAD MSGCOMPLETE OR CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
                           strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
                    fTxStop = true;
                    if (!fSwitchTest)
