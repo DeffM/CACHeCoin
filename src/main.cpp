@@ -1508,6 +1508,75 @@ void ThreadAnalyzerHandler()
     }
 }
 
+bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransaction &tx, MapPrevTx& TxMemPoolInputs,
+                                const map<uint256, CTxIndex>& mapMemPool)
+{
+    for (unsigned int i = 0; i < tx.vin.size(); i++)
+    {
+        bool fTransferPointTrigger = false;
+        COutPoint prevout = tx.vin[i].prevout;
+        // Read txindex
+        CTxIndex& txindex = TxMemPoolInputs[prevout.hash].first;
+        // Read txPrev
+        CTransaction& txPrev = TxMemPoolInputs[prevout.hash].second;
+        if (mapMemPool.count(prevout.hash))
+            txindex = mapMemPool.find(prevout.hash)->second;
+            else if (!txdb.ReadTxIndex(prevout.hash, txindex) || txindex.pos == CDiskTxPos(1,1,1))
+            {
+                      // Get prev tx from single transactions in memory
+                      LOCK(mempool.cs);
+                      if (!mempool.exists(prevout.hash))
+                      {
+                          fTransferPointTrigger = true;
+                      }
+                      else if (mempool.exists(prevout.hash))
+                               txPrev = mempool.lookup(prevout.hash);
+
+                      if (!txdb.ReadTxIndex(prevout.hash, txindex))
+                      {
+                          txindex.vSpent.resize(txPrev.vout.size());
+                          return error("'CTxMemPool - CheckTxMemPool' : %s prev tx %s index entry not found",
+                                       tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                      }
+                      else if (fTransferPointTrigger)
+                               return error("'CTxMemPool - CheckTxMemPool' : %s mempool Tx prev not found %s",
+                                            tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                               else
+                               {
+                               // Ok end force majeure
+                               }
+            }
+            // Get prev tx from disk
+            else if (!txPrev.ReadFromDisk(txindex.pos))
+                     return error("'CTxMemPool - CheckTxMemPool' : %s ReadFromDisk prev tx %s failed",
+                                  tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                     else
+                     {
+                     // Ok end force majeure
+                     }
+    }
+
+    // Coinbase is only valid in a block, not as a loose transaction
+    if (tx.IsCoinBase())
+        return state.DoS(100, error("'CTxMemPool - CheckTxMemPool' : coinbase as individual tx"));
+
+    // ppcoin: coinstake is also only valid in a block, not as a loose transaction
+    if (tx.IsCoinStake())
+        return state.DoS(100, error("'CTxMemPool - CheckTxMemPool' : coinstake as individual tx"));
+
+    // To help v0.1.5 clients who would see it as a negative number
+    if ((int64)tx.nLockTime > std::numeric_limits<int>::max())
+        return error("'CTxMemPool - CheckTxMemPool' : not accepting nLockTime beyond 2038 yet");
+
+    if (tx.nTime > GetAdjustedTime() + nMaxClockDrift)
+         return state.DoS(10, error("'CTxMemPool - CheckTxMemPool' : timestamp is too far into the future"));
+
+    if (tx.nTime < GetAdjustedTime() - nMaxClockDrift * 360)
+        return state.DoS(10, error("'CTxMemPool - CheckTxMemPool' : timestamp is too far into the past"));
+
+    return true;
+}
+
 bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTransaction &tx, bool fCheckInputs, bool fLimitFree,
                                        bool* pfMissingInputs)
 {
@@ -4310,8 +4379,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         std::string wait1("addr"), addr(strCommand.c_str());
         std::string wait2("version"), version(strCommand.c_str());
         std::string wait3("block"), block(strCommand.c_str());
-        if (vRecv.size() >= 40 && vRecv.size() < 400 && wait1 != addr && wait2 != version &&
-            wait3 != block)
+        if (false)
         {
             fSwitchTest = true;
             printf("   Switch message verification mode ('inv' contains more than one transaction)\n");
@@ -4738,8 +4806,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
                                       fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||!tx.ThreadAnalyzerHandlerToMemoryPool
-                                      (state, txdb, true, true, &fMissingInputs))
+                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||!mempool.CheckTxMemPool
+                                      (state, txdb, tx, mapInputs, mapUnused))
         {
             waitTxSpam = inv.ToString().substr(3,20).c_str();
             SpamHashList();

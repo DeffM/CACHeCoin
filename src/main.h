@@ -1904,8 +1904,8 @@ public:
     bool removeConflicts(const CTransaction &tx);
     bool ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTransaction &tx,
                                bool fCheckInputs, bool fLimitFree, bool* pfMissingInputs);
-    bool accept(CValidationState &state, CTxDB& txdb, CTransaction &tx,
-                bool fCheckInputs, bool fLimitFree, bool* pfMissingInputs);
+    bool CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransaction &tx,
+                        MapPrevTx& TxMemPoolInputs, const std::map<uint256, CTxIndex>& mapMemPool);
     bool addUnchecked(const uint256& hash, CTransaction &tx);
     bool remove(const CTransaction &tx, bool fRecursive = false);
     void clear();
