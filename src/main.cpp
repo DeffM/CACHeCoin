@@ -5374,18 +5374,6 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
             const CInv& inv = (*pto->mapAskFor.begin()).second;
             if (!AlreadyHave(txdb, inv))
             {
-                unsigned int nSearched = 0;
-                for (; nSearched <= nNumberOfLines; nSearched++)
-                {
-                     if (fDebugNet && (strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0))
-                     {
-                         printf("strCommand 'getdata' - The executor of the rules performed the work\n");
-                         printf("  strCommand 'getdata' - spam hash previous: %s\n", waitTxSpam.c_str());
-                         printf("  strCommand 'getdata' - spam hash actual: %s\n", inv.ToString().substr(3,20).c_str());
-                         return false;
-                     }
-                }
-
                 if (fDebugNet)
                 {
                     std::string wait("block"), getdata(inv.ToString().substr(0,5).c_str());
