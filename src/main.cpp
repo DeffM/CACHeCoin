@@ -4497,6 +4497,14 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             }
         }
 
+        //static int nReguestForBlock = 0;
+        //if (!pfrom->fClient && !pfrom->fOneShot &&
+        //    pfrom->nStartingHeight > (nBestHeight - 144) && pfrom->nVersion >= 91002)
+        //{
+        //    nReguestForBlock++;
+        //    pfrom->PushGetBlocks(pindexBest, uint256(0));
+        //}
+
         // Relay alerts
         {
             LOCK(cs_mapAlerts);
