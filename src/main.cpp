@@ -4630,9 +4630,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-            if (fTxStop)
-                return false;
-
             unsigned int nSearched = 0;
             for (; nSearched <= nNumberOfLines; nSearched++)
             {
@@ -4788,9 +4785,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         bool fMissingInputs = false;
         std::vector<CScriptCheck> vChecks;
         bool fAlreadyHave = AlreadyHave(txdb, inv);
-
-        if (fTxStop)
-            return false;
 
         unsigned int nSearched = 0;
         for (; nSearched <= nNumberOfLines; nSearched++)
@@ -5106,6 +5100,7 @@ bool ProcessMessages(CNode* pfrom)
     {
            if (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
            {
+               fTxStop = false;
                vector<CInv> vInv;
                CNetMessage& msg = *it;
                CMessageHeader& hdr = msg.hdr;
@@ -5148,12 +5143,9 @@ bool ProcessMessages(CNode* pfrom)
                {
                    printf("ProcessMessages(%s, %u bytes) : BAD MSGCOMPLETE OR CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
                           strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
-                   fTxStop = true;
                    if (!fSwitchTest)
                        return true;
-
                }
-               fTxStop = false;
            }
            else
                fTxStop = true;
@@ -5376,9 +5368,6 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
             {
                 if (fDebugNet)
                 {
-                    std::string wait("block"), getdata(inv.ToString().substr(0,5).c_str());
-                    if (wait != getdata)
-                        waitTxSpam = inv.ToString().substr(3,20).c_str();
                     printf("sending getdata: %s\n", inv.ToString().c_str());
                     vGetData.push_back(inv);
                 }
