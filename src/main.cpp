@@ -5074,8 +5074,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
 bool ProcessMessages(CNode* pfrom)
 {
-
-
     static int64 nTimeLastPrintMessageStart = 0;
     if (fDebug && GetBoolArg("-printmessagestart") && nTimeLastPrintMessageStart + 30 < GetAdjustedTime())
     {
@@ -5103,70 +5101,65 @@ bool ProcessMessages(CNode* pfrom)
     //  (x) data
     //
 
+    fTxStop = true;
     std::deque<CNetMessage>::iterator it = pfrom->vRecvMsg.begin();
-    while (true)
+    while (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
     {
-           if (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
+           fTxStop = false;
+           if (pfrom->vSend.size() >= SendBufferSize())
            {
-               fTxStop = false;
-               vector<CInv> vInv;
-               CNetMessage& msg = *it;
-               CMessageHeader& hdr = msg.hdr;
-               string strCommand = hdr.GetCommand();
-               unsigned int nMessageSize = hdr.nMessageSize;
-               CDataStream& vRecv = msg.vRecv;
-               uint256 hash = Hash(vRecv.begin(), vRecv.begin() + nMessageSize);
-               unsigned int nChecksum = 0;
-               memcpy(&nChecksum, &hash, sizeof(nChecksum));
-
-               if (pfrom->vSend.size() >= SendBufferSize())
-               {
-                   printf("\n\nSENDSIZE > SENDBUFFERSIZE - BREAK\n\n");
-                   break;
-               }
-
-               if (memcmp(msg.hdr.pchMessageStart, pchMessageStart, sizeof(pchMessageStart)) != 0)
-               {
-                   printf("\n\nPROCESSMESSAGE: INVALID MESSAGESTART - BREAK\n\n");
-                   return false;
-               }
-
-               if (!hdr.IsValid())
-               {
-                   printf("\n\nPROCESSMESSAGE: ERRORS IN HEADER - CONTINUE %s\n\n\n", hdr.GetCommand().c_str());
-                   continue;
-               }
-
-               std::string wait("addr"), addr(strCommand.c_str());
-               if (wait == addr)
-               {
-                   if (nMessageSize > ADR_MAX_SIZE)
-                   {
-                       printf("ProcessMessages(%s, %u bytes) : PEERS.DAT EXCEEDS THE ALLOWABLE SIZE - CONTINUE\n", strCommand.c_str(), nMessageSize);
-                       continue;
-                   }
-               }
-
-               if (nChecksum != hdr.nChecksum || !msg.complete())
-               {
-                   printf("ProcessMessages(%s, %u bytes) : BAD MSGCOMPLETE OR CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
-                          strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
-                   if (!fSwitchTest)
-                       return true;
-               }
+               printf("\n\nSENDSIZE > SENDBUFFERSIZE - BREAK\n\n");
+               break;
            }
-           else
-               fTxStop = true;
-           break;
-    }
 
-    while (!fTxStop)
-    {
            CNetMessage& msg = *it;
+
+           if (!msg.complete())
+               break;
+
+           it++;
+
+           if (memcmp(msg.hdr.pchMessageStart, pchMessageStart, sizeof(pchMessageStart)) != 0)
+           {
+               printf("\n\nPROCESSMESSAGE: INVALID MESSAGESTART - BREAK\n\n");
+               fGo = false;
+               break;
+           }
+
+           // Read header
            CMessageHeader& hdr = msg.hdr;
            string strCommand = hdr.GetCommand();
+           if (!hdr.IsValid())
+           {
+               printf("\n\nPROCESSMESSAGE: ERRORS IN HEADER - CONTINUE %s\n\n\n", hdr.GetCommand().c_str());
+               continue;
+           }
+
+           // Message size
            unsigned int nMessageSize = hdr.nMessageSize;
+
+           std::string wait("addr"), addr(strCommand.c_str());
+           if (wait == addr)
+           {
+               if (nMessageSize > ADR_MAX_SIZE)
+               {
+                   printf("ProcessMessages(%s, %u bytes) : PEERS.DAT EXCEEDS THE ALLOWABLE SIZE - CONTINUE\n", strCommand.c_str(), nMessageSize);
+                   continue;
+               }
+           }
+
+           // Checksum
+           unsigned int nChecksum = 0;
            CDataStream& vRecv = msg.vRecv;
+           uint256 hash = Hash(vRecv.begin(), vRecv.begin() + nMessageSize);
+           memcpy(&nChecksum, &hash, sizeof(nChecksum));
+           if (nChecksum != hdr.nChecksum)
+           {
+               printf("ProcessMessages(%s, %u bytes) : BAD MSGCOMPLETE OR CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
+               strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
+               if (!fSwitchTest)
+                   continue;
+           }
 
            // Process message
            bool fRet = false;
@@ -5210,16 +5203,15 @@ bool ProcessMessages(CNode* pfrom)
            if (!fRet)
                printf("ProcessMessage(%s, %u bytes) FAILED\n", strCommand.c_str(), nMessageSize);
 
-           it++;
-
            break;
-       }
+    }
+    fTxStop = true;
 
-       // In case the connection got shut down, its receive buffer was wiped
-       if (!pfrom->fDisconnect)
-           pfrom->vRecvMsg.erase(pfrom->vRecvMsg.begin(), it);
+    // In case the connection got shut down, its receive buffer was wiped
+    if (!pfrom->fDisconnect)
+        pfrom->vRecvMsg.erase(pfrom->vRecvMsg.begin(), it);
 
-       return fGo;
+    return fGo;
 }
 
 bool SendMessages(CNode* pto, bool fSendTrickle)
