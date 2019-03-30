@@ -641,6 +641,24 @@ bool CNode::IsBanned(CNetAddr ip)
     return fResult;
 }
 
+bool CNode::IsGlobalIpBanned(CNetAddr SpamIpAddr)
+{
+    bool fResume = false;
+    {
+        LOCK(cs_setBanned);
+        unsigned int nSearched = 0;
+        for (; nSearched <= nNumberOfLines; nSearched++)
+        {
+             if (strcmp(nSpamHashList[nSearched], SpamIpAddr.ToString().substr(0,13).c_str()) == 0)
+             {
+                 //printf("IsGlobalIpBanned - The executor of the rules performed the work\n");
+                 fResume = true;
+             }
+        }
+    }
+    return fResume;
+}
+
 bool CNode::Misbehaving(int howmuch)
 {
     if (addr.IsLocal())
@@ -1037,6 +1055,11 @@ void ThreadSocketHandler()
             else if (CNode::IsBanned(addr))
             {
                 printf("connection from %s dropped (banned)\n", addr.ToString().c_str());
+                closesocket(hSocket);
+            }
+            else if (CNode::IsGlobalIpBanned(addr))
+            {
+                printf("connection from %s dropped (IsGlobalIpBanned)\n", addr.ToString().c_str());
                 closesocket(hSocket);
             }
             else

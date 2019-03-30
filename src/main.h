@@ -199,6 +199,13 @@ extern boost::thread_group* MintStakeThread;
 // cacheproject: calculate Nfactor using timestamp
 unsigned char GetNfactor(int64 nTimestamp);
 
+// cacheproject: Spam Hash List
+extern std::string waitTxSpam;
+extern const unsigned int nNumberOfLines;
+extern unsigned int nLinesSource;
+extern unsigned int nLinesReceiver;
+extern char nSpamHashList[][21];
+
 
 
 

@@ -133,6 +133,12 @@ bool fHardForkOne = false;
 bool fHardForkTwo = false;
 bool fHardForkThree = false;
 
+// cacheproject: Spam Hash List
+std::string waitTxSpam = " Spam is missing now";
+const unsigned int nNumberOfLines = 250;
+unsigned int nLinesSource = nNumberOfLines - 1;
+unsigned int nLinesReceiver = nNumberOfLines;
+char nSpamHashList[nNumberOfLines + 1][21];
 
 
 
@@ -1745,12 +1751,6 @@ bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTr
     }
     return true;
 }
-
-std::string waitTxSpam = " Spam is missing now";
-const unsigned int nNumberOfLines = 250;
-unsigned int nLinesSource = nNumberOfLines - 1;
-unsigned int nLinesReceiver = nNumberOfLines;
-char nSpamHashList[nNumberOfLines + 1][21];
 
 unsigned char SpamHashList()
 {
@@ -4812,7 +4812,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                                       (state, txdb, tx, mapInputs, mapUnused))
         {
             waitTxSpam = inv.ToString().substr(3,20).c_str();
-            SpamHashList();
+            if (pindexBest->nHeight >= GetNumBlocksOfPeers())
+            {
+                SpamHashList();
+            }
             printf("strCommand 'tx' - The executor of the rules performed the work\n");
             printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
             printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
@@ -5072,6 +5075,33 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     return true;
 }
 
+unsigned int iExternal = 0;
+int64 nTimerStop = 0;
+int64 nTimerStart = 0;
+int64 nAllowableNumberOferrors = 5;
+unsigned int nMakeSureSpam = 0;
+static bool SpamIpTimer(CNode* pfrom, unsigned int nMakeSureSpam)
+{
+    bool fThisSpamIp = false;
+    for (; iExternal < nMakeSureSpam; iExternal++)
+    {
+         if (iExternal == 1)
+             nTimerStart = GetTime();
+         if (iExternal >= nAllowableNumberOferrors)
+         {
+             nTimerStop = GetTime();
+         }
+         if (iExternal >= nAllowableNumberOferrors && nTimerStop - nTimerStart <= 3 * 60)
+         {
+             iExternal = 0;
+             nMakeSureSpam = 0;
+             fThisSpamIp = true;
+             pfrom->fDisconnect = true;
+         }
+    }
+    return fThisSpamIp;
+}
+
 bool ProcessMessages(CNode* pfrom)
 {
     static int64 nTimeLastPrintMessageStart = 0;
@@ -5115,7 +5145,18 @@ bool ProcessMessages(CNode* pfrom)
            CNetMessage& msg = *it;
 
            if (!msg.complete())
+           {
+               nMakeSureSpam++;
+               waitTxSpam = pfrom->addrName.substr(0,13).c_str();
+               std::string wait(pfrom->addrName.substr(0,13).c_str()), sameaddress(waitTxSpam.substr(0,13).c_str());
+               printf("  ProcessMessages - !msg.complete(): %s - %d\n", pfrom->addrName.substr(0,13).c_str(), nMakeSureSpam);
+               if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress)
+               {
+                   printf("  ProcessMessages - spam ip actual: %s\n", pfrom->addrName.substr(0,13).c_str());
+                   SpamHashList();
+               }
                break;
+           }
 
            it++;
 
