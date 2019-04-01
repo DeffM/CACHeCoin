@@ -1577,9 +1577,11 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransacti
     if (tx.nTime > GetAdjustedTime() + nMaxClockDrift)
          return state.DoS(10, error("'CTxMemPool - CheckTxMemPool' : timestamp is too far into the future"));
 
-    if (tx.nTime < GetAdjustedTime() - nMaxClockDrift * 360)
-        return state.DoS(10, error("'CTxMemPool - CheckTxMemPool' : timestamp is too far into the past"));
-
+    if (pindexBest->GetBlockTime() > nPowForceTimestamp)
+    {
+        if (tx.nTime < GetAdjustedTime() - nMaxClockDrift * 360)
+            return state.DoS(10, error("'CTxMemPool - CheckTxMemPool' : timestamp is too far into the past"));
+    }
     return true;
 }
 
@@ -2688,13 +2690,6 @@ bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex
         InvalidChainFoundCach(pindexNew);
         return false;
     }
-
-    //if (!ConnectBlock(txdb, pindexNew) || !txdb.WriteHashBestChain(hash))
-    //{
-    //    txdb.TxnAbort();
-    //    InvalidChainFound(pindexNew);
-    //    return false;
-    //}
 
     if (!txdb.TxnCommit())
         return error("SetBestChain() : TxnCommit failed");
@@ -4447,7 +4442,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             return true;
         }
 
-        if (pfrom->nVersion < 90005)
+        if (pfrom->nVersion < 91001)
         {
             printf("partner %s using a buggy client %d, disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
             pfrom->fDisconnect = true;
@@ -4496,14 +4491,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 addrman.Good(addrFrom);
             }
         }
-
-        //static int nReguestForBlock = 0;
-        //if (!pfrom->fClient && !pfrom->fOneShot &&
-        //    pfrom->nStartingHeight > (nBestHeight - 144) && pfrom->nVersion >= 91002)
-        //{
-        //    nReguestForBlock++;
-        //    pfrom->PushGetBlocks(pindexBest, uint256(0));
-        //}
 
         // Relay alerts
         {
@@ -4638,17 +4625,20 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-            unsigned int nSearched = 0;
-            for (; nSearched <= nNumberOfLines; nSearched++)
+            if (pindexBest->nHeight >= GetNumBlocksOfPeers() - 144)
             {
-                 if(fDebug && strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
-                 {
-                    printf("strCommand 'inv' - The executor of the rules performed the work\n");
-                    printf("  strCommand 'inv' - spam hash previous: %s - %s\n", nSpamHashList[nSearched], fAlreadyHave ? "instock" : "outofstock");
-                    printf("  strCommand 'inv' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-                    return false;
-                 }
-                 //printf("strCommand 'inv' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
+                unsigned int nSearched = 0;
+                for (; nSearched <= nNumberOfLines; nSearched++)
+                {
+                     if(fDebug && strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
+                     {
+                        printf("strCommand 'inv' - The executor of the rules performed the work\n");
+                        printf("  strCommand 'inv' - spam hash previous: %s - %s\n", nSpamHashList[nSearched], fAlreadyHave ? "instock" : "outofstock");
+                        printf("  strCommand 'inv' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                        return false;
+                     }
+                     //printf("strCommand 'inv' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
+                }
             }
 
             if (fDebug)
@@ -4794,32 +4784,32 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         std::vector<CScriptCheck> vChecks;
         bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-        unsigned int nSearched = 0;
-        for (; nSearched <= nNumberOfLines; nSearched++)
+        if (pindexBest->nHeight >= GetNumBlocksOfPeers() - 144)
         {
-             if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
-             {
-                 printf("strCommand 'tx' - The executor of the rules performed the work\n");
-                 printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                 printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-                 return false;
-             }
-        }
+            unsigned int nSearched = 0;
+            for (; nSearched <= nNumberOfLines; nSearched++)
+            {
+                 if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
+                 {
+                    printf("strCommand 'tx' - The executor of the rules performed the work\n");
+                    printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                    printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                    return false;
+                 }
+            }
 
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
+            if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
                                       fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                       SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||!mempool.CheckTxMemPool
                                       (state, txdb, tx, mapInputs, mapUnused))
-        {
-            waitTxSpam = inv.ToString().substr(3,20).c_str();
-            if (pindexBest->nHeight >= GetNumBlocksOfPeers())
             {
+                waitTxSpam = inv.ToString().substr(3,20).c_str();
                 SpamHashList();
+                printf("strCommand 'tx' - The executor of the rules performed the work\n");
+                printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                return false;
             }
-            printf("strCommand 'tx' - The executor of the rules performed the work\n");
-            printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-            printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-            return false;
         }
 
         fStoreTxMemory = true;
@@ -4928,7 +4918,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                pfrom->PushAddress(addr);
     }
 
-    else if (strCommand == "mempool")
+    else if (strCommand == "mempool" && !fTxStop &&
+            (pindexBest->nHeight >= GetNumBlocksOfPeers() - 144))
     {
         std::vector<uint256> vtxid;
         LOCK2(mempool.cs, pfrom->cs_filter);
@@ -5075,29 +5066,20 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     return true;
 }
 
-unsigned int iExternal = 0;
-int64 nTimerStop = 0;
+int nCalculationInterval = 1 * 60;
 int64 nTimerStart = 0;
-int64 nAllowableNumberOferrors = 5;
+int64 nAllowableNumberOferrors = 120;
 unsigned int nMakeSureSpam = 0;
+
 static bool SpamIpTimer(CNode* pfrom, unsigned int nMakeSureSpam)
 {
     bool fThisSpamIp = false;
-    for (; iExternal < nMakeSureSpam; iExternal++)
+    if (nMakeSureSpam == 1)
+        nTimerStart = GetAdjustedTime();
+    if (nMakeSureSpam == nAllowableNumberOferrors && GetAdjustedTime() - nTimerStart <= nCalculationInterval)
     {
-         if (iExternal == 1)
-             nTimerStart = GetTime();
-         if (iExternal >= nAllowableNumberOferrors)
-         {
-             nTimerStop = GetTime();
-         }
-         if (iExternal >= nAllowableNumberOferrors && nTimerStop - nTimerStart <= 3 * 60)
-         {
-             iExternal = 0;
-             nMakeSureSpam = 0;
-             fThisSpamIp = true;
-             pfrom->fDisconnect = true;
-         }
+        fThisSpamIp = true;
+        pfrom->fDisconnect = true;
     }
     return fThisSpamIp;
 }
@@ -5146,16 +5128,31 @@ bool ProcessMessages(CNode* pfrom)
 
            if (!msg.complete())
            {
-               nMakeSureSpam++;
-               waitTxSpam = pfrom->addrName.substr(0,13).c_str();
-               std::string wait(pfrom->addrName.substr(0,13).c_str()), sameaddress(waitTxSpam.substr(0,13).c_str());
-               printf("  ProcessMessages - !msg.complete(): %s - %d\n", pfrom->addrName.substr(0,13).c_str(), nMakeSureSpam);
-               if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress)
+               if (nMakeSureSpam > nAllowableNumberOferrors)
                {
-                   printf("  ProcessMessages - spam ip actual: %s\n", pfrom->addrName.substr(0,13).c_str());
-                   SpamHashList();
+                   nTimerStart = 0;
+                   nMakeSureSpam = 0;
                }
-               break;
+               nMakeSureSpam++;
+               std::string wait(pfrom->addrName.c_str()), sameaddress(waitTxSpam.c_str());
+               wait = wait.substr(0, wait.find_last_of(":") +0);
+               printf("  ProcessMessages - !msg.complete(): %s - %d\n", wait.c_str(), nMakeSureSpam);
+               waitTxSpam = pfrom->addrName.c_str();
+               waitTxSpam = waitTxSpam.substr(0, waitTxSpam.find_last_of(":") +0);
+               unsigned int nSearched = 0;
+               for (; nSearched <= nNumberOfLines; nSearched++)
+                    if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress && (strcmp(nSpamHashList[nSearched],
+                        wait.c_str()) != 0))
+                    {
+                        printf("  ProcessMessages - spam ip actual: %s\n", wait.c_str());
+                        SpamHashList();
+                    }
+                    else if (wait != sameaddress)
+                    {
+                             nTimerStart = 0;
+                             nMakeSureSpam = 0;
+                    }
+                    break;
            }
 
            it++;
@@ -5277,6 +5274,7 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         // Start block sync
         if (pto->fStartSync && !fImporting && !fReindex)
         {
+            printf("     Start block sync\n");
             pto->fStartSync = false;
             pto->PushGetBlocks(pindexBest, uint256(0));
         }

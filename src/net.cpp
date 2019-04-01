@@ -649,7 +649,7 @@ bool CNode::IsGlobalIpBanned(CNetAddr SpamIpAddr)
         unsigned int nSearched = 0;
         for (; nSearched <= nNumberOfLines; nSearched++)
         {
-             if (strcmp(nSpamHashList[nSearched], SpamIpAddr.ToString().substr(0,13).c_str()) == 0)
+             if (strcmp(nSpamHashList[nSearched], SpamIpAddr.ToString().c_str()) == 0)
              {
                  //printf("IsGlobalIpBanned - The executor of the rules performed the work\n");
                  fResume = true;
@@ -824,7 +824,8 @@ static int64 NodeSyncScore(const CNode *pnode) {
     return pnode->nLastRecv;
 }
 
-void static StartSync(const vector<CNode*> &vNodes) {
+void static StartSync(const vector<CNode*> &vNodes)
+{
     CNode *pnodeNewSync = NULL;
     int64 nBestScore = 0;
 
@@ -834,22 +835,37 @@ void static StartSync(const vector<CNode*> &vNodes) {
         return;
 
     // Iterate over all nodes
-    BOOST_FOREACH(CNode* pnode, vNodes) {
-        // check preconditions for allowing a sync
-        if (!pnode->fClient && !pnode->fOneShot &&
-            !pnode->fDisconnect && pnode->fSuccessfullyConnected &&
-            (pnode->nStartingHeight > (nBestHeight - 144)) &&
-            (pnode->nVersion < NOBLKS_VERSION_START || pnode->nVersion >= NOBLKS_VERSION_END)) {
+    BOOST_FOREACH(CNode* pnode, vNodes)
+    {
+        if (!pnode->fClient && !pnode->fOneShot && !pnode->fDisconnect &&
+            pnode->fSuccessfullyConnected && pnode->nVersion >= 91002 &&
+            (pnode->nStartingHeight > (nBestHeight - 144)))
+        {
             // if ok, compare node's score with the best so far
             int64 nScore = NodeSyncScore(pnode);
-            if (pnodeNewSync == NULL || nScore > nBestScore) {
+            if (pnodeNewSync == NULL || nScore > nBestScore)
+            {
                 pnodeNewSync = pnode;
                 nBestScore = nScore;
             }
         }
+        // check preconditions for allowing a sync
+        else if (!pnode->fClient && !pnode->fOneShot && !pnode->fDisconnect &&
+                 pnode->fSuccessfullyConnected && (pnode->nStartingHeight > (nBestHeight - 144)) &&
+                (pnode->nVersion < 91002 || pnode->nVersion >= 91001))
+        {
+                 // if ok, compare node's score with the best so far
+                 int64 nScore = NodeSyncScore(pnode);
+                 if (pnodeNewSync == NULL || nScore > nBestScore)
+                 {
+                     pnodeNewSync = pnode;
+                     nBestScore = nScore;
+                 }
+        }
     }
     // if a new sync candidate was found, start sync!
-    if (pnodeNewSync) {
+    if (pnodeNewSync)
+    {
         pnodeNewSync->fStartSync = true;
         pnodeSync = pnodeNewSync;
     }
