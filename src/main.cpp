@@ -715,7 +715,6 @@ bool CTransaction::ThreadAnalyzerHandlerToMemoryPool(CValidationState &state, CT
     }
     catch(std::runtime_error &e)
     {
-        printf("ThreadAnalyzerHandlerToMemoryPool - System error\n");
         return state.Abort(_("System error: ") + e.what());
     }
 }
@@ -4353,7 +4352,6 @@ void static ProcessGetData(CNode* pfrom)
 unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
 bool fTxStop = true;
-bool fSwitchTest = false;
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     //static map<CService, CPubKey> mapReuseKey;
@@ -4369,19 +4367,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         return true;
     }
 
-    if (fDebug)
-    {
-        std::string wait1("addr"), addr(strCommand.c_str());
-        std::string wait2("version"), version(strCommand.c_str());
-        std::string wait3("block"), block(strCommand.c_str());
-        if (false)
-        {
-            fSwitchTest = true;
-            printf("   Switch message verification mode ('inv' contains more than one transaction)\n");
-        }
-            else
-                fSwitchTest = false;
-    }
 
 
 
@@ -4797,19 +4782,22 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     return false;
                  }
             }
+        }
 
-            if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
+        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
                                       fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                       SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||!mempool.CheckTxMemPool
                                       (state, txdb, tx, mapInputs, mapUnused))
+        {
+            if (pindexBest->nHeight >= GetNumBlocksOfPeers() - 144)
             {
                 waitTxSpam = inv.ToString().substr(3,20).c_str();
                 SpamHashList();
-                printf("strCommand 'tx' - The executor of the rules performed the work\n");
-                printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-                return false;
             }
+            printf("strCommand 'tx' - The executor of the rules performed the work\n");
+            printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+            printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+            return false;
         }
 
         fStoreTxMemory = true;
@@ -4918,8 +4906,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                pfrom->PushAddress(addr);
     }
 
-    else if (strCommand == "mempool" && !fTxStop &&
-            (pindexBest->nHeight >= GetNumBlocksOfPeers() - 144))
+    else if (strCommand == "mempool")
     {
         std::vector<uint256> vtxid;
         LOCK2(mempool.cs, pfrom->cs_filter);
@@ -5166,7 +5153,6 @@ bool ProcessMessages(CNode* pfrom)
 
            // Read header
            CMessageHeader& hdr = msg.hdr;
-           string strCommand = hdr.GetCommand();
            if (!hdr.IsValid())
            {
                printf("\n\nPROCESSMESSAGE: ERRORS IN HEADER - CONTINUE %s\n\n\n", hdr.GetCommand().c_str());
@@ -5174,6 +5160,7 @@ bool ProcessMessages(CNode* pfrom)
            }
 
            // Message size
+           string strCommand = hdr.GetCommand();
            unsigned int nMessageSize = hdr.nMessageSize;
 
            std::string wait("addr"), addr(strCommand.c_str());
@@ -5195,8 +5182,7 @@ bool ProcessMessages(CNode* pfrom)
            {
                printf("ProcessMessages(%s, %u bytes) : BAD MSGCOMPLETE OR CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
                strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
-               if (!fSwitchTest)
-                   continue;
+               continue;
            }
 
            // Process message
@@ -5406,11 +5392,8 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
             if (!AlreadyHave(txdb, inv))
             {
                 if (fDebugNet)
-                {
                     printf("sending getdata: %s\n", inv.ToString().c_str());
-                    vGetData.push_back(inv);
-                }
-
+                vGetData.push_back(inv);
                 if (vGetData.size() >= 1000)
                 {
                     pto->PushMessage("getdata", vGetData);
