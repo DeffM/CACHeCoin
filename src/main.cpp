@@ -2658,11 +2658,7 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
 
     // Resurrect memory transactions that were in the disconnected branch
     BOOST_FOREACH(CTransaction& tx, vResurrect)
-    {
-        CValidationState stateDummy;
-        if (!tx.ThreadAnalyzerHandlerToMemoryPool(stateDummy, txdb, true, false))
-            mempool.remove(tx, true);
-    }
+        tx.ThreadAnalyzerHandlerToMemoryPool(state, txdb, false);
 
     // Delete redundant memory transactions that are in the connected branch
     BOOST_FOREACH(CTransaction& tx, vDelete)
@@ -5126,20 +5122,17 @@ bool ProcessMessages(CNode* pfrom)
                printf("  ProcessMessages - !msg.complete(): %s - %d\n", wait.c_str(), nMakeSureSpam);
                waitTxSpam = pfrom->addrName.c_str();
                waitTxSpam = waitTxSpam.substr(0, waitTxSpam.find_last_of(":") +0);
-               unsigned int nSearched = 0;
-               for (; nSearched <= nNumberOfLines; nSearched++)
-                    if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress && (strcmp(nSpamHashList[nSearched],
-                        wait.c_str()) != 0))
-                    {
-                        printf("  ProcessMessages - spam ip actual: %s\n", wait.c_str());
-                        SpamHashList();
-                    }
-                    else if (wait != sameaddress)
-                    {
-                             nTimerStart = 0;
-                             nMakeSureSpam = 0;
-                    }
-                    break;
+               if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress)
+               {
+                   printf("  ProcessMessages - spam ip actual: %s\n", wait.c_str());
+                   SpamHashList();
+               }
+               else if (wait != sameaddress)
+               {
+                        nTimerStart = 0;
+                        nMakeSureSpam = 0;
+               }
+               break;
            }
 
            it++;
@@ -5163,16 +5156,6 @@ bool ProcessMessages(CNode* pfrom)
            string strCommand = hdr.GetCommand();
            unsigned int nMessageSize = hdr.nMessageSize;
 
-           std::string wait("addr"), addr(strCommand.c_str());
-           if (wait == addr)
-           {
-               if (nMessageSize > ADR_MAX_SIZE)
-               {
-                   printf("ProcessMessages(%s, %u bytes) : PEERS.DAT EXCEEDS THE ALLOWABLE SIZE - CONTINUE\n", strCommand.c_str(), nMessageSize);
-                   continue;
-               }
-           }
-
            // Checksum
            unsigned int nChecksum = 0;
            CDataStream& vRecv = msg.vRecv;
@@ -5183,6 +5166,17 @@ bool ProcessMessages(CNode* pfrom)
                printf("ProcessMessages(%s, %u bytes) : BAD MSGCOMPLETE OR CHECKSUM ERROR - CONTINUE nChecksum=%08x hdr.nChecksum=%08x\n",
                strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
                continue;
+           }
+
+           // Message size - addr
+           std::string wait("addr"), addr(strCommand.c_str());
+           if (wait == addr)
+           {
+               if (nMessageSize > ADR_MAX_SIZE)
+               {
+                   printf("ProcessMessages(%s, %u bytes) : PEERS.DAT EXCEEDS THE ALLOWABLE SIZE - CONTINUE\n", strCommand.c_str(), nMessageSize);
+                   continue;
+               }
            }
 
            // Process message
