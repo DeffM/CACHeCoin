@@ -2067,6 +2067,21 @@ int GetNumBlocksOfPeers()
     return std::max(cPeerBlockCounts.median(), Checkpoints::GetTotalBlocksEstimate());
 }
 
+int nFullCompleteBlocks = 0;
+
+int GetFullCompleteBlocks()
+{
+    return std::max(nFullCompleteBlocks, Checkpoints::GetTotalBlocksEstimate());
+}
+
+bool IsUntilFullCompleteOneHundredFortyFourBlocks()
+{
+    if (pindexBest == NULL || nBestHeight < GetFullCompleteBlocks() - 144)
+        return true;
+        else
+            return false;
+}
+
 bool IsInitialBlockDownload()
 {
     if (pindexBest == NULL || nBestHeight < Checkpoints::GetTotalBlocksEstimate())
@@ -3462,9 +3477,18 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         Checkpoints::AskForPendingSyncCheckpoint(pfrom);
 
     // If don't already have its previous block, shunt it off to holding area until we get it
+    bool fGo = true;
     if (!mapBlockIndex.count(pblock->hashPrevBlock))
     {
-        printf("ProcessBlock: ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
+        if (IsUntilFullCompleteOneHundredFortyFourBlocks())
+        {
+            printf("ProcessBlock: At IsInitialBlockDownload() we do not save the block without the previous, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
+            printf("ProcessBlock: Before switching mode left, blocks=%d\n", nFullCompleteBlocks - nBestHeight);
+            fGo = false;
+        }
+        else
+            printf("ProcessBlock: ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
+
         CBlock* pblock2 = new CBlock(*pblock);
         // ppcoin: check proof-of-stake
         if (pblock2->IsProofOfStake())
@@ -3488,7 +3512,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
             if (!IsInitialBlockDownload())
                 pfrom->AskFor(CInv(MSG_BLOCK, WantedByOrphan(pblock2)));
         }
-        return true;
+        return fGo;
     }
 
     // Store to disk
@@ -4362,7 +4386,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         printf("dropmessagestest DROPPING RECV MESSAGE\n");
         return true;
     }
-
+    if (nFullCompleteBlocks < nBestHeight)
+        nFullCompleteBlocks = nBestHeight;
+    if (!IsInitialBlockDownload())
+        nFullCompleteBlocks = nBestHeight;
 
 
 
@@ -4489,9 +4516,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         pfrom->fSuccessfullyConnected = true;
 
-        printf("receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
+        if (pfrom->nStartingHeight > nFullCompleteBlocks)
+            nFullCompleteBlocks = pfrom->nStartingHeight;
 
         cPeerBlockCounts.input(pfrom->nStartingHeight);
+
+        printf("receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
 
         // ppcoin: ask for pending sync-checkpoint if any
         if (!IsInitialBlockDownload())
@@ -4606,7 +4636,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-            if (pindexBest->nHeight >= GetNumBlocksOfPeers() - 144)
+            if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
             {
                 unsigned int nSearched = 0;
                 for (; nSearched <= nNumberOfLines; nSearched++)
@@ -4765,7 +4795,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         std::vector<CScriptCheck> vChecks;
         bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-        if (pindexBest->nHeight >= GetNumBlocksOfPeers() - 144)
+        if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
             unsigned int nSearched = 0;
             for (; nSearched <= nNumberOfLines; nSearched++)
@@ -4785,7 +4815,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                                       SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||!mempool.CheckTxMemPool
                                       (state, txdb, tx, mapInputs, mapUnused))
         {
-            if (pindexBest->nHeight >= GetNumBlocksOfPeers() - 144)
+            if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
             {
                 waitTxSpam = inv.ToString().substr(3,20).c_str();
                 SpamHashList();
@@ -4877,9 +4907,17 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         CInv inv(MSG_BLOCK, hashBlock);
         pfrom->AddInventoryKnown(inv);
 
+        bool fGo = true;
         CValidationState state;
-        if (ProcessBlock(state, pfrom, &block) || state.CorruptionPossible())
-            mapAlreadyAskedFor.erase(inv);
+        if (!ProcessBlock(state, pfrom, &block))
+        {
+            fGo = false;
+            printf("received block ignoring - IsInitialBlockDownload() %s\n", hashBlock.ToString().substr(0,20).c_str());
+            return false;
+        }
+        else if (fGo || state.CorruptionPossible())
+                 mapAlreadyAskedFor.erase(inv);
+
         int nDoS = 0;
         if (state.IsInvalid(nDoS))
             if (nDoS > 0)
