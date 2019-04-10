@@ -5089,12 +5089,14 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
 int nCalculationInterval = 1 * 60;
 int64 nTimerStart = 0;
-int64 nAllowableNumberOferrors = 120;
+int64 nAllowableNumberOferrors = 100;
 unsigned int nMakeSureSpam = 0;
 
 static bool SpamIpTimer(CNode* pfrom, unsigned int nMakeSureSpam)
 {
     bool fThisSpamIp = false;
+    if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
+        nAllowableNumberOferrors = 80;
     if (nMakeSureSpam == 1)
         nTimerStart = GetAdjustedTime();
     if (nMakeSureSpam == nAllowableNumberOferrors && GetAdjustedTime() - nTimerStart <= nCalculationInterval)
@@ -5157,7 +5159,7 @@ bool ProcessMessages(CNode* pfrom)
                nMakeSureSpam++;
                std::string wait(pfrom->addrName.c_str()), sameaddress(waitTxSpam.c_str());
                wait = wait.substr(0, wait.find_last_of(":") +0);
-               printf("  ProcessMessages - !msg.complete(): %s - %d\n", wait.c_str(), nMakeSureSpam);
+               printf("  ProcessMessages - !msg.complete(): %s error count: %d\n", wait.c_str(), nMakeSureSpam);
                waitTxSpam = pfrom->addrName.c_str();
                waitTxSpam = waitTxSpam.substr(0, waitTxSpam.find_last_of(":") +0);
                if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress)
