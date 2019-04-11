@@ -824,8 +824,7 @@ static int64 NodeSyncScore(const CNode *pnode) {
     return pnode->nLastRecv;
 }
 
-void static StartSync(const vector<CNode*> &vNodes)
-{
+void static StartSync(const vector<CNode*> &vNodes) {
     CNode *pnodeNewSync = NULL;
     int64 nBestScore = 0;
 
@@ -835,37 +834,22 @@ void static StartSync(const vector<CNode*> &vNodes)
         return;
 
     // Iterate over all nodes
-    BOOST_FOREACH(CNode* pnode, vNodes)
-    {
-        if (!pnode->fClient && !pnode->fOneShot && !pnode->fDisconnect &&
-            pnode->fSuccessfullyConnected && pnode->nVersion >= 91002 &&
-            (pnode->nStartingHeight > (nBestHeight - 144)))
-        {
+    BOOST_FOREACH(CNode* pnode, vNodes) {
+        // check preconditions for allowing a sync
+        if (!pnode->fClient && !pnode->fOneShot &&
+            !pnode->fDisconnect && pnode->fSuccessfullyConnected &&
+            (pnode->nStartingHeight > (nBestHeight - 144)) &&
+            (pnode->nVersion < NOBLKS_VERSION_START || pnode->nVersion >= NOBLKS_VERSION_END)) {
             // if ok, compare node's score with the best so far
             int64 nScore = NodeSyncScore(pnode);
-            if (pnodeNewSync == NULL || nScore > nBestScore)
-            {
+            if (pnodeNewSync == NULL || nScore > nBestScore) {
                 pnodeNewSync = pnode;
                 nBestScore = nScore;
             }
         }
-        // check preconditions for allowing a sync
-        else if (!pnode->fClient && !pnode->fOneShot && !pnode->fDisconnect &&
-                 pnode->fSuccessfullyConnected && (pnode->nStartingHeight > (nBestHeight - 144)) &&
-                (pnode->nVersion < 91002 || pnode->nVersion >= 91001))
-        {
-                 // if ok, compare node's score with the best so far
-                 int64 nScore = NodeSyncScore(pnode);
-                 if (pnodeNewSync == NULL || nScore > nBestScore)
-                 {
-                     pnodeNewSync = pnode;
-                     nBestScore = nScore;
-                 }
-        }
     }
     // if a new sync candidate was found, start sync!
-    if (pnodeNewSync)
-    {
+    if (pnodeNewSync) {
         pnodeNewSync->fStartSync = true;
         pnodeSync = pnodeNewSync;
     }
@@ -2063,4 +2047,38 @@ void RelayTransaction(const CTransaction& tx, const uint256& hash, const CDataSt
     }
 
     RelayInventory(inv);
+}
+
+static void AddRelay(const CInv& inv, const CDataStream& ss)
+{
+    {
+        LOCK(cs_mapRelay);
+        // Expire old relay messages
+        while (!vRelayExpiration.empty() && vRelayExpiration.front().first < GetTime())
+        {
+            mapRelay.erase(vRelayExpiration.front().second);
+            vRelayExpiration.pop_front();
+        }
+
+        // Save original serialized message so newer versions are preserved
+        mapRelay.insert(std::make_pair(inv, ss));
+        vRelayExpiration.push_back(std::make_pair(GetTime() + 15 * 60, inv));
+    }
+}
+
+void RelayBlock(const CBlock& block, const uint256& hash)
+{
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    ss.reserve(10000);
+    ss << block;
+    RelayBlock(block, hash, ss);
+}
+
+void RelayBlock(const CBlock& tx, const uint256& hash, const CDataStream& ss)
+{
+    CInv inv(MSG_BLOCK, hash);
+    AddRelay(inv, ss);
+    LOCK(cs_vNodes);
+    BOOST_FOREACH(CNode* pnode, vNodes)
+        pnode->PushInventory(inv);
 }

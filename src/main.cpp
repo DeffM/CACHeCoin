@@ -95,6 +95,7 @@ bool fStoreTxMemory = false;
 CMedianFilter<int> cPeerBlockCounts(5, 0); // Amount of blocks that other nodes claim to have
 
 map<uint256, CBlock*> mapOrphanBlocks;
+map<uint256, CBlock*> mapDuplicateStakeBlocks;
 multimap<uint256, CBlock*> mapOrphanBlocksByPrev;
 set<pair<COutPoint, unsigned int> > setStakeSeenOrphan;
 map<uint256, uint256> mapProofOfStake;
@@ -139,6 +140,10 @@ const unsigned int nNumberOfLines = 250;
 unsigned int nLinesSource = nNumberOfLines - 1;
 unsigned int nLinesReceiver = nNumberOfLines;
 char nSpamHashList[nNumberOfLines + 1][21];
+
+#ifdef TESTING
+int nBlocksToIgnore = 0;
+#endif
 
 
 
@@ -1415,6 +1420,34 @@ int64 GetProofOfWorkReward(unsigned int nBits)
     else return min(nSubsidy, MINT_PROOF_OF_WORK);
 }
 
+int nMaxOrphanBlocks = DEFAULT_MAX_ORPHAN_BLOCKS;
+// Remove a random orphan block (which does not have any dependent orphans).
+void static PruneOrphanBlocks()
+{
+    if (mapOrphanBlocksByPrev.size() <= (size_t)std::max((int64)0, GetArg("-maxorphanblocks", nMaxOrphanBlocks)))
+        return;
+
+    // Pick a random orphan block.
+    int pos = insecure_rand() % mapOrphanBlocksByPrev.size();
+    std::multimap<uint256, CBlock*>::iterator it = mapOrphanBlocksByPrev.begin();
+    while (pos--) it++;
+
+    // As long as this block has other orphans depending on it, move to one of those successors.
+    do
+    {
+        std::multimap<uint256, CBlock*>::iterator it2 = mapOrphanBlocksByPrev.find(it->second->GetHash());
+        if (it2 == mapOrphanBlocksByPrev.end())
+            break;
+        it = it2;
+    }
+    while(1);
+
+    uint256 hash = it->second->GetHash();
+    delete it->second;
+    mapOrphanBlocksByPrev.erase(it);
+    mapOrphanBlocks.erase(hash);
+}
+
 // ppcoin: miner's coin stake is rewarded based on coin age spent (coin-days)
 int64 GetProofOfStakeReward(int64 nCoinAge)
 {
@@ -2076,7 +2109,7 @@ int GetFullCompleteBlocks()
 
 bool IsUntilFullCompleteOneHundredFortyFourBlocks()
 {
-    if (pindexBest == NULL || nBestHeight < GetFullCompleteBlocks() - 144)
+    if (nBestHeight < GetFullCompleteBlocks() - 30)
         return true;
         else
             return false;
@@ -3389,20 +3422,60 @@ bool CBlockIndex::IsSuperMajority(int minVersion, const CBlockIndex* pstart, uns
     return (nFound >= nRequired);
 }
 
+void CleanUpOldDuplicateStakeBlocks()
+{
+    int64 maxAge = 24 * 60 * 60;
+    int64 minTime = GetAdjustedTime() - maxAge;
+
+    BOOST_FOREACH(PAIRTYPE(const uint256, CBlock*)& item, mapDuplicateStakeBlocks)
+    {
+        const uint256& hash = item.first;
+        CBlock* block = item.second;
+        if (block->GetBlockTime() < minTime)
+        {
+            mapDuplicateStakeBlocks.erase(hash);
+            delete block;
+        }
+    }
+}
+
 bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp)
 {
+#ifdef TESTING
+    static set<uint256> setIgnoredBlockHashes;
+    if (nBlocksToIgnore)
+    {
+        nBlocksToIgnore--;
+        setIgnoredBlockHashes.insert(pblock->GetHash());
+        return error("ProcessBlock() : block ignored");
+    }
+    if (setIgnoredBlockHashes.count(pblock->GetHash()))
+        return error("ProcessBlock() : block ignored");
+#endif
     // Check for duplicate
     uint256 hash = pblock->GetHash();
     if (mapBlockIndex.count(hash))
-        return error("ProcessBlock() : already have block %d %s", mapBlockIndex[hash]->nHeight, hash.ToString().substr(0,20).c_str());
+        return state.Invalid(error("ProcessBlock() : already have block %d %s", mapBlockIndex[hash]->nHeight, hash.ToString().c_str()));
     if (mapOrphanBlocks.count(hash))
-        return error("ProcessBlock() : already have block (orphan) %s", hash.ToString().substr(0,20).c_str());
+        return state.Invalid(error("ProcessBlock() : already have block (orphan) %s", hash.ToString().c_str()));
 
     // ppcoin: check proof-of-stake
-    // Limited duplicity on stake: prevents block flood attack
-    // Duplicate stake allowed only when there is orphan child block
-    if (pblock->IsProofOfStake() && setStakeSeen.count(pblock->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash) && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
-        return error("ProcessBlock() : duplicate proof-of-stake (%s, %d) for block %s", pblock->GetProofOfStake().first.ToString().c_str(), pblock->GetProofOfStake().second, hash.ToString().c_str());
+    bool fDuplicateStakeOfBestBlock = false;
+    if (pblock->IsProofOfStake())
+    {
+        std::pair<COutPoint, unsigned int> proofOfStake = pblock->GetProofOfStake();
+
+        if (pindexBest->IsProofOfStake() && proofOfStake.first == pindexBest->prevoutStake)
+            // If the best block's stake is reused, we cancel the best block after the block checks
+            fDuplicateStakeOfBestBlock = true;
+        else
+        {
+            // Limited duplicity on stake: prevents block flood attack
+            // Duplicate stake allowed only when there is orphan child block
+            if (pblock->IsProofOfStake() && setStakeSeen.count(proofOfStake) && !mapOrphanBlocksByPrev.count(hash) && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+                return error("ProcessBlock() : duplicate proof-of-stake (%s, %d) for block %s", proofOfStake.first.ToString().c_str(), proofOfStake.second, hash.ToString().c_str());
+        }
+    }
 
     // Preliminary checks
     if (!pblock->CheckBlock(state))
@@ -3430,45 +3503,10 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         bnNewBlock.SetCompact(pblock->nBits);
         CBigNum bnRequired;
         bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndex(pcheckpoint, pblock->IsProofOfStake())->nBits, deltaTime));
-        if (bnNewBlock > bnRequired)
-        {
-            if (pfrom)
-                pfrom->Misbehaving(100);
-            return error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work");
-        }
-    }
 
-    CBlockIndex* pcheckpointpos = Checkpoints::GetLastSyncCheckpoint();
-    if (pcheckpointpos && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
-    {
-        // Extra checks to prevent "fill up memory by spamming with bogus blocks"
-        int64 deltaTime = pblock->GetBlockTime() - pcheckpointpos->nTime;
-        CBigNum bnNewBlock;
-        bnNewBlock.SetCompact(pblock->nBits);
-        CBigNum bnRequired;
-        bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndexPos(pcheckpointpos, pblock->IsProofOfStake())->nBits, deltaTime));
         if (bnNewBlock > bnRequired)
         {
-            if (pfrom)
-                pfrom->Misbehaving(100);
-            return error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work");
-        }
-    }
-
-    CBlockIndex* pcheckpointpow = Checkpoints::GetLastSyncCheckpoint();
-    if (pcheckpointpow && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
-    {
-        // Extra checks to prevent "fill up memory by spamming with bogus blocks"
-        int64 deltaTime = pblock->GetBlockTime() - pcheckpointpow->nTime;
-        CBigNum bnNewBlock;
-        bnNewBlock.SetCompact(pblock->nBits);
-        CBigNum bnRequired;
-        bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndexPow(pcheckpointpow, pblock->IsProofOfStake())->nBits, deltaTime));
-        if (bnNewBlock > bnRequired)
-        {
-            if (pfrom)
-                pfrom->Misbehaving(100);
-            return error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work");
+            return state.DoS(100, error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
         }
     }
 
@@ -3476,37 +3514,82 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     if (!IsInitialBlockDownload())
         Checkpoints::AskForPendingSyncCheckpoint(pfrom);
 
-    // If don't already have its previous block, shunt it off to holding area until we get it
+    if (fDuplicateStakeOfBestBlock)
+    {
+        printf("ProcessBlock() : block uses the same stake as the best block. Canceling the best block\n");
+
+        // Save the block to be able to accept it if a new chain is built from it despite the rejection
+        mapDuplicateStakeBlocks[pblock->GetHash()] = new CBlock(*pblock);
+
+        // Relay the duplicate block so that other nodes are aware of the duplication
+        RelayBlock(*pblock, hash);
+
+        // Cancel the best block
+        CTxDB txdb;
+        mapBlockIndex.erase(hash); // Remove from the list of immediate candidates for the best chain
+        InvalidChainFoundCach(pindexBest);
+        CValidationState stateDummy;
+        if (!pblock->SetBestChain(stateDummy, txdb, pindexBest->pprev))
+            return error("ProcessBlock(): SetBestChain on previous best block failed");
+
+        return false;
+    }
+
+    if (!mapBlockIndex.count(pblock->hashPrevBlock) && mapDuplicateStakeBlocks.count(pblock->hashPrevBlock))
+    {
+        printf("ProcessBlock() : parent block was previously rejected because of stake duplication. Reaccepting parent\n");
+        CBlock* pprevBlock = mapDuplicateStakeBlocks[pblock->hashPrevBlock];
+        // Block was already checked when it was first received, so we can just accept it here
+        if (!pprevBlock->AcceptBlock())
+            return error("ProcessBlock() : AcceptBlock of previously duplicate block FAILED");
+        mapDuplicateStakeBlocks.erase(pblock->hashPrevBlock);
+        delete pprevBlock;
+    }
+
+    if (mapDuplicateStakeBlocks.size())
+        CleanUpOldDuplicateStakeBlocks();
+
+    // If we don't already have its previous block, shunt it off to holding area until we get it
     bool fGo = true;
-    if (!mapBlockIndex.count(pblock->hashPrevBlock))
+    if (pblock->hashPrevBlock != 0 && !mapBlockIndex.count(pblock->hashPrevBlock))
     {
         if (IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
+            fGo = false;
+            nMaxOrphanBlocks = 1;
             printf("ProcessBlock: At IsInitialBlockDownload() we do not save the block without the previous, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
             printf("ProcessBlock: Before switching mode left, blocks=%d\n", nFullCompleteBlocks - nBestHeight);
-            fGo = false;
         }
         else
-            printf("ProcessBlock: ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
+            printf("ProcessBlock: ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().c_str());
 
-        CBlock* pblock2 = new CBlock(*pblock);
-        // ppcoin: check proof-of-stake
-        if (pblock2->IsProofOfStake())
-        {
-            // Limited duplicity on stake: prevents block flood attack
-            // Duplicate stake allowed only when there is orphan child block
-            if (setStakeSeenOrphan.count(pblock2->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash) && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
-                return error("ProcessBlock() : duplicate proof-of-stake (%s, %d) for orphan block %s", pblock2->GetProofOfStake().first.ToString().c_str(), pblock2->GetProofOfStake().second, hash.ToString().c_str());
-            else
-                setStakeSeenOrphan.insert(pblock2->GetProofOfStake());
-        }
-        mapOrphanBlocks.insert(make_pair(hash, pblock2));
-        mapOrphanBlocksByPrev.insert(make_pair(pblock2->hashPrevBlock, pblock2));
-
-        // Ask this guy to fill in what we're missing
+        // Accept orphans as long as there is a node to request its parents from
         if (pfrom)
         {
-            pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(pblock2));
+            PruneOrphanBlocks();
+            CBlock* pblock2 = new CBlock(*pblock);
+            // ppcoin: check proof-of-stake
+            if (pblock2->IsProofOfStake())
+            {
+                // Limited duplicity on stake: prevents block flood attack
+                // Duplicate stake allowed only when there is orphan child block
+                if (setStakeSeenOrphan.count(pblock2->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash) && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+                {
+                    error("ProcessBlock() : duplicate proof-of-stake (%s, %d) for orphan block %s", pblock2->GetProofOfStake().first.ToString().c_str(), pblock2->GetProofOfStake().second, hash.ToString().c_str());
+                    //pblock2 will not be needed, free it
+                    delete pblock2;
+                    return false;
+                }
+                else
+                    setStakeSeenOrphan.insert(pblock2->GetProofOfStake());
+            }
+            mapOrphanBlocks.insert(make_pair(hash, pblock2));
+            mapOrphanBlocksByPrev.insert(make_pair(pblock2->hashPrevBlock, pblock2));
+
+            // Ask this guy to fill in what we're missing
+            if (!pblock2->IsProofOfStake() || !IsUntilFullCompleteOneHundredFortyFourBlocks())
+                pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(pblock2));
+
             // ppcoin: getblocks may not obtain the ancestor block rejected
             // earlier by duplicate-stake check so we ask for it again directly
             if (!IsInitialBlockDownload())
@@ -3530,6 +3613,8 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
              ++mi)
         {
             CBlock* pblockOrphan = (*mi).second;
+            // Use a dummy CValidationState so someone can't setup nodes to counter-DoS based on orphan resolution (that is, feeding people an invalid block based on LegitBlockX in order to get anyone relaying LegitBlockX banned)
+            CValidationState stateDummy;
             if (pblockOrphan->AcceptBlock())
                 vWorkQueue.push_back(pblockOrphan->GetHash());
             mapOrphanBlocks.erase(pblockOrphan->GetHash());
@@ -3542,7 +3627,8 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     printf("ProcessBlock: ACCEPTED %s BLOCK\n", pblock->IsProofOfStake()?"POS":"POW");
 
     // ppcoin: if responsible for sync-checkpoint send it
-    if (pfrom && !CSyncCheckpoint::strMasterPrivKey.empty())
+    if (pfrom && !CSyncCheckpoint::strMasterPrivKey.empty() &&
+        (int)GetArg("-checkpointdepth", -1) >= 0)
         Checkpoints::SendSyncCheckpoint(Checkpoints::AutoSelectSyncCheckpoint());
 
     return true;
@@ -4923,7 +5009,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (nDoS > 0)
                 pfrom->Misbehaving(nDoS);
     }
-
     // This asymmetric behavior for inbound and outbound connections was introduced
     // to prevent a fingerprinting attack: an attacker can send specific fake addresses
     // to users' AddrMan and later request them by sending getaddr messages. 
@@ -5159,7 +5244,7 @@ bool ProcessMessages(CNode* pfrom)
                nMakeSureSpam++;
                std::string wait(pfrom->addrName.c_str()), sameaddress(waitTxSpam.c_str());
                wait = wait.substr(0, wait.find_last_of(":") +0);
-               printf("  ProcessMessages - !msg.complete(): %s error count: %d\n", wait.c_str(), nMakeSureSpam);
+               printf("  ProcessMessages - !msg.complete(): %s - error count: %d\n", wait.c_str(), nMakeSureSpam);
                waitTxSpam = pfrom->addrName.c_str();
                waitTxSpam = waitTxSpam.substr(0, waitTxSpam.find_last_of(":") +0);
                if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress)

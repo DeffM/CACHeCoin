@@ -799,4 +799,8 @@ template <typename SubjectToListen> void GoRoundThread(const char* name,  Subjec
     }
 }
 
+class CBlock;
+void RelayBlock(const CBlock& tx, const uint256& hash);
+void RelayBlock(const CBlock& tx, const uint256& hash, const CDataStream& ss);
+
 #endif
