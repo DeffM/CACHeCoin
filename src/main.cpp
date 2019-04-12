@@ -5011,7 +5011,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             fGo = false;
             if (fMalaproposBlock)
                 pfrom->fDisconnect = true;
-            if (pfrom->fSuccessfullyConnected)
+            if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect)
                 pfrom->fStartSync = true;
             printf("received block ignoring - IsInitialBlockDownload() %s\n", hashBlock.ToString().substr(0,20).c_str());
             return true;
