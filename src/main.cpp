@@ -3164,6 +3164,7 @@ bool CBlock::HardForkControl(CValidationState &state, const json_spirit::Array& 
     return true;
 }
 
+bool fMalaproposBlock = false;
 bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerkleRoot, bool fCheckSig) const
 {
     // These are checks that are independent of context
@@ -3187,6 +3188,16 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
     // Check timestamp
     if (GetBlockTime() > GetAdjustedTime() + nMaxClockDrift)
         return error("CheckBlock() : block timestamp too far in the future");
+
+    // Get prev block index - MalaproposBlock, IsInitialBlockDownload only
+    fMalaproposBlock = false;
+    map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashPrevBlock);
+    if ((IsUntilFullCompleteOneHundredFortyFourBlocks() && mi == mapBlockIndex.end()) &&
+       (IsProofOfStake() || IsProofOfWork()))
+    {
+        fMalaproposBlock = true;
+        printf("CheckBlock() : MalaproposBlockPowPos\n");
+    }
 
     // First transaction must be coinbase, the rest must not be
     if (vtx.empty() || !vtx[0].IsCoinBase())
@@ -3556,7 +3567,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         if (IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
             fGo = false;
-            nMaxOrphanBlocks = 1;
+            nMaxOrphanBlocks = 0;
             printf("ProcessBlock: At IsInitialBlockDownload() we do not save the block without the previous, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
             printf("ProcessBlock: Before switching mode left, blocks=%d\n", nFullCompleteBlocks - nBestHeight);
         }
@@ -4998,8 +5009,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (!ProcessBlock(state, pfrom, &block))
         {
             fGo = false;
+            if (fMalaproposBlock)
+                pfrom->fDisconnect = true;
+            if (pfrom->fSuccessfullyConnected)
+                pfrom->fStartSync = true;
             printf("received block ignoring - IsInitialBlockDownload() %s\n", hashBlock.ToString().substr(0,20).c_str());
-            return false;
+            return true;
         }
         else if (fGo || state.CorruptionPossible())
                  mapAlreadyAskedFor.erase(inv);
