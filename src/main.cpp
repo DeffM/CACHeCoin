@@ -5005,14 +5005,19 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         pfrom->AddInventoryKnown(inv);
 
         bool fGo = true;
+        bool fStop = false;
         CValidationState state;
         if (!ProcessBlock(state, pfrom, &block))
         {
             fGo = false;
-            if (fMalaproposBlock)
+            if (IsUntilFullCompleteOneHundredFortyFourBlocks())
+                fStop = true;
+            if (fMalaproposBlock || fStop)
                 pfrom->fDisconnect = true;
-            if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect)
+            if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect &&
+                (fMalaproposBlock || fStop))
                 pfrom->fStartSync = true;
+            fMalaproposBlock = false;
             printf("received block ignoring - IsInitialBlockDownload() %s\n", hashBlock.ToString().substr(0,20).c_str());
             return true;
         }
