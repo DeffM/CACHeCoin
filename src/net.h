@@ -47,6 +47,7 @@ void StartNode(void* parg);
 bool StopNode();
 void SocketSendData(CNode *pnode);
 extern int nMaxConnections;
+extern int nTheEndTimeOfTheTestBlock;
 
 enum
 {
@@ -209,6 +210,8 @@ public:
     int nHeaderStart;
     int nRecvVersion;
     unsigned int nMessageStart;
+    unsigned int nSizeNew;
+    unsigned int nSizeExtern;
     CAddress addr;
     std::deque<CInv> vRecvGetData;
     std::deque<CNetMessage> vRecvMsg;
@@ -216,6 +219,7 @@ public:
     CService addrLocal;
     int nVersion;
     std::string strSubVer, cleanSubVer;
+    bool fGo;
     bool fOneShot;
     bool fClient;
     bool fInbound;
@@ -285,12 +289,15 @@ public:
         nSendSize = 0;
         nSendOffset = 0;
         nReleaseTime = 0;
+        nSizeNew = 0;
+        nSizeExtern = 0;
         hashContinue = 0;
         pindexLastGetBlocksBegin = 0;
         hashLastGetBlocksEnd = 0;
         nStartingHeight = -1;
         fStartSync = false;
         fGetAddr = false;
+        fGo = false;
         nMisbehavior = 0;
         hashCheckpointKnown = 0;
         fRelayTxes = false;
@@ -411,15 +418,20 @@ public:
     }
 
 
-
     // TODO: Document the postcondition of this function.  Is cs_vSend locked?
     void BeginMessage(const char* pszCommand) EXCLUSIVE_LOCK_FUNCTION(cs_vSend)
     {
         ENTER_CRITICAL_SECTION(cs_vSend);
         assert(vSend.size() == 0);
         vSend << CMessageHeader(pszCommand, 0);
+        std::string wait(pszCommand), psCommand("getdata");
         if (fDebug)
             printf("sending: %s ", pszCommand);
+        if (fDebug && wait == psCommand)
+        {
+            fGo = true;
+            nTheEndTimeOfTheTestBlock = 0;
+        }
     }
 
     // TODO: Document the precondition of this function.  Is cs_vSend locked?
@@ -457,8 +469,15 @@ public:
         assert(vSend.size () >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
         memcpy((char*)&vSend[CMessageHeader::CHECKSUM_OFFSET], &nChecksum, sizeof(nChecksum));
 
-        if (fDebug) {
+        if (fDebug)
+        {
             printf("(%d bytes)\n", nSize);
+        }
+
+        if (fDebug && fGo)
+        {
+            fGo = false;
+            nSizeNew = nSize;
         }
 
         std::deque<CSerializeData>::iterator it = vSendMsg.insert(vSendMsg.end(), CSerializeData());
