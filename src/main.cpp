@@ -4518,8 +4518,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     }
     if (nFullCompleteBlocks < nBestHeight)
         nFullCompleteBlocks = nBestHeight;
-    if (!IsInitialBlockDownload())
-        nFullCompleteBlocks = nBestHeight;
 
     std::string wait(strCommand.c_str()), stCommand("inv");
     if (fDebug && wait == stCommand)
