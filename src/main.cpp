@@ -89,6 +89,7 @@ CBlockIndex* pindexBest = NULL;
 int64 nTimeBestReceived = 0;
 int nScriptCheckThreads = 0;
 bool fImporting = false;
+bool fConnected = false;
 bool fReindex = false;
 bool fStoreTxMemory = false;
 
@@ -2714,7 +2715,7 @@ int nNumberOfErrorsForSyncRestart = 0;
 bool SetReload()
 {
      bool fSetReload = GetArg("-setreload", 0);
-     if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown)
+     if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
      {
             nTheEndTimeOfTheTestBlock++;
 
@@ -5446,8 +5447,12 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
                 pto->PushMessage("ping");
         }
 
+        if (pto->fSuccessfullyConnected)
+            fConnected = true;
+
         if (pto->fSuccessfullyConnected && fRestartCync && IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
+            fConnected = false;
             fRestartCync = false;
             pto->fDisconnect = true;
         }
