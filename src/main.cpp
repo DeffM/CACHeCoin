@@ -4506,12 +4506,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     //static map<CService, CPubKey> mapReuseKey;
     RandAddSeedPerfmon();
-    if (fDebug)
-    {
-        nTheEndTimeOfTheTestBlock = 0;
-        printf("%s ", DateTimeStrFormat(GetTime()).c_str());
-        printf("received: %s (%" PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
-    }
     if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
     {
         printf("dropmessagestest DROPPING RECV MESSAGE\n");
@@ -4520,22 +4514,47 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     if (nFullCompleteBlocks < nBestHeight)
         nFullCompleteBlocks = nBestHeight;
 
-    std::string wait(strCommand.c_str()), stCommand("inv");
-    if (fDebug && wait == stCommand)
+    bool fGoTx = true;
+    bool fGoInv = true;
+    bool fGoBlock = true;
+    bool fGoGetblocks = true;
+    bool fSetReload = GetArg("-setreload", 0);
+
+    std::string wait1(strCommand.c_str()), stCommand1("inv");
+    if (fDebug && wait1 == stCommand1)
     {
         nTheEndTimeOfTheTestBlock = 0;
         pfrom->nSizeExtern = vRecv.size();
     }
 
-    bool fGo = false;
-    bool fSetReload = GetArg("-setreload", 0);
-
-    if (IsUntilFullCompleteOneHundredFortyFourBlocks() && pfrom->nSizeExtern != 0 && fSetReload &&
-        (pfrom->nSizeExtern < 40 || (pfrom->nSizeExtern != pfrom->nSizeNew && pfrom->nSizeNew != 0)))
+    if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getblocks")
     {
-         fGo = true;
+        fGoGetblocks = false;
+    }
+
+    if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "tx")
+    {
+        fGoTx = false;
+    }
+
+    unsigned int nSize = 250;
+    if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv")
+    {
          nNumberOfErrorsForSyncRestart = 0;
-         printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
+         if (pfrom->nSizeExtern < nSize && (pfrom->nSizeNew > nSize || pfrom->nSizeNew == 0))
+         {
+             fGoBlock = false;
+             printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
+             if (pfrom->nSizeExtern < nSize && pfrom->nSizeNew == 0)
+                 pfrom->fDisconnect = true;
+         }
+    }
+
+    if (fDebug)
+    {
+        nTheEndTimeOfTheTestBlock = 0;
+        printf("%s ", DateTimeStrFormat(GetTime()).c_str());
+        printf("received: %s (%" PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
     }
 
 
@@ -4752,7 +4771,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             pfrom->fDisconnect = true;
     }
 
-    else if (strCommand == "inv" && !fGo)
+    else if (strCommand == "inv" && fGoInv)
     {
         vector<CInv> vInv;
         vRecv >> vInv;
@@ -4779,6 +4798,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         {
             const CInv &inv = vInv[nInv];
 
+            if (fGoBlock)
+            {
+                mapAlreadyAskedFor.erase(inv);
+            }
+
             pfrom->AddInventoryKnown(inv);
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
@@ -4802,30 +4826,35 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (fDebug)
             {
                 nTheEndTimeOfTheTestBlock = 0;
-                printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
-                printf("  strCommand 'inv' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                if (fGoBlock)
+                {
+                    printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
+                    printf("  strCommand 'inv' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                }
             }
-
-            if (!fAlreadyHave)
+            if (fGoBlock)
             {
-                if (!fImporting && !fReindex)
-                    pfrom->AskFor(inv);
-            }
-            else if (inv.type == MSG_BLOCK && mapOrphanBlocks.count(inv.hash))
-            {
-                pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(mapOrphanBlocks[inv.hash]));
-            }
-            else if (nInv == nLastBlock)
-            {
-                // In case we are on a very long side-chain, it is possible that we already have
-                // the last block in an inv bundle sent in response to getblocks. Try to detect
-                // this situation and push another getblocks to continue.
-                pfrom->PushGetBlocks(mapBlockIndex[inv.hash], uint256(0));
-                if (fDebug)
-                    printf("force request: %s\n", inv.ToString().c_str());
-            }
+                if (!fAlreadyHave)
+                {
+                    if (!fImporting && !fReindex)
+                        pfrom->AskFor(inv);
+                }
+                else if (inv.type == MSG_BLOCK && mapOrphanBlocks.count(inv.hash))
+                {
+                         pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(mapOrphanBlocks[inv.hash]));
+                }
+                else if (nInv == nLastBlock)
+                {
+                        // In case we are on a very long side-chain, it is possible that we already have
+                        // the last block in an inv bundle sent in response to getblocks. Try to detect
+                        // this situation and push another getblocks to continue.
+                        pfrom->PushGetBlocks(mapBlockIndex[inv.hash], uint256(0));
+                        if (fDebug)
+                            printf("force request: %s\n", inv.ToString().c_str());
+                }
             // Track requests for our stuff
             Inventory(inv.hash);
+            }
         }
     }
 
@@ -4842,14 +4871,68 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (fDebugNet || (vInv.size() != 1))
             printf("received getdata (%" PRIszu" invsz)\n", vInv.size());
 
-        if ((fDebugNet && vInv.size() > 0) || (vInv.size() == 1))
-            printf("received getdata for: %s\n", vInv[0].ToString().c_str());
+        BOOST_FOREACH(const CInv& inv, vInv)
+        {
+            if (fShutdown)
+                return true;
+            if (fDebugNet || (vInv.size() == 1))
+                printf("received getdata for: %s\n", inv.ToString().c_str());
 
-        pfrom->vRecvGetData.insert(pfrom->vRecvGetData.end(), vInv.begin(), vInv.end());
-        ProcessGetData(pfrom);
+            if (inv.type == MSG_BLOCK)
+            {
+                // Send block from disk
+                map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(inv.hash);
+                if (mi != mapBlockIndex.end())
+                {
+                    CBlock block;
+                    block.ReadFromDisk((*mi).second);
+                    pfrom->PushMessage("block", block);
+
+                    // Trigger them to send a getblocks request for the next batch of inventory
+                    if (inv.hash == pfrom->hashContinue)
+                    {
+                        // ppcoin: send latest proof-of-work block to allow the
+                        // download node to accept as orphan (proof-of-stake
+                        // block might be rejected by stake connection check)
+                        vector<CInv> vInv;
+                        vInv.push_back(CInv(MSG_BLOCK, GetLastBlockIndex(pindexBest, false)->GetBlockHash()));
+                        pfrom->PushMessage("inv", vInv);
+                        pfrom->hashContinue = 0;
+                    }
+                }
+            }
+            else if (inv.IsKnownType())
+            {
+                // Send stream from relay memory
+                bool pushed = false;
+                {
+                    LOCK(cs_mapRelay);
+                    map<CInv, CDataStream>::iterator mi = mapRelay.find(inv);
+                    if (mi != mapRelay.end())
+                    {
+                        pfrom->PushMessage(inv.GetCommand(), (*mi).second);
+                        pushed = true;
+                    }
+                }
+                if (!pushed && inv.type == MSG_TX)
+                {
+                    LOCK(mempool.cs);
+                    if (mempool.exists(inv.hash))
+                    {
+                        CTransaction tx = mempool.lookup(inv.hash);
+                        CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+                        ss.reserve(1000);
+                        ss << tx;
+                        pfrom->PushMessage("tx", ss);
+                    }
+                }
+            }
+            // Track requests for our stuff
+            Inventory(inv.hash);
+        }
     }
 
-    else if (strCommand == "getblocks")
+    else if (strCommand == "getblocks" && fGoGetblocks)
     {
         CBlockLocator locator;
         uint256 hashStop;
@@ -4922,7 +5005,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         pfrom->PushMessage("headers", vHeaders);
     }
 
-    else if (strCommand == "tx")
+    else if (strCommand == "tx" && fGoTx)
     {
         map<uint256, CTxIndex> mapUnused;
         vector<uint256> vEraseQueue;
