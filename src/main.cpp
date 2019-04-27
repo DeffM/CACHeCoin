@@ -4798,7 +4798,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         {
             const CInv &inv = vInv[nInv];
 
-            if (fGoBlock)
+            if (fGoBlock && IsUntilFullCompleteOneHundredFortyFourBlocks())
             {
                 mapAlreadyAskedFor.erase(inv);
             }
