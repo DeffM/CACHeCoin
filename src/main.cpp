@@ -4501,7 +4501,6 @@ void static ProcessGetData(CNode* pfrom)
 // a large 4-byte int at any alignment.
 unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
-bool fTxStop = true;
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     //static map<CService, CPubKey> mapReuseKey;
@@ -4550,7 +4549,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
          }
     }
 
-    if (fDebug)
+    if (fDebug && fGoTx && fGoInv && fGoBlock && fGoGetblocks)
     {
         nTheEndTimeOfTheTestBlock = 0;
         printf("%s ", DateTimeStrFormat(GetTime()).c_str());
@@ -5375,11 +5374,9 @@ bool ProcessMessages(CNode* pfrom)
     //  (x) data
     //
 
-    fTxStop = true;
     std::deque<CNetMessage>::iterator it = pfrom->vRecvMsg.begin();
     while (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
     {
-           fTxStop = false;
            if (pfrom->vSend.size() >= SendBufferSize())
            {
                printf("\n\nSENDSIZE > SENDBUFFERSIZE - BREAK\n\n");
@@ -5502,8 +5499,6 @@ bool ProcessMessages(CNode* pfrom)
 
            break;
     }
-    fTxStop = true;
-
     // In case the connection got shut down, its receive buffer was wiped
     if (!pfrom->fDisconnect)
         pfrom->vRecvMsg.erase(pfrom->vRecvMsg.begin(), it);
