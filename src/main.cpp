@@ -2724,13 +2724,13 @@ bool SetReload()
                 fReload = true;
                 nTheEndTimeOfTheTestBlock = 0;
                 nNumberOfErrorsForSyncRestart++;
-                printf("     SetReload pause - %d\n", nTheEndTimeOfTheTestBlock);
+                printf("     SetReload pause - queue: %d loops from: max\n", nTheEndTimeOfTheTestBlock);
             }
             if (nNumberOfErrorsForSyncRestart > 4)
             {
                 fRestartCync = true;
                 nNumberOfErrorsForSyncRestart = 0;
-                printf("     The peer has ceased to give the requested data - %d\n", nNumberOfErrorsForSyncRestart);
+                printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
             }
      }
      return true;
@@ -2744,7 +2744,7 @@ void ThreadAnalyzerHandler()
     int64 nThresholdPow = 0;
     int64 nThresholdPos = 0;
 
-    while (true)
+    while (!fShutdown)
     {
        SetReload();
        int64 nTimeCount = GetTime() + nNewTimeBlock;
