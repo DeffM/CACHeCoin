@@ -4501,6 +4501,33 @@ void static ProcessGetData(CNode* pfrom)
 // a large 4-byte int at any alignment.
 unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
+int nInvCalculationInterval = 10;
+int64 nInvTimerStart = 0;
+int64 nInvAllowableNumberOferrors = 15;
+unsigned int nInvMakeSureSpam = 0;
+
+static bool InvSpamIpTimer()
+{
+    bool fThisSpamIp = false;
+    if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
+    {
+        nInvCalculationInterval = 2;
+        nInvAllowableNumberOferrors = 1;
+    }
+    if (nInvMakeSureSpam == 1)
+        nInvTimerStart = GetAdjustedTime();
+    if (nInvMakeSureSpam == nInvAllowableNumberOferrors && GetAdjustedTime() - nInvTimerStart <= nInvCalculationInterval)
+    {
+        fThisSpamIp = true;
+    }
+    if (GetAdjustedTime() - nInvTimerStart > nInvCalculationInterval || nInvMakeSureSpam > nInvAllowableNumberOferrors)
+    {
+        nInvTimerStart = 0;
+        nInvMakeSureSpam = 0;
+    }
+    return fThisSpamIp;
+}
+
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     //static map<CService, CPubKey> mapReuseKey;
@@ -4518,6 +4545,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoBlock = true;
     bool fGoGetblocks = true;
     bool fSetReload = GetArg("-setreload", 0);
+    bool fSetReconnecting = GetArg("-setreconnecting", 0);
+    //bool fSetReconnecting = GetArg("-setreconnecting", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     if (fDebug && wait1 == stCommand1)
@@ -4545,7 +4574,37 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
              fGoBlock = false;
              printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
              if (pfrom->nSizeExtern < nSize && pfrom->nSizeNew == 0)
-                 pfrom->fDisconnect = true;
+             {
+                 nInvMakeSureSpam++;
+                 if (fSetReconnecting)
+                     pfrom->fDisconnect = true;
+                 printf("  Unnecessary 'inv' - error count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                 if (InvSpamIpTimer() && !fSetReconnecting)
+                 {
+                     nInvTimerStart = 0;
+                     nInvMakeSureSpam = 0;
+                     pfrom->fDisconnect = true;
+                 }
+             }
+         }
+    }
+
+    if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" && false)
+    {
+         if (pfrom->nSizeExtern != pfrom->nSizeNew)
+         {
+             if (pfrom->nSizeNew != 0)
+             {
+                 nInvMakeSureSpam++;
+                 printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
+                 printf("  Unnecessary 'inv' - error count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                 if (InvSpamIpTimer())
+                 {
+                     nInvTimerStart = 0;
+                     nInvMakeSureSpam = 0;
+                     pfrom->fDisconnect = true;
+                 }
+             }
          }
     }
 
@@ -5140,12 +5199,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         bool fStop = false;
         CValidationState state;
         bool fSetReload = GetArg("-setreload", 0);
+        bool fSetReconnecting = GetArg("-setreconnecting", 0);
         if (!ProcessBlock(state, pfrom, &block))
         {
             fGo = false;
             if (IsUntilFullCompleteOneHundredFortyFourBlocks())
                 fStop = true;
-            if ((fMalaproposBlock || fStop) && !fSetReload)
+            if ((fMalaproposBlock || fStop) && !fSetReload && fSetReconnecting)
                 pfrom->fDisconnect = true;
             if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect &&
                 !fSetReload && (fMalaproposBlock || fStop))
