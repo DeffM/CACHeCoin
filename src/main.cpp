@@ -4511,8 +4511,8 @@ static bool InvSpamIpTimer()
     bool fThisSpamIp = false;
     if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
     {
-        nInvCalculationInterval = 2;
-        nInvAllowableNumberOferrors = 1;
+        nInvCalculationInterval = 10;
+        nInvAllowableNumberOferrors = 40;
     }
     if (nInvMakeSureSpam == 1)
         nInvTimerStart = GetAdjustedTime();
@@ -4546,7 +4546,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoGetblocks = true;
     bool fSetReload = GetArg("-setreload", 0);
     bool fSetReconnecting = GetArg("-setreconnecting", 0);
-    //bool fSetReconnecting = GetArg("-setreconnecting", 0);
+    bool fSetInvControlRealTime = GetArg("-setinvcontrolrealtime", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     if (fDebug && wait1 == stCommand1)
@@ -4578,7 +4578,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                  nInvMakeSureSpam++;
                  if (fSetReconnecting)
                      pfrom->fDisconnect = true;
-                 printf("  Unnecessary 'inv' - error count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                 printf("  Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
                  if (InvSpamIpTimer() && !fSetReconnecting)
                  {
                      nInvTimerStart = 0;
@@ -4589,20 +4589,30 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
          }
     }
 
-    if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" && false)
+    if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
     {
          if (pfrom->nSizeExtern != pfrom->nSizeNew)
          {
-             if (pfrom->nSizeNew != 0)
+             if (pfrom->nSizeNew == 0)
              {
                  nInvMakeSureSpam++;
                  printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
-                 printf("  Unnecessary 'inv' - error count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                 printf("  Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
                  if (InvSpamIpTimer())
                  {
                      nInvTimerStart = 0;
                      nInvMakeSureSpam = 0;
                      pfrom->fDisconnect = true;
+                 }
+             }
+             if (pfrom->nSizeNew != 0)
+             {
+                 printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
+                 if (true)
+                 {
+                     if (fSetReconnecting)
+                         pfrom->fDisconnect = true;
+                     return true;
                  }
              }
          }

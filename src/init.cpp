@@ -640,21 +640,9 @@ bool AppInit2()
     }
 
     // see Step 2: parameter interactions for more information about these
-    if(!IsLimited(NET_IPV6) || !IsLimited(NET_IPV4))
-    {
-       fNoListen = !GetBoolArg("-listen", true);
-       fDiscover = GetBoolArg("-discover", true);
-       fNameLookup = GetBoolArg("-dns", true);
-#ifdef USE_UPNP
-       fUseUPnP = GetBoolArg("-upnp", USE_UPNP);
-#endif
-    }
-       else // Don't listen, discover adresses if NET_IPV4 and NET_IPV6 is disabled
-         {
-           fNoListen = true;
-           SoftSetBoolArg("-dnsseed", false);
-           fDiscover = fNameLookup = fUseUPnP = false;
-         }
+    fNoListen = !GetBoolArg("-listen", true);
+    fDiscover = GetBoolArg("-discover", true);
+    fNameLookup = GetBoolArg("-dns", true);
 
     bool fBound = false;
     if (!fNoListen)
