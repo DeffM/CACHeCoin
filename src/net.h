@@ -427,7 +427,7 @@ public:
         std::string wait(pszCommand), psCommand("getdata");
         if (fDebug)
             printf("sending: %s ", pszCommand);
-        if (fDebug && wait == psCommand)
+        if (wait == psCommand)
         {
             fGo = true;
             nTheEndTimeOfTheTestBlock = 0;
@@ -474,7 +474,7 @@ public:
             printf("(%d bytes)\n", nSize);
         }
 
-        if (fDebug && fGo)
+        if (fGo)
         {
             fGo = false;
             nSizeNew = nSize;

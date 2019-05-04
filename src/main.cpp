@@ -2671,7 +2671,8 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
     {
         mempool.remove(tx);
         mempool.removeConflicts(tx);
-        printf("     Delete redundant memory transactions that are in the connected branch\n");
+        if (fDebug)
+            printf("     Delete redundant memory transactions that are in the connected branch\n");
     }
 
     printf("REORGANIZE: done\n");
@@ -2703,7 +2704,8 @@ bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex
     {
         mempool.remove(tx);
         mempool.removeConflicts(tx);
-        printf("     Delete redundant memory transactions\n");
+        if (fDebug)
+            printf("     Delete redundant memory transactions\n");
     }
     return true;
 }
@@ -2724,13 +2726,15 @@ bool SetReload()
                 fReload = true;
                 nTheEndTimeOfTheTestBlock = 0;
                 nNumberOfErrorsForSyncRestart++;
-                printf("     SetReload pause - queue: %d loops from: max\n", nTheEndTimeOfTheTestBlock);
+                if (fDebug)
+                    printf("     SetReload pause - queue: %d loops from: max\n", nTheEndTimeOfTheTestBlock);
             }
             if (nNumberOfErrorsForSyncRestart > 4)
             {
                 fRestartCync = true;
                 nNumberOfErrorsForSyncRestart = 0;
-                printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
+                if (fDebug)
+                    printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
             }
      }
      return true;
@@ -4503,7 +4507,7 @@ unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
 int nInvCalculationInterval = 10;
 int64 nInvTimerStart = 0;
-int64 nInvAllowableNumberOferrors = 15;
+int64 nInvAllowableNumberOferrors = 20;
 unsigned int nInvMakeSureSpam = 0;
 
 static bool InvSpamIpTimer()
@@ -4549,7 +4553,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fSetInvControlRealTime = GetArg("-setinvcontrolrealtime", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
-    if (fDebug && wait1 == stCommand1)
+    if (wait1 == stCommand1)
     {
         nTheEndTimeOfTheTestBlock = 0;
         pfrom->nSizeExtern = vRecv.size();
@@ -4565,28 +4569,39 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         fGoTx = false;
     }
 
-    unsigned int nSize = 250;
-    if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv")
+    unsigned int nSize = 370;
+    if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" &&
+        pfrom->nSizeExtern != pfrom->nSizeNew)
     {
          nNumberOfErrorsForSyncRestart = 0;
-         if (pfrom->nSizeExtern < nSize && (pfrom->nSizeNew > nSize || pfrom->nSizeNew == 0))
+         if (pfrom->nSizeExtern > pfrom->nSizeNew && pfrom->nSizeNew == 0)
          {
-             fGoBlock = false;
+             nInvMakeSureSpam++;
+             if (pfrom->nSizeExtern < nSize)
+                 fGoBlock = false;
              printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
-             if (pfrom->nSizeExtern < nSize && pfrom->nSizeNew == 0)
+             printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+             if (InvSpamIpTimer())
              {
-                 nInvMakeSureSpam++;
-                 if (fSetReconnecting)
-                     pfrom->fDisconnect = true;
-                 printf("  Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
-                 if (InvSpamIpTimer() && !fSetReconnecting)
-                 {
-                     nInvTimerStart = 0;
-                     nInvMakeSureSpam = 0;
-                     pfrom->fDisconnect = true;
-                 }
+                 nInvTimerStart = 0;
+                 nInvMakeSureSpam = 0;
+                 pfrom->fDisconnect = true;
              }
          }
+         else if (pfrom->nSizeExtern < pfrom->nSizeNew)
+         {
+                  nInvMakeSureSpam++;
+                  fGoBlock = false;
+                  printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
+                  printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                  if (InvSpamIpTimer())
+                  {
+                      nInvTimerStart = 0;
+                      nInvMakeSureSpam = 0;
+                      pfrom->fDisconnect = true;
+                  }
+         }
+
     }
 
     if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
@@ -4597,7 +4612,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
              {
                  nInvMakeSureSpam++;
                  printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
-                 printf("  Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                 printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
                  if (InvSpamIpTimer())
                  {
                      nInvTimerStart = 0;
@@ -4618,7 +4633,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
          }
     }
 
-    if (fDebug && fGoTx && fGoInv && fGoBlock && fGoGetblocks)
+    if (fGoTx && fGoInv && fGoBlock && fGoGetblocks)
     {
         nTheEndTimeOfTheTestBlock = 0;
         printf("%s ", DateTimeStrFormat(GetTime()).c_str());
@@ -4880,7 +4895,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 unsigned int nSearched = 0;
                 for (; nSearched <= nNumberOfLines; nSearched++)
                 {
-                     if(fDebug && strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
+                     if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
                      {
                         printf("strCommand 'inv' - The executor of the rules performed the work\n");
                         printf("  strCommand 'inv' - spam hash previous: %s - %s\n", nSpamHashList[nSearched], fAlreadyHave ? "instock" : "outofstock");
@@ -4891,7 +4906,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 }
             }
 
-            if (fDebug)
+            if (true)
             {
                 nTheEndTimeOfTheTestBlock = 0;
                 if (fGoBlock)
@@ -5465,7 +5480,8 @@ bool ProcessMessages(CNode* pfrom)
                nMakeSureSpam++;
                std::string wait(pfrom->addrName.c_str()), sameaddress(waitTxSpam.c_str());
                wait = wait.substr(0, wait.find_last_of(":") +0);
-               printf("  ProcessMessages - !msg.complete(): %s - error count: %d\n", wait.c_str(), nMakeSureSpam);
+               if (fDebug)
+                   printf("  ProcessMessages - !msg.complete(): %s - error count: %d\n", wait.c_str(), nMakeSureSpam);
                waitTxSpam = pfrom->addrName.c_str();
                waitTxSpam = waitTxSpam.substr(0, waitTxSpam.find_last_of(":") +0);
                if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress)
