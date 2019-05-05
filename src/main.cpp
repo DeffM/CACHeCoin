@@ -2737,6 +2737,18 @@ bool SetReload()
                     printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
             }
      }
+     bool fSetInvControlRealTime = GetArg("-setinvcontrolrealtime", 0);
+     if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+     {
+            nNumberOfErrorsForSyncRestart++;
+
+            if (nNumberOfErrorsForSyncRestart > 60 * 40)
+            {
+                fRestartCync = true;
+                nNumberOfErrorsForSyncRestart = 0;
+                printf("     For a long time without new blocks - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
+            }
+     }
      return true;
 }
 
@@ -4623,7 +4635,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
              if (pfrom->nSizeNew != 0)
              {
                  printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
-                 if (true)
+                 if (false)
                  {
                      if (fSetReconnecting)
                          pfrom->fDisconnect = true;
