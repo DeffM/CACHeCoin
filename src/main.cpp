@@ -4528,7 +4528,7 @@ static bool InvSpamIpTimer()
     if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
     {
         nInvCalculationInterval = 10;
-        nInvAllowableNumberOferrors = 40;
+        nInvAllowableNumberOferrors = 50;
     }
     if (nInvMakeSureSpam == 1)
         nInvTimerStart = GetAdjustedTime();
@@ -4565,7 +4565,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fSetInvControlRealTime = GetArg("-setinvcontrolrealtime", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
-    if (wait1 == stCommand1)
+    std::string wait2(strCommand.c_str()), stCommand2("getdata");
+    if (wait1 == stCommand1 || wait2 == stCommand2)
     {
         nTheEndTimeOfTheTestBlock = 0;
         pfrom->nSizeExtern = vRecv.size();
@@ -4583,16 +4584,19 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     unsigned int nSize = 370;
     if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" &&
-        pfrom->nSizeExtern != pfrom->nSizeNew)
+        pfrom->nSizeExtern != pfrom->nSizeGetdata)
     {
          nNumberOfErrorsForSyncRestart = 0;
-         if (pfrom->nSizeExtern > pfrom->nSizeNew && pfrom->nSizeNew == 0)
+         if (pfrom->nSizeExtern > pfrom->nSizeGetdata && pfrom->nSizeGetdata == 0)
          {
              nInvMakeSureSpam++;
              if (pfrom->nSizeExtern < nSize)
                  fGoBlock = false;
-             printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
-             printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+             if (fDebug)
+             {
+                 printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
+                 printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+             }
              if (InvSpamIpTimer())
              {
                  nInvTimerStart = 0;
@@ -4600,12 +4604,15 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                  pfrom->fDisconnect = true;
              }
          }
-         else if (pfrom->nSizeExtern < pfrom->nSizeNew)
+         else if (pfrom->nSizeExtern < pfrom->nSizeGetdata)
          {
                   nInvMakeSureSpam++;
                   fGoBlock = false;
-                  printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
-                  printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                  if (fDebug)
+                  {
+                      printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
+                      printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                  }
                   if (InvSpamIpTimer())
                   {
                       nInvTimerStart = 0;
@@ -4616,40 +4623,46 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     }
 
+    if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
+    {
+         if (fDebug)
+             printf("   All 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
+         if (pfrom->nSizeExtern != pfrom->nSizeInv)
+         {
+             if (fDebug)
+             {
+                 printf("   Unnecessary 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
+             }
+             return true;
+         }
+    }
+
     if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
     {
-         if (pfrom->nSizeExtern != pfrom->nSizeNew)
-         {
-             if (pfrom->nSizeNew == 0)
-             {
-                 nInvMakeSureSpam++;
-                 printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
-                 printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
-                 if (InvSpamIpTimer())
-                 {
-                     nInvTimerStart = 0;
-                     nInvMakeSureSpam = 0;
-                     pfrom->fDisconnect = true;
-                 }
-             }
-             if (pfrom->nSizeNew != 0)
-             {
-                 printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeNew);
-                 if (false)
-                 {
-                     if (fSetReconnecting)
-                         pfrom->fDisconnect = true;
-                     return true;
-                 }
-             }
-         }
+        nInvMakeSureSpam++;
+        if (fDebug)
+        {
+            printf("   All 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
+            printf("   All 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+        }
+        if (InvSpamIpTimer())
+        {
+            nInvTimerStart = 0;
+            nInvMakeSureSpam = 0;
+            if (fSetReconnecting)
+                pfrom->fDisconnect = true;
+            //return true;
+        }
     }
 
     if (fGoTx && fGoInv && fGoBlock && fGoGetblocks)
     {
         nTheEndTimeOfTheTestBlock = 0;
-        printf("%s ", DateTimeStrFormat(GetTime()).c_str());
-        printf("received: %s (%" PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
+        if (fDebug)
+        {
+            printf("%s ", DateTimeStrFormat(GetTime()).c_str());
+            printf("received: %s (%" PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
+        }
     }
 
 

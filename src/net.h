@@ -48,6 +48,7 @@ bool StopNode();
 void SocketSendData(CNode *pnode);
 extern int nMaxConnections;
 extern int nTheEndTimeOfTheTestBlock;
+extern bool IsUntilFullCompleteOneHundredFortyFourBlocks();
 
 enum
 {
@@ -210,7 +211,8 @@ public:
     int nHeaderStart;
     int nRecvVersion;
     unsigned int nMessageStart;
-    unsigned int nSizeNew;
+    unsigned int nSizeInv;
+    unsigned int nSizeGetdata;
     unsigned int nSizeExtern;
     CAddress addr;
     std::deque<CInv> vRecvGetData;
@@ -219,7 +221,8 @@ public:
     CService addrLocal;
     int nVersion;
     std::string strSubVer, cleanSubVer;
-    bool fGo;
+    bool fGoInv;
+    bool fGoGetdata;
     bool fOneShot;
     bool fClient;
     bool fInbound;
@@ -289,7 +292,8 @@ public:
         nSendSize = 0;
         nSendOffset = 0;
         nReleaseTime = 0;
-        nSizeNew = 0;
+        nSizeInv = 0;
+        nSizeGetdata = 0;
         nSizeExtern = 0;
         hashContinue = 0;
         pindexLastGetBlocksBegin = 0;
@@ -297,7 +301,8 @@ public:
         nStartingHeight = -1;
         fStartSync = false;
         fGetAddr = false;
-        fGo = false;
+        fGoInv = false;
+        fGoGetdata = false;
         nMisbehavior = 0;
         hashCheckpointKnown = 0;
         fRelayTxes = false;
@@ -424,13 +429,18 @@ public:
         ENTER_CRITICAL_SECTION(cs_vSend);
         assert(vSend.size() == 0);
         vSend << CMessageHeader(pszCommand, 0);
-        std::string wait(pszCommand), psCommand("getdata");
+        std::string wait1(pszCommand), psCommand1("getdata");
+        std::string wait2(pszCommand), psCommand2("inv");
         if (fDebug)
             printf("sending: %s ", pszCommand);
-        if (wait == psCommand)
+        if (wait1 == psCommand1)
         {
-            fGo = true;
+            fGoGetdata = true;
             nTheEndTimeOfTheTestBlock = 0;
+        }
+        if (wait2 == psCommand2)
+        {
+            fGoInv = true;
         }
     }
 
@@ -469,15 +479,32 @@ public:
         assert(vSend.size () >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
         memcpy((char*)&vSend[CMessageHeader::CHECKSUM_OFFSET], &nChecksum, sizeof(nChecksum));
 
+        bool fSetInvControlRealTime = GetArg("-setinvcontrolrealtime", 0);
+
         if (fDebug)
         {
             printf("(%d bytes)\n", nSize);
         }
 
-        if (fGo)
+        if (fGoGetdata)
         {
-            fGo = false;
-            nSizeNew = nSize;
+            fGoGetdata = false;
+            nSizeGetdata = nSize;
+            if (fDebug)
+                printf("   All 'inv' - nSize: %d - %d\n", nSizeExtern, nSizeGetdata);
+            if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && nSizeExtern != nSizeGetdata)
+            {
+                if (fDebug)
+                    printf("   Unnecessary 'inv' - nSize: %d - %d\n", nSizeExtern, nSizeGetdata);
+                AbortMessage();
+                return;
+            }
+        }
+
+        if (fGoInv)
+        {
+            fGoInv = false;
+            nSizeInv = nSize;
         }
 
         std::deque<CSerializeData>::iterator it = vSendMsg.insert(vSendMsg.end(), CSerializeData());
