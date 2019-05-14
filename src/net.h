@@ -490,12 +490,9 @@ public:
         {
             fGoGetdata = false;
             nSizeGetdata = nSize;
-            if (fDebug)
-                printf("   All 'inv' - nSize: %d - %d\n", nSizeExtern, nSizeGetdata);
             if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && nSizeExtern != nSizeGetdata)
             {
-                if (fDebug)
-                    printf("   Unnecessary 'inv' - nSize: %d - %d\n", nSizeExtern, nSizeGetdata);
+                printf("   Unnecessary 'inv' - nSize: %d - %d\n", nSizeExtern, nSizeGetdata);
                 AbortMessage();
                 return;
             }

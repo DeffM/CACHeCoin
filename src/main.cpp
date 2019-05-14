@@ -4546,13 +4546,14 @@ static bool InvSpamIpTimer()
 
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
-    //static map<CService, CPubKey> mapReuseKey;
     RandAddSeedPerfmon();
+
     if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
     {
         printf("dropmessagestest DROPPING RECV MESSAGE\n");
         return true;
     }
+
     if (nFullCompleteBlocks < nBestHeight)
         nFullCompleteBlocks = nBestHeight;
 
@@ -4595,13 +4596,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
              if (fDebug)
              {
                  printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
-                 printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
              }
              if (InvSpamIpTimer())
              {
                  nInvTimerStart = 0;
                  nInvMakeSureSpam = 0;
                  pfrom->fDisconnect = true;
+                 printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
              }
          }
          else if (pfrom->nSizeExtern < pfrom->nSizeGetdata)
@@ -4611,13 +4612,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                   if (fDebug)
                   {
                       printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
-                      printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
                   }
                   if (InvSpamIpTimer())
                   {
                       nInvTimerStart = 0;
                       nInvMakeSureSpam = 0;
                       pfrom->fDisconnect = true;
+                      printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
                   }
          }
 
@@ -4625,33 +4626,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
     {
-         if (fDebug)
-             printf("   All 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
-         if (pfrom->nSizeExtern != pfrom->nSizeInv)
-         {
-             if (fDebug)
-             {
-                 printf("   Unnecessary 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
-             }
-             return true;
-         }
+        if (pfrom->nSizeExtern != pfrom->nSizeInv)
+        {
+            printf("   Unnecessary 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
+            if (fSetReconnecting)
+                pfrom->fDisconnect = true;
+            return true;
+        }
     }
 
     if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
     {
         nInvMakeSureSpam++;
-        if (fDebug)
-        {
-            printf("   All 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
-            printf("   All 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
-        }
         if (InvSpamIpTimer())
         {
             nInvTimerStart = 0;
             nInvMakeSureSpam = 0;
-            if (fSetReconnecting)
-                pfrom->fDisconnect = true;
-            //return true;
+            pfrom->fDisconnect = true;
+            printf("   All 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
         }
     }
 
