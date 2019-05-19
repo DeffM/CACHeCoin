@@ -2737,12 +2737,12 @@ bool SetReload()
                     printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
             }
      }
-     bool fSetInvControlRealTime = GetArg("-setinvcontrolrealtime", 0);
-     if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+     bool fSetControlRealTime = GetArg("-setcontrolrealtime", 0);
+     if (fSetControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
      {
             nNumberOfErrorsForSyncRestart++;
 
-            if (nNumberOfErrorsForSyncRestart > 60 * 40)
+            if (nNumberOfErrorsForSyncRestart > 60 * 20)
             {
                 fRestartCync = true;
                 nNumberOfErrorsForSyncRestart = 0;
@@ -4562,8 +4562,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoBlock = true;
     bool fGoGetblocks = true;
     bool fSetReload = GetArg("-setreload", 0);
-    bool fSetReconnecting = GetArg("-setreconnecting", 0);
-    bool fSetInvControlRealTime = GetArg("-setinvcontrolrealtime", 0);
+    bool fSetControlRealTime = GetArg("-setcontrolrealtime", 0);
+    bool fSetReconnectingRealTime = GetArg("-setreconnectingrealtime", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     std::string wait2(strCommand.c_str()), stCommand2("getdata");
@@ -4624,18 +4624,18 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     }
 
-    if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
+    if (fSetControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
     {
         if (pfrom->nSizeExtern != pfrom->nSizeInv)
         {
             printf("   Unnecessary 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
-            if (fSetReconnecting)
+            if (fSetReconnectingRealTime)
                 pfrom->fDisconnect = true;
             return true;
         }
     }
 
-    if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
+    if (fSetControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
     {
         nInvMakeSureSpam++;
         if (InvSpamIpTimer())
@@ -5241,7 +5241,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         bool fStop = false;
         CValidationState state;
         bool fSetReload = GetArg("-setreload", 0);
-        bool fSetReconnecting = GetArg("-setreconnecting", 0);
+        bool fSetReconnecting = GetArg("-setreconnecting", 1);
         if (!ProcessBlock(state, pfrom, &block))
         {
             fGo = false;
@@ -5632,6 +5632,13 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
             fConnected = true;
 
         if (pto->fSuccessfullyConnected && fRestartCync && IsUntilFullCompleteOneHundredFortyFourBlocks())
+        {
+            fConnected = false;
+            fRestartCync = false;
+            pto->fDisconnect = true;
+        }
+
+        if (pto->fSuccessfullyConnected && fRestartCync && !IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
             fConnected = false;
             fRestartCync = false;
