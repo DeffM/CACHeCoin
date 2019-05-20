@@ -2712,6 +2712,7 @@ bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex
 
 bool fReload = false;
 bool fRestartCync = false;
+int nTimeUpReconnectPresentTime = 0;
 int nTheEndTimeOfTheTestBlock = 0;
 int nNumberOfErrorsForSyncRestart = 0;
 bool SetReload()
@@ -2737,12 +2738,13 @@ bool SetReload()
                     printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
             }
      }
-     bool fSetControlRealTime = GetArg("-setcontrolrealtime", 0);
-     if (fSetControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+     nTimeUpReconnectPresentTime = (int)GetArg("-timeupreconnectpresenttime", 60 * 20);
+     bool fSetReconnectPresentTime = GetArg("-setreconnectpresenttime", 1);
+     if (fSetReconnectPresentTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
      {
             nNumberOfErrorsForSyncRestart++;
 
-            if (nNumberOfErrorsForSyncRestart > 60 * 20)
+            if (nNumberOfErrorsForSyncRestart > nTimeUpReconnectPresentTime)
             {
                 fRestartCync = true;
                 nNumberOfErrorsForSyncRestart = 0;
@@ -4563,7 +4565,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoGetblocks = true;
     bool fSetReload = GetArg("-setreload", 0);
     bool fSetControlRealTime = GetArg("-setcontrolrealtime", 0);
-    bool fSetReconnectingRealTime = GetArg("-setreconnectingrealtime", 0);
+    bool fSetReconnectingControlRealTime = GetArg("-setreconnectingcontrolrealtime", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     std::string wait2(strCommand.c_str()), stCommand2("getdata");
@@ -4629,7 +4631,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (pfrom->nSizeExtern != pfrom->nSizeInv)
         {
             printf("   Unnecessary 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
-            if (fSetReconnectingRealTime)
+            if (fSetReconnectingControlRealTime)
                 pfrom->fDisconnect = true;
             return true;
         }
