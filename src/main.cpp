@@ -4977,8 +4977,16 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         {
             if (fShutdown)
                 return true;
+
             if (fDebugNet || (vInv.size() == 1))
                 printf("received getdata for: %s\n", inv.ToString().c_str());
+
+            if (pfrom->fAbortMessage)
+            {
+                pfrom->fAbortMessage = false;
+                mapAlreadyAskedFor.erase(inv);
+                return true;
+            }
 
             if (inv.type == MSG_BLOCK)
             {

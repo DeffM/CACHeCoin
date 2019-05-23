@@ -226,6 +226,7 @@ public:
     bool fOneShot;
     bool fClient;
     bool fInbound;
+    bool fAbortMessage;
     bool fNetworkNode;
     bool fSuccessfullyConnected;
     bool fDisconnect;
@@ -288,6 +289,7 @@ public:
         fNetworkNode = false;
         fSuccessfullyConnected = false;
         fDisconnect = false;
+        fAbortMessage = false;
         nRefCount = 0;
         nSendSize = 0;
         nSendOffset = 0;
@@ -422,6 +424,16 @@ public:
         mapAskFor.insert(std::make_pair(nRequestTime, inv));
     }
 
+    // TODO: Document the precondition of this function.  Is cs_vSend locked?
+    void AbortMessage() UNLOCK_FUNCTION(cs_vSend)
+    {
+        vSend.clear();
+
+        LEAVE_CRITICAL_SECTION(cs_vSend);
+
+        if (fDebug)
+            printf("(aborted)\n");
+    }
 
     // TODO: Document the postcondition of this function.  Is cs_vSend locked?
     void BeginMessage(const char* pszCommand) EXCLUSIVE_LOCK_FUNCTION(cs_vSend)
@@ -445,23 +457,19 @@ public:
     }
 
     // TODO: Document the precondition of this function.  Is cs_vSend locked?
-    void AbortMessage() UNLOCK_FUNCTION(cs_vSend)
-    {
-        vSend.clear();
-
-        LEAVE_CRITICAL_SECTION(cs_vSend);
-
-        if (fDebug)
-            printf("(aborted)\n");
-    }
-
-    // TODO: Document the precondition of this function.  Is cs_vSend locked?
     void EndMessage() UNLOCK_FUNCTION(cs_vSend)
     {
         if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
         {
             printf("dropmessages DROPPING SEND MESSAGE\n");
             AbortMessage();
+            return;
+        }
+
+        if (fAbortMessage)
+        {
+            AbortMessage();
+            fAbortMessage = false;
             return;
         }
 
