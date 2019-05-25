@@ -4546,6 +4546,7 @@ static bool InvSpamIpTimer()
     return fThisSpamIp;
 }
 
+bool fLimitGetblocks = false;
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     RandAddSeedPerfmon();
@@ -4565,7 +4566,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoGetblocks = true;
     bool fSetReload = GetArg("-setreload", 0);
     bool fSetControlRealTime = GetArg("-setcontrolrealtime", 0);
-    bool fSetReconnectingControlRealTime = GetArg("-setreconnectingcontrolrealtime", 0);
+    //bool fSetReconnectingControlRealTime = GetArg("-setreconnectingcontrolrealtime", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     std::string wait2(strCommand.c_str()), stCommand2("getdata");
@@ -4631,9 +4632,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (pfrom->nSizeExtern != pfrom->nSizeInv)
         {
             printf("   Unnecessary 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
-            if (fSetReconnectingControlRealTime)
-                pfrom->fDisconnect = true;
-            return true;
+            fLimitGetblocks = true;
         }
     }
 
@@ -5056,7 +5055,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             pindex = pindex->pnext;
 
         int nLimit = 500;
+        if ((pindex ? pindex->nHeight : -1) > 200000)
+            nLimit = 50;
+        if (fLimitGetblocks)
+            nLimit = 10;
         printf("getblocks %d to %s limit %d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString().substr(0,20).c_str(), nLimit);
+
         for (; pindex; pindex = pindex->pnext)
         {
             if (pindex->GetBlockHash() == hashStop)
@@ -5078,6 +5082,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 break;
             }
         }
+        fLimitGetblocks = false;
     }
 
     else if (strCommand == "getheaders")

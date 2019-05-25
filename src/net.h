@@ -487,7 +487,7 @@ public:
         assert(vSend.size () >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
         memcpy((char*)&vSend[CMessageHeader::CHECKSUM_OFFSET], &nChecksum, sizeof(nChecksum));
 
-        bool fSetInvControlRealTime = GetArg("-setinvcontrolrealtime", 0);
+        bool fSetControlRealTime = GetArg("-setcontrolrealtime", 0);
 
         if (fDebug)
         {
@@ -498,7 +498,7 @@ public:
         {
             fGoGetdata = false;
             nSizeGetdata = nSize;
-            if (fSetInvControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && nSizeExtern != nSizeGetdata)
+            if (fSetControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && nSizeExtern != nSizeGetdata)
             {
                 printf("   Unnecessary 'inv' - nSize: %d - %d\n", nSizeExtern, nSizeGetdata);
                 AbortMessage();
