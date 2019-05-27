@@ -424,28 +424,11 @@ Value getreceivedbyaddress(const Array& params, bool fHelp)
 
     // Bitcoin address
     CBitcoinAddress address = CBitcoinAddress(params[0].get_str());
-
-    string strAccount = "watchonlyaddress";
-
-    Array ret;
-    bool IsWatchAddress = false;
-    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
-    {
-        const CBitcoinAddress& watchaddress = item.first;
-        const string& strName = item.second;
-        if (strName == strAccount)
-        {
-            if (address.ToString() == watchaddress.ToString())
-                IsWatchAddress = true;
-        }
-    }
-
     CScript scriptPubKey;
     if (!address.IsValid())
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
     scriptPubKey.SetDestination(address.Get());
-
-    if (!IsMine(*pwalletMain,scriptPubKey) && !IsWatchAddress)
+    if (!IsMine(*pwalletMain,scriptPubKey))
         return (double)0.0;
 
     // Minimum confirmations
@@ -458,13 +441,77 @@ Value getreceivedbyaddress(const Array& params, bool fHelp)
     for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
     {
         const CWalletTx& wtx = (*it).second;
-        if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal() || !IsWatchAddress)
+        if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal())
             continue;
 
         BOOST_FOREACH(const CTxOut& txout, wtx.vout)
             if (txout.scriptPubKey == scriptPubKey)
                 if (wtx.GetDepthInMainChain() >= nMinDepth)
                     nAmount += txout.nValue;
+    }
+
+    return  ValueFromAmount(nAmount);
+}
+
+
+Value getaddressbalance(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "getreceivedbyaddress <cacheprojectaddress> [minconf=1]\n"
+            "Returns the balance <cacheprojectaddress> [minconf] confirmations.");
+
+    // Bitcoin address
+    CBitcoinAddress address = CBitcoinAddress(params[0].get_str());
+    CScript scriptPubKey;
+    if (!address.IsValid())
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
+    scriptPubKey.SetDestination(address.Get());
+    if (!IsMine(*pwalletMain,scriptPubKey))
+        return (double)0.0;
+
+    // Minimum confirmations
+    int nMinDepth = 1;
+    if (params.size() > 1)
+        nMinDepth = params[1].get_int();
+
+    // Tally
+    int64 nAmount = 0;
+    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
+    {
+        const CWalletTx& wtx = (*it).second;
+        if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal())
+            continue;
+
+        BOOST_FOREACH(const CTxOut& txout, wtx.vout)
+            if (txout.scriptPubKey == scriptPubKey)
+                if (wtx.GetDepthInMainChain() >= nMinDepth)
+                    nAmount += txout.nValue;
+    }
+
+    std::vector<CTxIn> vin;
+    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
+    {
+         CTxDestination addressed;
+         const CWalletTx& wtx = (*it).second;
+         if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal())
+             continue;
+
+         BOOST_FOREACH(const CTxIn& txin, wtx.vin)
+         {
+             CTxDB txdb;
+             CTransaction prev;
+             COutPoint prevout = txin.prevout;
+             if (txdb.ReadDiskTx(prevout.hash, prev))
+                 if (prevout.n < prev.vout.size())
+                 {
+                     const CTxOut &vout = prev.vout[prevout.n];
+                     if (ExtractDestination(vout.scriptPubKey, addressed))
+                         if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(address).ToString())
+                             if (wtx.GetDepthInMainChain() >= nMinDepth)
+                                 nAmount -= vout.nValue;
+                 }
+         }
     }
     return  ValueFromAmount(nAmount);
 }

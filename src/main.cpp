@@ -5055,7 +5055,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             pindex = pindex->pnext;
 
         int nLimit = 500;
-        if ((pindex ? pindex->nHeight : -1) > 200000)
+        if ((pindex ? pindex->nHeight : -1) > 150000)
             nLimit = 50;
         if (fLimitGetblocks)
             nLimit = 10;
