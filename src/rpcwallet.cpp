@@ -458,7 +458,7 @@ Value getaddressbalance(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
-            "getreceivedbyaddress <cacheprojectaddress> [minconf=1]\n"
+            "getaddressbalance <cacheprojectaddress> [minconf=1]\n"
             "Returns the balance <cacheprojectaddress> [minconf] confirmations.");
 
     // Bitcoin address
@@ -475,18 +475,20 @@ Value getaddressbalance(const Array& params, bool fHelp)
     if (params.size() > 1)
         nMinDepth = params[1].get_int();
 
-    // Tally
+    // Tally simplified
     int64 nAmount = 0;
     for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
     {
+        CTxDestination addressed;
         const CWalletTx& wtx = (*it).second;
-        if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal())
+        if (!wtx.IsFinal())
             continue;
 
         BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-            if (txout.scriptPubKey == scriptPubKey)
-                if (wtx.GetDepthInMainChain() >= nMinDepth)
-                    nAmount += txout.nValue;
+            if (ExtractDestination(txout.scriptPubKey, addressed))
+                if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(address).ToString())
+                    if (wtx.GetDepthInMainChain() >= nMinDepth)
+                        nAmount += txout.nValue;
     }
 
     std::vector<CTxIn> vin;
@@ -494,7 +496,7 @@ Value getaddressbalance(const Array& params, bool fHelp)
     {
          CTxDestination addressed;
          const CWalletTx& wtx = (*it).second;
-         if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal())
+         if (!wtx.IsFinal())
              continue;
 
          BOOST_FOREACH(const CTxIn& txin, wtx.vin)
