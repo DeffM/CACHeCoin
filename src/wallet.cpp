@@ -2083,40 +2083,42 @@ int64 CWallet::GetOldestKeyPoolTime()
     return keypool.nTime;
 }
 
-std::map<CTxDestination, int64> CWallet::GetAddressBalances()
+std::map<CTxDestination, int64> CWallet::GetAddressBalances(CBitcoinAddress addressing)
 {
+    int nMinDepth = 1;
     map<CTxDestination, int64> balances;
+    LOCK(cs_wallet);
 
+    // Tally simplified
+    BOOST_FOREACH(PAIRTYPE(uint256, CWalletTx) walletEntry, mapWallet)
     {
-        LOCK(cs_wallet);
-        BOOST_FOREACH(PAIRTYPE(uint256, CWalletTx) walletEntry, mapWallet)
+        CWalletTx *pcoin = &walletEntry.second;
+
+        if (!pcoin->IsFinal() || !pcoin->IsConfirmed())
+            continue;
+
+        CTxDestination addressed;
+        BOOST_FOREACH(const CTxOut& txout, pcoin->vout)
+            if (ExtractDestination(txout.scriptPubKey, addressed))
+                if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(addressing).ToString())
+                    if (pcoin->GetDepthInMainChain() >= nMinDepth)
+                        balances[addressed] += txout.nValue;
+
+        std::vector<CTxIn> vin;
+        BOOST_FOREACH(const CTxIn& txin, pcoin->vin)
         {
-            CWalletTx *pcoin = &walletEntry.second;
-
-            if (!pcoin->IsFinal() || !pcoin->IsConfirmed())
-                continue;
-
-            if ((pcoin->IsCoinBase() || pcoin->IsCoinStake()) && pcoin->GetBlocksToMaturity() > 0)
-                continue;
-
-            int nDepth = pcoin->GetDepthInMainChain();
-            if (nDepth < (pcoin->IsFromMe() ? 0 : 1))
-                continue;
-
-            for (unsigned int i = 0; i < pcoin->vout.size(); i++)
-            {
-                CTxDestination addr;
-                if (!IsMine(pcoin->vout[i]))
-                    continue;
-                if(!ExtractDestination(pcoin->vout[i].scriptPubKey, addr))
-                    continue;
-
-                int64 n = pcoin->IsSpent(i) ? 0 : pcoin->vout[i].nValue;
-
-                if (!balances.count(addr))
-                    balances[addr] = 0;
-                balances[addr] += n;
-            }
+            CTxDB txdb("r");
+            CTransaction prev;
+            COutPoint prevout = txin.prevout;
+            if (txdb.ReadDiskTx(prevout.hash, prev))
+                if (prevout.n < prev.vout.size())
+                {
+                    const CTxOut &vout = prev.vout[prevout.n];
+                    if (ExtractDestination(vout.scriptPubKey, addressed))
+                        if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(addressing).ToString())
+                            if (pcoin->GetDepthInMainChain() >= nMinDepth)
+                                balances[addressed] -= vout.nValue;
+                }
         }
     }
     return balances;

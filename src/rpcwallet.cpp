@@ -322,7 +322,6 @@ Value listaddressgroupings(const Array& params, bool fHelp)
             "in past transactions");
 
     Array jsonGroupings;
-    map<CTxDestination, int64> balances = pwalletMain->GetAddressBalances();
     BOOST_FOREACH(set<CTxDestination> grouping, pwalletMain->GetAddressGroupings())
     {
         Array jsonGrouping;
@@ -330,6 +329,8 @@ Value listaddressgroupings(const Array& params, bool fHelp)
         {
             Array addressInfo;
             addressInfo.push_back(CBitcoinAddress(address).ToString());
+            CBitcoinAddress addressing = CBitcoinAddress(address);
+            map<CTxDestination, int64> balances = pwalletMain->GetAddressBalances(addressing);
             addressInfo.push_back(ValueFromAmount(balances[address]));
             {
                 LOCK(pwalletMain->cs_wallet);
@@ -440,16 +441,17 @@ Value getreceivedbyaddress(const Array& params, bool fHelp)
     int64 nAmount = 0;
     for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
     {
+        CTxDestination addressed;
         const CWalletTx& wtx = (*it).second;
         if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal())
             continue;
 
         BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-            if (txout.scriptPubKey == scriptPubKey)
-                if (wtx.GetDepthInMainChain() >= nMinDepth)
-                    nAmount += txout.nValue;
+            if (ExtractDestination(txout.scriptPubKey, addressed))
+                if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(address).ToString())
+                    if (wtx.GetDepthInMainChain() >= nMinDepth)
+                        nAmount += txout.nValue;
     }
-
     return  ValueFromAmount(nAmount);
 }
 

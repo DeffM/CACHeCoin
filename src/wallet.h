@@ -195,7 +195,7 @@ public:
     void GetAllReserveKeys(std::set<CKeyID>& setAddress);
 
     std::set< std::set<CTxDestination> > GetAddressGroupings();
-    std::map<CTxDestination, int64> GetAddressBalances();
+    std::map<CTxDestination, int64> GetAddressBalances(CBitcoinAddress addressing);
 
     bool IsMine(const CTxIn& txin) const;
     int64 GetDebit(const CTxIn& txin) const;
