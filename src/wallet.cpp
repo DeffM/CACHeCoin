@@ -2094,7 +2094,7 @@ std::map<CTxDestination, int64> CWallet::GetAddressBalances(CBitcoinAddress addr
     {
         CWalletTx *pcoin = &walletEntry.second;
 
-        if (!pcoin->IsFinal() || !pcoin->IsConfirmed())
+        if (!pcoin->IsFinal())
             continue;
 
         CTxDestination addressed;
@@ -2122,6 +2122,71 @@ std::map<CTxDestination, int64> CWallet::GetAddressBalances(CBitcoinAddress addr
         }
     }
     return balances;
+}
+
+int64 CWallet::GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit, bool fDebit,
+                                       bool fCoinStake, bool fCoinBase, bool fAllAddresses)
+{
+    int nMinDepth = 1;
+    int64 balances = 0;
+    LOCK(cs_wallet);
+
+    // Tally simplified
+    BOOST_FOREACH(PAIRTYPE(uint256, CWalletTx) walletEntry, mapWallet)
+    {
+        CWalletTx *pcoin = &walletEntry.second;
+
+        if (!pcoin->IsFinal())
+            continue;
+        if (fCoinStake && !pcoin->IsCoinStake())
+            continue;
+        if (fCoinBase && !pcoin->IsCoinBase())
+            continue;
+
+        CTxDestination addressed;
+        BOOST_FOREACH(const CTxOut& txout, pcoin->vout)
+            if (ExtractDestination(txout.scriptPubKey, addressed) && IsMine(txout))
+                if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(addressing).ToString() ||
+                   (CBitcoinAddress(addressed).ToString() != CBitcoinAddress(addressing).ToString() &&
+                    fAllAddresses))
+                    if (pcoin->GetDepthInMainChain() >= nMinDepth)
+                        if (fCredit)
+                            balances += txout.nValue;
+    }
+
+    BOOST_FOREACH(PAIRTYPE(uint256, CWalletTx) walletEntry, mapWallet)
+    {
+        CWalletTx *pcoin = &walletEntry.second;
+
+        if (!pcoin->IsFinal())
+            continue;
+        if (fCoinStake && !pcoin->IsCoinStake())
+            continue;
+        if (fCoinBase && !pcoin->IsCoinBase())
+            continue;
+
+        std::vector<CTxIn> vin;
+        CTxDestination addressed;
+        BOOST_FOREACH(const CTxIn& txin, pcoin->vin)
+        {
+            CTxDB txdb("r");
+            CTransaction prev;
+            COutPoint prevout = txin.prevout;
+            if (txdb.ReadDiskTx(prevout.hash, prev))
+                if (prevout.n < prev.vout.size())
+                {
+                    const CTxOut &vout = prev.vout[prevout.n];
+                    if (ExtractDestination(vout.scriptPubKey, addressed) && IsMine(vout))
+                        if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(addressing).ToString() ||
+                           (CBitcoinAddress(addressed).ToString() != CBitcoinAddress(addressing).ToString() &&
+                            fAllAddresses))
+                            if (pcoin->GetDepthInMainChain() >= nMinDepth)
+                                if (fDebit)
+                                    balances -= vout.nValue;
+                }
+        }
+    }
+    return (int64)balances;
 }
 
 set< set<CTxDestination> > CWallet::GetAddressGroupings()

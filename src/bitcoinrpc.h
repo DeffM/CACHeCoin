@@ -161,6 +161,11 @@ extern json_spirit::Value getreceivedbyaddress(const json_spirit::Array& params,
 extern json_spirit::Value getreceivedbyaccount(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getbalance(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getaddressbalance(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getreceivedbyalladdresses(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getsenttobyalladdresses(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getbalancealladdresses(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getstakebalancealladdresses(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getbasebalancealladdresses(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getwatchaddressbalance(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value movecmd(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value sendfrom(const json_spirit::Array& params, bool fHelp);
