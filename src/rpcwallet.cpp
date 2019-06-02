@@ -424,33 +424,18 @@ Value getreceivedbyaddress(const Array& params, bool fHelp)
 
     // Bitcoin address
     CBitcoinAddress address = CBitcoinAddress(params[0].get_str());
-    CScript scriptPubKey;
+
     if (!address.IsValid())
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
+
+    CScript scriptPubKey;
     scriptPubKey.SetDestination(address.Get());
     if (!IsMine(*pwalletMain,scriptPubKey))
         return (double)0.0;
 
-    // Minimum confirmations
-    int nMinDepth = 1;
-    if (params.size() > 1)
-        nMinDepth = params[1].get_int();
+    CBitcoinAddress addressing = CBitcoinAddress(address);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, false, true, true, false);
 
-    // Tally
-    int64 nAmount = 0;
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
-    {
-        CTxDestination addressed;
-        const CWalletTx& wtx = (*it).second;
-        if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal())
-            continue;
-
-        BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-            if (ExtractDestination(txout.scriptPubKey, addressed))
-                if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(address).ToString())
-                    if (wtx.GetDepthInMainChain() >= nMinDepth)
-                        nAmount += txout.nValue;
-    }
     return  ValueFromAmount(nAmount);
 }
 
@@ -556,6 +541,9 @@ void GetAccountAddresses(string strAccount, set<CTxDestination>& setAddress)
 
 Value getreceivedbyaccount(const Array& params, bool fHelp)
 {
+    int64 nAmount = 0;
+    CBitcoinAddress addressing;
+
     if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
             "getreceivedbyaccount <account> [minconf=1]\n"
@@ -566,65 +554,63 @@ Value getreceivedbyaccount(const Array& params, bool fHelp)
     if (params.size() > 1)
         nMinDepth = params[1].get_int();
 
-    // Get the set of pub keys assigned to account
     string strAccount = AccountFromValue(params[0]);
-    set<CTxDestination> setAddress;
-    GetAccountAddresses(strAccount, setAddress);
 
-    // Tally
-    int64 nAmount = 0;
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
+    Array ret;
+    bool IsAccountAddress = false;
+    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
     {
-        const CWalletTx& wtx = (*it).second;
-        if (wtx.IsCoinBase() || wtx.IsCoinStake() || !wtx.IsFinal())
-            continue;
-
-        BOOST_FOREACH(const CTxOut& txout, wtx.vout)
+        const CBitcoinAddress& accountaddress = item.first;
+        const string& strName = item.second;
+        if (strName == strAccount)
         {
-            CTxDestination address;
-            if (ExtractDestination(txout.scriptPubKey, address) && IsMine(*pwalletMain, address) && setAddress.count(address))
-                if (wtx.GetDepthInMainChain() >= nMinDepth)
-                    nAmount += txout.nValue;
+            IsAccountAddress = true;
+            addressing = accountaddress;
+            if (!addressing.IsValid())
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
+
+            CScript scriptPubKey;
+            scriptPubKey.SetDestination(addressing.Get());
+            if (!IsMine(*pwalletMain,scriptPubKey))
+                return (double)0.0;
+
+            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, false, true, true, false);
         }
     }
-    return (double)nAmount / (double)COIN;
-}
 
+    if (!IsAccountAddress)
+        nAmount = 0;
 
-int64 GetAccountBalance(CWalletDB& walletdb, const string& strAccount, int nMinDepth)
-{
-    int64 nBalance = 0;
-
-    // Tally wallet transactions
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
-    {
-        const CWalletTx& wtx = (*it).second;
-        if (!wtx.IsFinal())
-            continue;
-
-        int64 nGenerated, nReceived, nSent, nFee;
-        wtx.GetAccountAmounts(strAccount, nGenerated, nReceived, nSent, nFee);
-
-        if (nReceived != 0 && wtx.GetDepthInMainChain() >= nMinDepth)
-            nBalance += nReceived;
-        nBalance += nGenerated - nSent - nFee;
-    }
-
-    // Tally internal accounting entries
-    nBalance += walletdb.GetAccountCreditDebit(strAccount);
-
-    return nBalance;
+    return ValueFromAmount(nAmount);
 }
 
 int64 GetAccountBalance(const string& strAccount, int nMinDepth)
 {
-    CWalletDB walletdb(pwalletMain->strWalletFile);
-    return GetAccountBalance(walletdb, strAccount, nMinDepth);
-}
+    Array ret;
+    int64 nAmount = 0;
+    CBitcoinAddress addressing;
+    bool IsAccountAddress = false;
+    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
+    {
+        const CBitcoinAddress& accountaddress = item.first;
+        const string& strName = item.second;
+        if (strName == strAccount)
+        {
+            IsAccountAddress = true;
+            addressing = accountaddress;
+            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, false);
+        }
+    }
 
+    if (!IsAccountAddress)
+        nAmount = 0;
+
+    return nAmount;
+}
 
 Value getbalance(const Array& params, bool fHelp)
 {
+    int64 nAmount = 0;
     CBitcoinAddress addressing;
 
     if (fHelp || params.size() > 2)
@@ -636,49 +622,35 @@ Value getbalance(const Array& params, bool fHelp)
     if (params.size() == 0)
         return  ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true));
 
-    int nMinDepth = 1;
-    if (params.size() > 1)
-        nMinDepth = params[1].get_int();
-
-    if (params[0].get_str() == "*")
-    {
-        // Calculate total balance a different way from GetBalance()
-        // (GetBalance() sums up all unspent TxOuts)
-        // getbalance and getbalance '*' should always return the same number.
-        int64 nBalance = 0;
-        for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
-        {
-            const CWalletTx& wtx = (*it).second;
-            if (!wtx.IsFinal())
-                continue;
-
-            int64 allGeneratedImmature, allGeneratedMature, allFee;
-            allGeneratedImmature = allGeneratedMature = allFee = 0;
-
-            string strSentAccount;
-            list<pair<CTxDestination, int64> > listReceived;
-            list<pair<CTxDestination, int64> > listSent;
-            wtx.GetAmounts(allGeneratedImmature, allGeneratedMature, listReceived, listSent, allFee, strSentAccount);
-            if (wtx.GetDepthInMainChain() >= nMinDepth)
-            {
-                BOOST_FOREACH(const PAIRTYPE(CTxDestination,int64)& r, listReceived)
-                    nBalance += r.second;
-            }
-            BOOST_FOREACH(const PAIRTYPE(CTxDestination,int64)& r, listSent)
-                nBalance -= r.second;
-            nBalance -= allFee;
-            nBalance += allGeneratedMature;
-        }
-        return  ValueFromAmount(nBalance);
-    }
-
     string strAccount = AccountFromValue(params[0]);
 
-    int64 nBalance = GetAccountBalance(strAccount, nMinDepth);
+    Array ret;
+    bool IsAccountAddress = false;
+    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
+    {
+        const CBitcoinAddress& accountaddress = item.first;
+        const string& strName = item.second;
+        if (strName == strAccount)
+        {
+            IsAccountAddress = true;
+            addressing = accountaddress;
+            if (!addressing.IsValid())
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
 
-    return ValueFromAmount(nBalance);
+            CScript scriptPubKey;
+            scriptPubKey.SetDestination(addressing.Get());
+            if (!IsMine(*pwalletMain,scriptPubKey))
+                return (double)0.0;
+
+            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, false);
+        }
+    }
+
+    if (!IsAccountAddress)
+        nAmount = 0;
+
+    return ValueFromAmount(nAmount);
 }
-
 
 Value getwatchaddressbalance(const Array& params, bool fHelp)
 {
@@ -687,7 +659,7 @@ Value getwatchaddressbalance(const Array& params, bool fHelp)
             "getwatchaddressbalance [minconf=1]\n"
             "Returns the total balance by <watchonlyaddress> in transactions with at least [minconf] confirmations.");
 
-    CBitcoinAddress address = CBitcoinAddress();
+    CBitcoinAddress address;
 
     string strAccount = "watchonlyaddress";
 
@@ -760,7 +732,6 @@ Value getwatchaddressbalance(const Array& params, bool fHelp)
     return  ValueFromAmount(nAmount);
 }
 
-
 Value movecmd(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 3 || params.size() > 5)
@@ -827,8 +798,8 @@ Value sendfrom(const Array& params, bool fHelp)
     CBitcoinAddress address(params[1].get_str());
     if (!address.IsValid())
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
-    int64 nAmount = AmountFromValue(params[2]);
 
+    int64 nAmount = AmountFromValue(params[2]);
     if (nAmount < MIN_TXOUT_AMOUNT)
         throw JSONRPCError(-101, "Send amount too small");
 

@@ -2127,9 +2127,13 @@ std::map<CTxDestination, int64> CWallet::GetAddressBalances(CBitcoinAddress addr
 int64 CWallet::GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit, bool fDebit,
                                        bool fCoinStake, bool fCoinBase, bool fAllAddresses)
 {
+    bool fGo = false;
     int nMinDepth = 1;
     int64 balances = 0;
     LOCK(cs_wallet);
+
+    if (fCredit && !fDebit && fCoinStake && fCoinBase && !fAllAddresses)
+        fGo = true;
 
     // Tally simplified
     BOOST_FOREACH(PAIRTYPE(uint256, CWalletTx) walletEntry, mapWallet)
@@ -2138,9 +2142,11 @@ int64 CWallet::GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit,
 
         if (!pcoin->IsFinal())
             continue;
-        if (fCoinStake && !pcoin->IsCoinStake())
+        if (!fGo && fCoinStake && !pcoin->IsCoinStake())
             continue;
-        if (fCoinBase && !pcoin->IsCoinBase())
+        if (!fGo && fCoinBase && !pcoin->IsCoinBase())
+            continue;
+        if (fGo && (pcoin->IsCoinStake() || pcoin->IsCoinBase()))
             continue;
 
         CTxDestination addressed;
