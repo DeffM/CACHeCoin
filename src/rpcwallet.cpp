@@ -68,27 +68,28 @@ Value getinfo(const Array& params, bool fHelp)
 
     proxyType proxy;
     GetProxy(NET_IPV4, proxy);
+    CBitcoinAddress addressing;
 
     Object obj;
-    obj.push_back(Pair("version",       FormatFullVersion()));
-    obj.push_back(Pair("protocolversion",(int)PROTOCOL_VERSION));
-    obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
-    obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
-    obj.push_back(Pair("newmint",       ValueFromAmount(pwalletMain->GetNewMint())));
-    obj.push_back(Pair("stake",         ValueFromAmount(pwalletMain->GetStake())));
-    obj.push_back(Pair("blocks",        (int)nBestHeight));
-    obj.push_back(Pair("moneysupply",   ValueFromAmount(pindexBest->nMoneySupply)));
-    obj.push_back(Pair("connections",   (int)vNodes.size()));
-    obj.push_back(Pair("proxy",         (proxy.first.IsValid() ? proxy.first.ToStringIPPort() : string())));
-    obj.push_back(Pair("ip",            addrSeenByPeer.ToStringIP()));
-    obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
-    obj.push_back(Pair("testnet",       fTestNet));
-    obj.push_back(Pair("keypoololdest", (boost::int64_t)pwalletMain->GetOldestKeyPoolTime()));
-    obj.push_back(Pair("keypoolsize",   pwalletMain->GetKeyPoolSize()));
-    obj.push_back(Pair("paytxfee",      ValueFromAmount(nTransactionFee)));
+    obj.push_back(Pair("version",             FormatFullVersion()));
+    obj.push_back(Pair("protocolversion",    (int)PROTOCOL_VERSION));
+    obj.push_back(Pair("walletversion",       pwalletMain->GetVersion()));
+    obj.push_back(Pair("balance",             ValueFromAmount(pwalletMain->GetBalance())));
+    obj.push_back(Pair("newmint",             ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, false, true, true))));
+    obj.push_back(Pair("stake",               ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, true, false, true))));
+    obj.push_back(Pair("blocks",             (int)nBestHeight));
+    obj.push_back(Pair("moneysupply",         ValueFromAmount(pindexBest->nMoneySupply)));
+    obj.push_back(Pair("connections",        (int)vNodes.size()));
+    obj.push_back(Pair("proxy",              (proxy.first.IsValid() ? proxy.first.ToStringIPPort() : string())));
+    obj.push_back(Pair("ip",                  addrSeenByPeer.ToStringIP()));
+    obj.push_back(Pair("difficulty",         (double)GetDifficulty()));
+    obj.push_back(Pair("testnet",             fTestNet));
+    obj.push_back(Pair("keypoololdest",      (boost::int64_t)pwalletMain->GetOldestKeyPoolTime()));
+    obj.push_back(Pair("keypoolsize",         pwalletMain->GetKeyPoolSize()));
+    obj.push_back(Pair("paytxfee",            ValueFromAmount(nTransactionFee)));
     if (pwalletMain->IsCrypted())
         obj.push_back(Pair("unlocked_until", (boost::int64_t)nWalletUnlockTime / 1000));
-    obj.push_back(Pair("errors",        GetWarnings("statusbar")));
+    obj.push_back(Pair("errors",              GetWarnings("statusbar")));
     return obj;
 }
 
@@ -415,6 +416,27 @@ Value verifymessage(const Array& params, bool fHelp)
     return (key.GetPubKey().GetID() == keyID);
 }
 
+Value fixerrorgetbalancefunction(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() > 0)
+        throw runtime_error(
+            "fixerrorgetbalancefunction [minconf=1]\n"
+            "Returns error balance all <cacheprojectaddresses> [minconf] confirmations.");
+
+    CBitcoinAddress addressing;
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true);
+    int64 nGetBalance = pwalletMain->GetBalance();
+    if (nAmount == nGetBalance)
+        return "No balance adjustment required";
+        else if (nAmount != nGetBalance)
+        {
+                 pwalletMain->nErrorGetBalance = 0;
+                 pwalletMain->nErrorGetBalance = pwalletMain->GetBalance() - nAmount;
+        }
+
+    return ValueFromAmount(pwalletMain->nErrorGetBalance);
+}
+
 Value getreceivedbyaddress(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
@@ -548,11 +570,6 @@ Value getreceivedbyaccount(const Array& params, bool fHelp)
         throw runtime_error(
             "getreceivedbyaccount <account> [minconf=1]\n"
             "Returns the total amount received by addresses with <account> in transactions with at least [minconf] confirmations.");
-
-    // Minimum confirmations
-    int nMinDepth = 1;
-    if (params.size() > 1)
-        nMinDepth = params[1].get_int();
 
     string strAccount = AccountFromValue(params[0]);
 
@@ -1258,57 +1275,6 @@ Value listtransactions(const Array& params, bool fHelp)
 
     std::reverse(ret.begin(), ret.end()); // Return oldest to newest
 
-    return ret;
-}
-
-Value listaccounts(const Array& params, bool fHelp)
-{
-    if (fHelp || params.size() > 1)
-        throw runtime_error(
-            "listaccounts [minconf=1]\n"
-            "Returns Object that has account names as keys, account balances as values.");
-
-    int nMinDepth = 1;
-    if (params.size() > 0)
-        nMinDepth = params[0].get_int();
-
-    map<string, int64> mapAccountBalances;
-    BOOST_FOREACH(const PAIRTYPE(CTxDestination, string)& entry, pwalletMain->mapAddressBook) {
-        if (IsMine(*pwalletMain, entry.first)) // This address belongs to me
-            mapAccountBalances[entry.second] = 0;
-    }
-
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
-    {
-        const CWalletTx& wtx = (*it).second;
-        int64 nGeneratedImmature, nGeneratedMature, nFee;
-        string strSentAccount;
-        list<pair<CTxDestination, int64> > listReceived;
-        list<pair<CTxDestination, int64> > listSent;
-        wtx.GetAmounts(nGeneratedImmature, nGeneratedMature, listReceived, listSent, nFee, strSentAccount);
-        mapAccountBalances[strSentAccount] -= nFee;
-        BOOST_FOREACH(const PAIRTYPE(CTxDestination, int64)& s, listSent)
-            mapAccountBalances[strSentAccount] -= s.second;
-        if (wtx.GetDepthInMainChain() >= nMinDepth)
-        {
-            mapAccountBalances[""] += nGeneratedMature;
-            BOOST_FOREACH(const PAIRTYPE(CTxDestination, int64)& r, listReceived)
-                if (pwalletMain->mapAddressBook.count(r.first))
-                    mapAccountBalances[pwalletMain->mapAddressBook[r.first]] += r.second;
-                else
-                    mapAccountBalances[""] += r.second;
-        }
-    }
-
-    list<CAccountingEntry> acentries;
-    CWalletDB(pwalletMain->strWalletFile).ListAccountCreditDebit("*", acentries);
-    BOOST_FOREACH(const CAccountingEntry& entry, acentries)
-        mapAccountBalances[entry.strAccount] += entry.nCreditDebit;
-
-    Object ret;
-    BOOST_FOREACH(const PAIRTYPE(string, int64)& accountBalance, mapAccountBalances) {
-        ret.push_back(Pair(accountBalance.first, ValueFromAmount(accountBalance.second)));
-    }
     return ret;
 }
 

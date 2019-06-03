@@ -1075,7 +1075,7 @@ int64 CWallet::GetBalance() const
                 nTotal += pcoin->GetAvailableCredit();
         }
     }
-    return nTotal;
+    return nTotal - nErrorGetBalance;
 }
 
 int64 CWallet::GetUnconfirmedBalance() const

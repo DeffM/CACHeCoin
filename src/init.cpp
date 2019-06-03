@@ -970,6 +970,16 @@ bool AppInit2()
     if (!strErrors.str().empty())
         return InitError(strErrors.str());
 
+    // Check and adjust balance
+    CBitcoinAddress addressing;
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true);
+    int64 nGetBalance = pwalletMain->GetBalance();
+    if (nAmount != nGetBalance)
+    {
+        pwalletMain->nErrorGetBalance = 0;
+        pwalletMain->nErrorGetBalance = pwalletMain->GetBalance() - nAmount;
+    }
+
      // Add wallet transactions that aren't already in a block to mapTransactions
     pwalletMain->ReacceptWalletTransactions();
 

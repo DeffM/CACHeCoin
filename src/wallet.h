@@ -102,6 +102,7 @@ public:
         nMasterKeyMaxID = 0;
         pwalletdbEncryption = NULL;
         nOrderPosNext = 0;
+        nErrorGetBalance = 0;
     }
     CWallet(std::string strWalletFileIn)
     {
@@ -112,6 +113,7 @@ public:
         nMasterKeyMaxID = 0;
         pwalletdbEncryption = NULL;
         nOrderPosNext = 0;
+        nErrorGetBalance = 0;
     }
 
     std::map<uint256, CWalletTx> mapWallet;
@@ -173,6 +175,9 @@ public:
     void ReacceptWalletTransactions();
     void ResendWalletTransactions();
     int64 GetBalance() const;
+
+    mutable int64 nErrorGetBalance;
+
     int64 GetUnconfirmedBalance() const;
     int64 GetImmatureBalance() const;
     int64 GetStake() const;
