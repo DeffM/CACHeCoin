@@ -971,13 +971,13 @@ bool AppInit2()
         return InitError(strErrors.str());
 
     // Check and adjust balance
+    int nMismatchSpent;
+    int64 nBalanceInQuestion;
     CBitcoinAddress addressing;
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true);
-    int64 nGetBalance = pwalletMain->GetBalance();
-    if (nAmount != nGetBalance)
+    if (pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true) !=
+        pwalletMain->GetBalance())
     {
-        pwalletMain->nErrorGetBalance = 0;
-        pwalletMain->nErrorGetBalance = pwalletMain->GetBalance() - nAmount;
+        pwalletMain->FixSpentCoins(nMismatchSpent, nBalanceInQuestion);
     }
 
      // Add wallet transactions that aren't already in a block to mapTransactions

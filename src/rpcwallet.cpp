@@ -75,8 +75,10 @@ Value getinfo(const Array& params, bool fHelp)
     obj.push_back(Pair("protocolversion",    (int)PROTOCOL_VERSION));
     obj.push_back(Pair("walletversion",       pwalletMain->GetVersion()));
     obj.push_back(Pair("balance",             ValueFromAmount(pwalletMain->GetBalance())));
-    obj.push_back(Pair("newmint",             ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, false, true, true))));
-    obj.push_back(Pair("stake",               ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, true, false, true))));
+    obj.push_back(Pair("newmint",             ValueFromAmount(pwalletMain->GetNewMint())));
+    obj.push_back(Pair("newmint balance",     ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, false, true, true))));
+    obj.push_back(Pair("stake",               ValueFromAmount(pwalletMain->GetStake())));
+    obj.push_back(Pair("stake balance",       ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, true, false, true))));
     obj.push_back(Pair("blocks",             (int)nBestHeight));
     obj.push_back(Pair("moneysupply",         ValueFromAmount(pindexBest->nMoneySupply)));
     obj.push_back(Pair("connections",        (int)vNodes.size()));
@@ -206,8 +208,6 @@ Value getaccountaddress(const Array& params, bool fHelp)
     return ret;
 }
 
-
-
 Value setaccount(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 2)
@@ -237,7 +237,6 @@ Value setaccount(const Array& params, bool fHelp)
     return Value::null;
 }
 
-
 Value getaccount(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
@@ -255,7 +254,6 @@ Value getaccount(const Array& params, bool fHelp)
         strAccount = (*mi).second;
     return strAccount;
 }
-
 
 Value getaddressesbyaccount(const Array& params, bool fHelp)
 {
@@ -423,15 +421,18 @@ Value fixerrorgetbalancefunction(const Array& params, bool fHelp)
             "fixerrorgetbalancefunction [minconf=1]\n"
             "Returns error balance all <cacheprojectaddresses> [minconf] confirmations.");
 
+    int nMismatchSpent;
+    int64 nBalanceInQuestion;
     CBitcoinAddress addressing;
     int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true);
     int64 nGetBalance = pwalletMain->GetBalance();
+    pwalletMain->FixSpentCoins(nMismatchSpent, nBalanceInQuestion);
     if (nAmount == nGetBalance)
         return "No balance adjustment required";
         else if (nAmount != nGetBalance)
         {
                  pwalletMain->nErrorGetBalance = 0;
-                 pwalletMain->nErrorGetBalance = pwalletMain->GetBalance() - nAmount;
+                 pwalletMain->nErrorGetBalance = nGetBalance - nAmount;
         }
 
     return ValueFromAmount(pwalletMain->nErrorGetBalance);
@@ -1117,41 +1118,33 @@ Value listreceivedbyaccount(const Array& params, bool fHelp)
     return ListReceived(params, true);
 }
 
+static void MaybePushAddress(Object & entry, const CTxDestination &dest)
+{
+    CBitcoinAddress addr;
+    if (addr.Set(dest))
+        entry.push_back(Pair("address", addr.ToString()));
+}
+
+static void PushCoinStakeCategory(Object & entry, const CWalletTx &wtx)
+{
+    if (wtx.GetDepthInMainChain() < 1)
+        entry.push_back(Pair("category", "stake-orphan"));
+    else if (wtx.GetBlocksToMaturity() > 0)
+        entry.push_back(Pair("category", "stake"));
+    else
+        entry.push_back(Pair("category", "stake-mint"));
+}
+
 void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDepth, bool fLong, Array& ret)
 {
-    int64 nGeneratedImmature, nGeneratedMature, nFee;
+    int64 nFee;
     string strSentAccount;
     list<pair<CTxDestination, int64> > listReceived;
     list<pair<CTxDestination, int64> > listSent;
 
-    wtx.GetAmounts(nGeneratedImmature, nGeneratedMature, listReceived, listSent, nFee, strSentAccount);
+    wtx.GetAmounts(listReceived, listSent, nFee, strSentAccount);
 
     bool fAllAccounts = (strAccount == string("*"));
-
-    // Generated blocks assigned to account ""
-    if ((nGeneratedMature+nGeneratedImmature) != 0 && (fAllAccounts || strAccount == ""))
-    {
-        Object entry;
-        entry.push_back(Pair("account", string("")));
-        if (nGeneratedImmature)
-        {
-            entry.push_back(Pair("category", wtx.GetDepthInMainChain() ? "immature" : "orphan"));
-            entry.push_back(Pair("amount", ValueFromAmount(nGeneratedImmature)));
-        }
-        else if (wtx.IsCoinStake())
-        {
-            entry.push_back(Pair("category", "stake"));
-            entry.push_back(Pair("amount", ValueFromAmount(nGeneratedMature)));
-        }
-        else
-        {
-            entry.push_back(Pair("category", "generate"));
-            entry.push_back(Pair("amount", ValueFromAmount(nGeneratedMature)));
-        }
-        if (fLong)
-            WalletTxToJSON(wtx, entry);
-        ret.push_back(entry);
-    }
 
     // Sent
     if ((!listSent.empty() || nFee != 0) && (fAllAccounts || strAccount == strSentAccount))
@@ -1160,8 +1153,11 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
         {
             Object entry;
             entry.push_back(Pair("account", strSentAccount));
-            entry.push_back(Pair("address", CBitcoinAddress(s.first).ToString()));
-            entry.push_back(Pair("category", "send"));
+            MaybePushAddress(entry, s.first);
+            if (wtx.IsCoinStake())
+                PushCoinStakeCategory(entry, wtx);
+            else
+                entry.push_back(Pair("category", "send"));
             entry.push_back(Pair("amount", ValueFromAmount(-s.second)));
             entry.push_back(Pair("fee", ValueFromAmount(-nFee)));
             if (fLong)
@@ -1182,7 +1178,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             {
                 Object entry;
                 entry.push_back(Pair("account", account));
-                entry.push_back(Pair("address", CBitcoinAddress(r.first).ToString()));
+                MaybePushAddress(entry, r.first);
                 if (wtx.IsCoinBase())
                 {
                     if (wtx.GetDepthInMainChain() < 1)
@@ -1191,6 +1187,10 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                         entry.push_back(Pair("category", "immature"));
                     else
                         entry.push_back(Pair("category", "generate"));
+                }
+                else if (wtx.IsCoinStake())
+                {
+                    PushCoinStakeCategory(entry, wtx);
                 }
                 else
                     entry.push_back(Pair("category", "receive"));
