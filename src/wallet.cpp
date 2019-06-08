@@ -2143,7 +2143,7 @@ std::map<CTxDestination, int64> CWallet::GetAddressBalances(CBitcoinAddress addr
 }
 
 int64 CWallet::GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit, bool fDebit,
-                                       bool fCoinStake, bool fCoinBase, bool fAllAddresses)
+                                       bool fCoinStake, bool fCoinBase, bool fAllAddresses, bool fConfirmed)
 {
     bool fGo = false;
     int nMinDepth = 1;
@@ -2156,6 +2156,7 @@ int64 CWallet::GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit,
     // Tally simplified
     BOOST_FOREACH(PAIRTYPE(uint256, CWalletTx) walletEntry, mapWallet)
     {
+        int nDepth = nMinDepth;
         CWalletTx *pcoin = &walletEntry.second;
 
         if (!pcoin->IsFinal())
@@ -2166,6 +2167,8 @@ int64 CWallet::GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit,
             continue;
         if (fGo && (pcoin->IsCoinStake() || pcoin->IsCoinBase()))
             continue;
+        if (fConfirmed && pcoin->GetBlocksToMaturity() != 0)
+            nDepth = pcoin->GetBlocksToMaturity() + pcoin->GetDepthInMainChain();
 
         CTxDestination addressed;
         BOOST_FOREACH(const CTxOut& txout, pcoin->vout)
@@ -2173,7 +2176,7 @@ int64 CWallet::GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit,
                 if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(addressing).ToString() ||
                    (CBitcoinAddress(addressed).ToString() != CBitcoinAddress(addressing).ToString() &&
                     fAllAddresses))
-                    if (pcoin->GetDepthInMainChain() >= nMinDepth)
+                    if (pcoin->GetDepthInMainChain() >= nDepth)
                         if (fCredit)
                             balances += txout.nValue;
     }

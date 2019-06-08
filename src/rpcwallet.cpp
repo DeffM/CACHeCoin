@@ -76,9 +76,9 @@ Value getinfo(const Array& params, bool fHelp)
     obj.push_back(Pair("walletversion",       pwalletMain->GetVersion()));
     obj.push_back(Pair("balance",             ValueFromAmount(pwalletMain->GetBalance())));
     obj.push_back(Pair("newmint",             ValueFromAmount(pwalletMain->GetNewMint())));
-    obj.push_back(Pair("newmint balance",     ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, false, true, true))));
+    obj.push_back(Pair("mint balance",        ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, false, true, true, false))));
     obj.push_back(Pair("stake",               ValueFromAmount(pwalletMain->GetStake())));
-    obj.push_back(Pair("stake balance",       ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, true, false, true))));
+    obj.push_back(Pair("mint stake balance",  ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, true, false, true, false))));
     obj.push_back(Pair("blocks",             (int)nBestHeight));
     obj.push_back(Pair("moneysupply",         ValueFromAmount(pindexBest->nMoneySupply)));
     obj.push_back(Pair("connections",        (int)vNodes.size()));
@@ -424,7 +424,7 @@ Value fixerrorgetbalancefunction(const Array& params, bool fHelp)
     int nMismatchSpent;
     int64 nBalanceInQuestion;
     CBitcoinAddress addressing;
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true, true);
     int64 nGetBalance = pwalletMain->GetBalance();
     pwalletMain->FixSpentCoins(nMismatchSpent, nBalanceInQuestion);
     if (nAmount == nGetBalance)
@@ -457,7 +457,7 @@ Value getreceivedbyaddress(const Array& params, bool fHelp)
         return (double)0.0;
 
     CBitcoinAddress addressing = CBitcoinAddress(address);
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, false, true, true, false);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, false, true, true, false, false);
 
     return  ValueFromAmount(nAmount);
 }
@@ -481,7 +481,7 @@ Value getaddressbalance(const Array& params, bool fHelp)
         return (double)0.0;
 
     CBitcoinAddress addressing = CBitcoinAddress(address);
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, false);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, false, false);
 
     return ValueFromAmount(nAmount);
 }
@@ -494,7 +494,7 @@ Value getreceivedbyalladdresses(const Array& params, bool fHelp)
             "Returns received balance by all <cacheprojectaddresses> [minconf] confirmations.");
 
     CBitcoinAddress addressing;
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, false, false, false, true);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, false, false, false, true, false);
 
     return ValueFromAmount(nAmount);
 }
@@ -507,7 +507,7 @@ Value getsenttobyalladdresses(const Array& params, bool fHelp)
             "Returns sent to balance by all <cacheprojectaddresses> [minconf] confirmations.");
 
     CBitcoinAddress addressing;
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, false, true, false, false, true);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, false, true, false, false, true, false);
 
     return ValueFromAmount(nAmount);
 }
@@ -520,7 +520,7 @@ Value getbalancealladdresses(const Array& params, bool fHelp)
             "Returns balance all <cacheprojectaddresses> [minconf] confirmations.");
 
     CBitcoinAddress addressing;
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true, false);
 
     return ValueFromAmount(nAmount);
 }
@@ -533,7 +533,7 @@ Value getstakebalancealladdresses(const Array& params, bool fHelp)
             "Returns stake balance all <cacheprojectaddresses> [minconf] confirmations.");
 
     CBitcoinAddress addressing;
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, true, false, true);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, true, false, true, false);
 
     return ValueFromAmount(nAmount);
 }
@@ -546,7 +546,7 @@ Value getbasebalancealladdresses(const Array& params, bool fHelp)
             "Returns base balance all <cacheprojectaddresses> [minconf] confirmations.");
 
     CBitcoinAddress addressing;
-    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, true, true);
+    int64 nAmount = pwalletMain->GetAllAddressesBalances(addressing, true, true, false, true, true, false);
 
     return ValueFromAmount(nAmount);
 }
@@ -592,7 +592,7 @@ Value getreceivedbyaccount(const Array& params, bool fHelp)
             if (!IsMine(*pwalletMain,scriptPubKey))
                 return (double)0.0;
 
-            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, false, true, true, false);
+            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, false, true, true, false, false);
         }
     }
 
@@ -616,7 +616,7 @@ int64 GetAccountBalance(const string& strAccount, int nMinDepth)
         {
             IsAccountAddress = true;
             addressing = accountaddress;
-            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, false);
+            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, false, false);
         }
     }
 
@@ -638,7 +638,7 @@ Value getbalance(const Array& params, bool fHelp)
             "If [account] is specified, returns the balance in the account.");
 
     if (params.size() == 0)
-        return  ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true));
+        return  ValueFromAmount(pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, true, false));
 
     string strAccount = AccountFromValue(params[0]);
 
@@ -660,7 +660,7 @@ Value getbalance(const Array& params, bool fHelp)
             if (!IsMine(*pwalletMain,scriptPubKey))
                 return (double)0.0;
 
-            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, false);
+            nAmount += pwalletMain->GetAllAddressesBalances(addressing, true, true, false, false, false, false);
         }
     }
 

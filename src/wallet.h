@@ -200,7 +200,8 @@ public:
     void GetAllReserveKeys(std::set<CKeyID>& setAddress);
 
     int64 GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit=false, bool fDebit=false,
-                                  bool fCoinStake=false, bool fCoinBase=false, bool fAllAddresses=false);
+                                  bool fCoinStake=false, bool fCoinBase=false, bool fAllAddresses=false,
+                                  bool fConfirmed=false);
     std::set< std::set<CTxDestination> > GetAddressGroupings();
     std::map<CTxDestination, int64> GetAddressBalances(CBitcoinAddress addressing);
 
