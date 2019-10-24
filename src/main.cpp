@@ -86,6 +86,10 @@ CBigNum bnBestChainTrust = 0;
 CBigNum bnBestInvalidTrust = 0;
 uint256 hashBestChain = 0;
 CBlockIndex* pindexBest = NULL;
+const CBlockIndex* pindexPrevPow = NULL;
+const CBlockIndex* pindexPrevPrevPow = NULL;
+const CBlockIndex* pindexPrevPos = NULL;
+const CBlockIndex* pindexPrevPrevPos = NULL;
 int64 nTimeBestReceived = 0;
 int nScriptCheckThreads = 0;
 bool fImporting = false;
@@ -1047,6 +1051,9 @@ unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fPr
     if (powpindexPrevPrevPrevPrevPrevPrev->pprev == NULL)
         return bnInitialHashTarget.GetCompact(); // second block 5
 
+    pindexPrevPow = powpindexPrev;
+    pindexPrevPrevPow = powpindexPrevPrevPrevPrevPrev;
+
     double nPowTargetSpacingTest = 0;
     if(powpindexPrev->GetBlockTime() > nPowForceTimestamp && powpindexPrev->GetBlockTime() < nPowForceTimestamp + NTest)
        nPowTargetSpacingTest = nPowTargetSpacing / nPowTargetSpacing * 900;
@@ -1189,6 +1196,9 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
     const CBlockIndex* pospindexPrevPrevPrevPrevPrevPrev = GetLastBlockIndexPos(pospindexPrevPrevPrevPrevPrev->pprev, fProofOfStake);
     if (pospindexPrevPrevPrevPrevPrevPrev->pprev == NULL)
         return bnInitialHashTarget.GetCompact(); // second block 5
+
+    pindexPrevPos = pospindexPrev;
+    pindexPrevPrevPos = pospindexPrevPrevPrevPrevPrev;
 
     int64 nLastCoinSearchTime = GetAdjustedTime();
 
@@ -3041,9 +3051,32 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
 
     // New best
     if (pindexNew->bnChainTrust > bnBestChainTrust)
+    {
         if (!SetBestChain(state, txdb, pindexNew))
             return false;
-
+    }
+        else if (pindexNew->bnChainTrust == bnBestChainTrust && !fHardForkOne)
+        {
+                 printf(" 'CBlock' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
+                 printf(" 'CBlock' - NewChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
+                 if ((pindexNew->IsProofOfStake() ? (pindexNew->hashProofOfStake > pindexPrevPrevPos->hashProofOfStake &&
+                      pindexNew->hashProofOfStake < pindexPrevPos->hashProofOfStake) : (hash > pindexPrevPrevPow->GetBlockHash() &&
+                      hash < pindexPrevPow->GetBlockHash())))
+                 {
+                     printf(" 'Poisk_1' - 1\n");
+                     if (!SetBestChain(state, txdb, pindexNew))
+                     {
+                         printf(" 'Poisk_2' - 2\n");
+                         return false;
+                     }
+                 }
+                     else
+                     {
+                         printf(" 'Poisk_3' - 3\n");
+                         return false;
+                     }
+        }
+        //pindexNew->IsProofOfStake() > pindexBest->IsProofOfStake()
     txdb.Close();
 
     if (pindexNew == pindexBest)
@@ -3055,7 +3088,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     }
 
     static int8_t counter = 0;
-    if( (++counter & 0x0F) == 0 || !IsInitialBlockDownload()) // repaint every 16 blocks if not in initial block download
+    if((++counter & 0x0F) == 0 || !IsInitialBlockDownload()) // repaint every 16 blocks if not in initial block download
         uiInterface.NotifyBlocksChanged();
     return true;
 }
