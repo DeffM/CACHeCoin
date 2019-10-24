@@ -3013,6 +3013,11 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     // ppcoin: compute chain trust score
     pindexNew->bnChainTrust = (pindexNew->pprev ? pindexNew->pprev->bnChainTrust : 0) + pindexNew->GetBlockTrust();
 
+    printf(" 'Research' - pindexNew->IsProofOfStake() %d\n", pindexNew->IsProofOfStake());
+    printf(" 'Research' - pindexBest->IsProofOfStake() %d\n", pindexBest->IsProofOfStake());
+    printf(" 'Research' - pindexNew->bnChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
+    printf(" 'Research' - bnBestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
+
     // ppcoin: compute stake entropy bit for stake modifier
     if (!pindexNew->SetStakeEntropyBit(GetStakeEntropyBit(pindexNew->nHeight)))
         return error("AddToBlockIndex() : SetStakeEntropyBit() failed");
@@ -3061,22 +3066,27 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                  printf(" 'CBlock' - NewChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
                  if ((pindexNew->IsProofOfStake() ? (pindexNew->hashProofOfStake > pindexPrevPrevPos->hashProofOfStake &&
                       pindexNew->hashProofOfStake < pindexPrevPos->hashProofOfStake) : (hash > pindexPrevPrevPow->GetBlockHash() &&
-                      hash < pindexPrevPow->GetBlockHash())))
+                      hash < pindexPrevPow->GetBlockHash())) || (pindexNew->IsProofOfStake() && pindexBest->IsProofOfWork()))
                  {
-                     printf(" 'Poisk_1' - 1\n");
+                     printf(" 'Research_1' - 1\n");
                      if (!SetBestChain(state, txdb, pindexNew))
                      {
-                         printf(" 'Poisk_2' - 2\n");
+                         printf(" 'Research_2' - 2\n");
                          return false;
                      }
                  }
                      else
                      {
-                         printf(" 'Poisk_3' - 3\n");
+                         printf(" 'Research_3' - 3\n");
                          return false;
                      }
         }
-        //pindexNew->IsProofOfStake() > pindexBest->IsProofOfStake()
+
+    printf(" 'Research' - pindexPrevPos->hashProofOfStake %s\n", pindexPrevPos->hashProofOfStake.ToString().c_str());
+    printf(" 'Research' - pindexPrevPrevPos->hashProofOfStake %s\n", pindexPrevPrevPos->hashProofOfStake.ToString().c_str());
+    printf(" 'Research' - pindexPrevPow->GetBlockHash() %s\n", pindexPrevPow->GetBlockHash().ToString().c_str());
+    printf(" 'Research' - pindexPrevPrevPow->GetBlockHash() %s\n", pindexPrevPrevPow->GetBlockHash().ToString().c_str());
+
     txdb.Close();
 
     if (pindexNew == pindexBest)
