@@ -118,7 +118,7 @@ int64 nTransactionFee = MIN_TX_FEE;
 bool fStakeUsePooledKeys = false;
 
 // HardForkControlFunction
-int64 nHardForkControlAddressStartTime = 9999999999;
+int nFixHardForkOne = 356665999;
 std::string WatchOnlyAddress = "";
 std::string HardForkControlAddress = "";
 std::string ScriptPubKeyHardForkOP_CHECKSIG = "";
