@@ -250,7 +250,7 @@ namespace Checkpoints
         const CBlockIndex *apindex = GetLastBlockIndex(pindexBest, false);
         const CBlockIndex *bpindex = GetLastBlockIndexPow(pindexBest, false);
         const CBlockIndex *pindex;
-        if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() < nPowForceTimestamp)
+        if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
            pindex = apindex;
            else
                pindex = bpindex;

@@ -916,11 +916,10 @@ int CWallet::ScanForWalletWatchAddress(CBlockIndex* pindexStart, bool fUpdate)
         while (pindex)
         {
             CBlock block;
-            const json_spirit::Array params;
             block.ReadFromDisk(pindex, true);
             BOOST_FOREACH(CTransaction& tx, block.vtx)
             {
-                if (!block.HardForkControl(state, params))
+                if (!block.HardForkControl(state))
                     printf("CWallet() : error hardforkcontrol function\n");
                     else if (AddToWalletWatchOnlyAddress(state, tx, &block, fUpdate))
                              ret++;
@@ -1490,7 +1489,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     // The following split & combine thresholds are important to security
     // Should not be adjusted if you don't understand the consequences
     static unsigned int nStakeSplitAge;
-    if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() < nPowForceTimestamp)
+    if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
            nStakeSplitAge = (60 * 60 * 24 * 90);
            else
                nStakeSplitAge = (60 * 60 * 24 * 30);

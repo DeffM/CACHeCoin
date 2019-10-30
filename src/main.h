@@ -102,7 +102,6 @@ extern int64 nLastCoinPowFiveInterval;
 extern int64 nLastCoinWithoutPowSearchInterval;
 extern int64 nLastCoinPosSearchInterval;
 extern int64 nLastCoinPosTwoInterval;
-extern int64 nLastCoinPosSearchIntervalPrev;
 extern int64 nLastCoinWithoutPosSearchInterval;
 extern double nActualTimeIntervalXUXLpow;
 extern double nActualTimeIntervalXUXLpos;
@@ -1398,7 +1397,7 @@ public:
     }
 
 
-    bool HardForkControl(CValidationState &state, const json_spirit::Array& params) const;
+    bool HardForkControl(CValidationState &state) const;
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);

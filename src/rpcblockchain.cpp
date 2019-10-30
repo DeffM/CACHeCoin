@@ -160,7 +160,7 @@ Value getdifficulty(const Array& params, bool fHelp)
             "Returns the difficulty as a multiple of the minimum difficulty.");
 
     Object obj;
-    if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() < nPowForceTimestamp)
+    if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
     {
     obj.push_back(Pair("proof-of-work",                             GetDifficulty()));
     obj.push_back(Pair("proof-of-stake",                            GetDifficulty(GetLastBlockIndex(pindexBest, true))));
