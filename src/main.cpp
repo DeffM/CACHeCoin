@@ -3062,8 +3062,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         if (!SetBestChain(state, txdb, pindexNew))
             return false;
     }
-
-    if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() >=
+    else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() >=
         pindexPrevPrevPos->GetBlockHash())
     {
         printf(" 'CBlock' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
