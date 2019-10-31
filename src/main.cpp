@@ -3092,7 +3092,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             pindexBest->GetBlockHash()) : (hash < pindexBest->GetBlockHash())) ||
             (pindexBest->IsProofOfWork() && pindexNew->IsProofOfStake()))
         {
-            printf(" 'CBlock' bnChainTrust = bnBestChainTrust - Block accepted\n");
+            printf(" 'CBlock_' bnChainTrust = bnBestChainTrust - Block accepted\n");
             if (!SetBestChain(state, txdb, pindexNew))
             {
                 return false;
@@ -3100,7 +3100,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         }
         else
         {
-             printf(" 'CBlock' bnChainTrust = bnBestChainTrust - Block not accepted\n");
+             printf(" 'CBlock_' bnChainTrust = bnBestChainTrust - Block not accepted\n");
              return false;
         }
     }
@@ -3469,6 +3469,33 @@ bool CBlock::AcceptBlock()
            return error("AcceptBlock() : block's stopped by hash spam control - pos");
        }
     }
+
+    CBlockIndex* pblockindex = NULL;
+    int nPossibleHeight = pindexPrev->nHeight + 1;
+    if (fDebug)
+        printf(" 'AcceptBlock()' - The new block pretends to a height %d, possibly orphaned %d blocks\n", nPossibleHeight,
+               pindexBest->nHeight - nPossibleHeight);
+
+    if (nPossibleHeight < pindexBest->nHeight && fHardForkOne)
+    {
+        pblockindex = FindBlockByHeight(nPossibleHeight);
+        if (GetBlockTime() >= pblockindex->GetBlockTime())
+        {
+            return error("AcceptBlock() : generation time of a new block date=%s later than available in the database date=%s",
+                         DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                         pblockindex->GetBlockTime()).c_str());
+        }
+        if (fDebug)
+            printf(" 'AcceptBlock()' - The generation time of a new block date=%s earlier than the one in the database date=%s\n",
+                   DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                   pblockindex->GetBlockTime()).c_str());
+    }
+
+    int nLength = 10000;
+    if (nPossibleHeight <= pindexBest->nHeight && fHardForkOne)
+        if (pindexBest->nHeight - nPossibleHeight > nLength)
+            return error("AcceptBlock() : the length of a competing block chain has been exceeded - %d > %d",
+                         pindexBest->nHeight - nPossibleHeight, nLength);
 
     // Check that all transactions are finalized
     BOOST_FOREACH(const CTransaction& tx, vtx)
