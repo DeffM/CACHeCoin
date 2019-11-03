@@ -2997,6 +2997,7 @@ bool CBlock::GetCoinAge(uint64& nCoinAge) const
     return true;
 }
 
+int nTriggerDepth = 50;
 bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos)
 {
     // Check for duplicate
@@ -3050,59 +3051,105 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
 
     // Write to disk block index
     CTxDB txdb;
+    bool fGo = false;
     if (!txdb.TxnBegin())
         return false;
     txdb.WriteBlockIndex(CDiskBlockIndex(pindexNew));
     if (!txdb.TxnCommit())
         return false;
 
+    bool fSetBestChain = true;
+    CBlockIndex* pblockindex = NULL;
+    int nPossibleHeight = pindexNew->pprev->nHeight + 1;
+    if (fDebug)
+        printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, block chain height %d\n", nPossibleHeight,
+               pindexBest->nHeight);
+
+    if (nPossibleHeight < pindexBest->nHeight && fHardForkOne)
+    {
+        if (nPossibleHeight <= pindexBest->nHeight - nTriggerDepth)
+        {
+            if (fDebug)
+                printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, maximum allowed block height for a competing chain %d\n", nPossibleHeight,
+                pindexBest->nHeight - nTriggerDepth);
+            fSetBestChain = false;
+
+        }
+
+        pblockindex = FindBlockByHeight(nPossibleHeight);
+        if (pindexNew->GetBlockTime() > pblockindex->GetBlockTime())
+        {
+            if (fDebug)
+                printf(" 'AddToBlockIndex()' - Generation time of a new block date=%s later than available in the database date=%s\n",
+                DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                pblockindex->GetBlockTime()).c_str());
+            fSetBestChain = false;
+        }
+        else if (pindexNew->GetBlockTime() < pblockindex->GetBlockTime())
+        {
+                 if (nPossibleHeight < pindexBest->nHeight && nPossibleHeight > pindexBest->nHeight - nTriggerDepth)
+                 {
+                     if (fDebug)
+                         printf(" 'AddToBlockIndex()' - The generation time of a new block date=%s earlier than the one in the database date=%s\n",
+                         DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                         pblockindex->GetBlockTime()).c_str());
+                     if (!SetBestChain(state, txdb, pindexNew))
+                         return false;
+                 }
+        }
+        else if (pindexNew->GetBlockTime() == pblockindex->GetBlockTime())
+        {
+                 fGo = true;
+        }
+    }
+
     // New best
-    if (pindexNew->bnChainTrust > bnBestChainTrust)
+    if (pindexNew->bnChainTrust > bnBestChainTrust && fSetBestChain)
     {
         if (!SetBestChain(state, txdb, pindexNew))
             return false;
     }
-    else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() >=
-        pindexPrevPrevPos->GetBlockHash())
-    {
-        printf(" 'CBlock' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
-        printf(" 'CBlock' - NewChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
-        if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() >
-            pindexBest->GetBlockHash()) : (hash > pindexBest->GetBlockHash())) ||
-            (pindexBest->IsProofOfWork() && pindexNew->IsProofOfStake()))
-        {
-            printf(" 'CBlock' bnChainTrust = bnBestChainTrust - Block accepted\n");
-            if (!SetBestChain(state, txdb, pindexNew))
-            {
-                return false;
-            }
-        }
-        else
-        {
-             printf(" 'CBlock' bnChainTrust = bnBestChainTrust - Block not accepted\n");
-             return false;
-        }
-    }
-    else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() <
+    else if ((pindexNew->bnChainTrust == bnBestChainTrust || fGo) && fHardForkOne && pindexPrevPos->GetBlockHash() >=
              pindexPrevPrevPos->GetBlockHash())
     {
-        printf(" 'CBlock_' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
-        printf(" 'CBlock_' - NewChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
-        if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() <
-            pindexBest->GetBlockHash()) : (hash < pindexBest->GetBlockHash())) ||
-            (pindexBest->IsProofOfWork() && pindexNew->IsProofOfStake()))
-        {
-            printf(" 'CBlock_' bnChainTrust = bnBestChainTrust - Block accepted\n");
-            if (!SetBestChain(state, txdb, pindexNew))
-            {
-                return false;
-            }
-        }
-        else
-        {
-             printf(" 'CBlock_' bnChainTrust = bnBestChainTrust - Block not accepted\n");
-             return false;
-        }
+             printf(" 'AddToBlockIndex()' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
+             printf(" 'AddToBlockIndex()' - NewChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
+             if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() >
+                 pindexBest->GetBlockHash()) : (hash > pindexBest->GetBlockHash())) ||
+                 (pindexBest->IsProofOfWork() && pindexNew->IsProofOfStake()))
+             {
+                 printf(" 'AddToBlockIndex()' bnChainTrust = bnBestChainTrust - Block accepted\n");
+                 if (!SetBestChain(state, txdb, pindexNew))
+                 {
+                     return false;
+                 }
+             }
+             else
+             {
+                  printf(" 'AddToBlockIndex()' bnChainTrust = bnBestChainTrust - Block not accepted\n");
+                  //return false;
+             }
+    }
+    else if ((pindexNew->bnChainTrust == bnBestChainTrust || fGo) && fHardForkOne && pindexPrevPos->GetBlockHash() <
+             pindexPrevPrevPos->GetBlockHash())
+    {
+             printf(" 'AddToBlockIndex()_' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
+             printf(" 'AddToBlockIndex()_' - NewChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
+             if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() <
+                 pindexBest->GetBlockHash()) : (hash < pindexBest->GetBlockHash())) ||
+                 (pindexBest->IsProofOfWork() && pindexNew->IsProofOfStake()))
+             {
+                 printf(" 'AddToBlockIndex()_' bnChainTrust = bnBestChainTrust - Block accepted\n");
+                 if (!SetBestChain(state, txdb, pindexNew))
+                 {
+                     return false;
+                 }
+             }
+             else
+             {
+                  printf(" 'AddToBlockIndex()_' bnChainTrust = bnBestChainTrust - Block not accepted\n");
+                  //return false;
+             }
     }
     txdb.Close();
 
@@ -3470,32 +3517,18 @@ bool CBlock::AcceptBlock()
        }
     }
 
-    CBlockIndex* pblockindex = NULL;
-    int nPossibleHeight = pindexPrev->nHeight + 1;
-    if (fDebug)
-        printf(" 'AcceptBlock()' - The new block pretends to a height %d, possibly orphaned %d blocks\n", nPossibleHeight,
-               pindexBest->nHeight - nPossibleHeight);
-
-    if (nPossibleHeight < pindexBest->nHeight && fHardForkOne)
-    {
-        pblockindex = FindBlockByHeight(nPossibleHeight);
-        if (GetBlockTime() >= pblockindex->GetBlockTime())
-        {
-            return error("AcceptBlock() : generation time of a new block date=%s later than available in the database date=%s",
-                         DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
-                         pblockindex->GetBlockTime()).c_str());
-        }
-        if (fDebug)
-            printf(" 'AcceptBlock()' - The generation time of a new block date=%s earlier than the one in the database date=%s\n",
-                   DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
-                   pblockindex->GetBlockTime()).c_str());
-    }
-
-    int nLength = 10000;
-    if (nPossibleHeight <= pindexBest->nHeight && fHardForkOne)
-        if (pindexBest->nHeight - nPossibleHeight > nLength)
-            return error("AcceptBlock() : the length of a competing block chain has been exceeded - %d > %d",
-                         pindexBest->nHeight - nPossibleHeight, nLength);
+    //CBlockIndex* pblockindex = NULL;
+    //int nPossibleHeight = pindexPrev->nHeight + 1;
+    //if (nPossibleHeight <= pindexBest->nHeight - nTriggerDepth * 30 && fHardForkOne)
+    //{
+    //    pblockindex = FindBlockByHeight(nPossibleHeight);
+    //    if (GetBlockTime() >= pblockindex->GetBlockTime())
+    //    {
+    //        return error("AcceptBlock() : generation time of a new block date=%s later than available in the database date=%s",
+    //                     DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+    //                     pblockindex->GetBlockTime()).c_str());
+    //    }
+    //}
 
     // Check that all transactions are finalized
     BOOST_FOREACH(const CTransaction& tx, vtx)
@@ -4640,7 +4673,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         nFullCompleteBlocks = nBestHeight;
     if (!fHardForkOne)
         if (nBestHeight >= nFixHardForkOne)
+        {
             fHardForkOne = true;
+        }
 
     bool fGoTx = true;
     bool fGoInv = true;
@@ -4804,6 +4839,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             printf("partner %s using a buggy client %d, disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
             pfrom->fDisconnect = true;
             return true;
+        }
+
+        if (pfrom->nVersion < 91003 && fHardForkOne)
+        {
+            //printf("partner %s using a buggy client %d, disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
+            //pfrom->fDisconnect = true;
+            //return true;
         }
 
         // record my external IP reported by peer
