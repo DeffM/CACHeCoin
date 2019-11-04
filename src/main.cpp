@@ -3051,14 +3051,12 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
 
     // Write to disk block index
     CTxDB txdb;
-    bool fGo = false;
     if (!txdb.TxnBegin())
         return false;
     txdb.WriteBlockIndex(CDiskBlockIndex(pindexNew));
     if (!txdb.TxnCommit())
         return false;
 
-    bool fSetBestChain = true;
     CBlockIndex* pblockindex = NULL;
     int nPossibleHeight = pindexNew->pprev->nHeight + 1;
     if (fDebug)
@@ -3072,7 +3070,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             if (fDebug)
                 printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, maximum allowed block height for a competing chain %d\n", nPossibleHeight,
                 pindexBest->nHeight - nTriggerDepth);
-            fSetBestChain = false;
+            pindexNew->bnChainTrust = 0;
 
         }
 
@@ -3083,7 +3081,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                 printf(" 'AddToBlockIndex()' - Generation time of a new block date=%s later than available in the database date=%s\n",
                 DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
                 pblockindex->GetBlockTime()).c_str());
-            fSetBestChain = false;
+            pindexNew->bnChainTrust = 0;
         }
         else if (pindexNew->GetBlockTime() < pblockindex->GetBlockTime())
         {
@@ -3093,23 +3091,18 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          printf(" 'AddToBlockIndex()' - The generation time of a new block date=%s earlier than the one in the database date=%s\n",
                          DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
                          pblockindex->GetBlockTime()).c_str());
-                     if (!SetBestChain(state, txdb, pindexNew))
-                         return false;
+                     bnBestChainTrust = pblockindex->pprev->bnChainTrust;
                  }
-        }
-        else if (pindexNew->GetBlockTime() == pblockindex->GetBlockTime())
-        {
-                 fGo = true;
         }
     }
 
     // New best
-    if (pindexNew->bnChainTrust > bnBestChainTrust && fSetBestChain)
+    if (pindexNew->bnChainTrust > bnBestChainTrust)
     {
         if (!SetBestChain(state, txdb, pindexNew))
             return false;
     }
-    else if ((pindexNew->bnChainTrust == bnBestChainTrust || fGo) && fHardForkOne && pindexPrevPos->GetBlockHash() >=
+    else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() >=
              pindexPrevPrevPos->GetBlockHash())
     {
              printf(" 'AddToBlockIndex()' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
@@ -3127,10 +3120,9 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
              else
              {
                   printf(" 'AddToBlockIndex()' bnChainTrust = bnBestChainTrust - Block not accepted\n");
-                  //return false;
              }
     }
-    else if ((pindexNew->bnChainTrust == bnBestChainTrust || fGo) && fHardForkOne && pindexPrevPos->GetBlockHash() <
+    else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() <
              pindexPrevPrevPos->GetBlockHash())
     {
              printf(" 'AddToBlockIndex()_' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
@@ -3148,7 +3140,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
              else
              {
                   printf(" 'AddToBlockIndex()_' bnChainTrust = bnBestChainTrust - Block not accepted\n");
-                  //return false;
              }
     }
     txdb.Close();
