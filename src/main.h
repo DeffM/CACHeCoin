@@ -74,6 +74,7 @@ extern CBlockIndex* pindexGenesisBlock;
 extern unsigned int nStakeMinAge;
 extern int nCoinbaseMaturity;
 extern int nBestHeight;
+extern int nMaxDepthReplacement;
 extern int64 nBestHeightTime;
 extern int64 nWatchOnlyAddressCalc;
 extern CBigNum bnBestChainTrust;

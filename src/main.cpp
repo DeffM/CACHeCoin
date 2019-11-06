@@ -2997,7 +2997,7 @@ bool CBlock::GetCoinAge(uint64& nCoinAge) const
     return true;
 }
 
-int nTriggerDepth = 50;
+int nMaxDepthReplacement = 50;
 bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos)
 {
     // Check for duplicate
@@ -3063,17 +3063,73 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, block chain height %d\n", nPossibleHeight,
                pindexBest->nHeight);
 
-    if (nPossibleHeight < pindexBest->nHeight && fHardForkOne)
-    {
-        if (nPossibleHeight <= pindexBest->nHeight - nTriggerDepth)
-        {
-            if (fDebug)
-                printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, maximum allowed block height for a competing chain %d\n", nPossibleHeight,
-                pindexBest->nHeight - nTriggerDepth);
-            pindexNew->bnChainTrust = 0;
+    nMaxDepthReplacement = GetArg("-maxdepthreplacement", 50);
 
+    int nFixPrev = 0;
+    CBlockIndex* newblockindex = pindexNew;
+    int nFixPindexBestnHeight = pindexBest->nHeight;
+    if (fHardForkOne)
+    {
+        if (pindexBest->nHeight > nPossibleHeight)
+            nFixPindexBestnHeight = nPossibleHeight;
+        if (nPossibleHeight > pindexBest->nHeight)
+        {
+            nFixPrev = nPossibleHeight - pindexBest->nHeight;
+            for (int i = nFixPrev; i > 0; i--)
+            {
+                 if (i == i)
+                 {
+                     newblockindex =  newblockindex->pprev;
+                 }
+            }
         }
 
+        for (int k = nFixPindexBestnHeight; k > nFixPindexBestnHeight - nMaxDepthReplacement; k--)
+        {
+             CBlockIndex* bestblockindex = FindBlockByHeight(k);
+             if (k == k)
+             {
+                 if (newblockindex->pprev->GetBlockHash() == bestblockindex->pprev->GetBlockHash())
+                 {
+                     if (nPossibleHeight <= pindexBest->nHeight - nMaxDepthReplacement)
+                     {
+                         pindexNew->bnChainTrust = 0;
+                         if (fDebug)
+                             printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, maximum allowed block height for a competing chain %d\n", nPossibleHeight,
+                             pindexBest->nHeight - nMaxDepthReplacement);
+                         break;
+                     }
+                     else if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
+                     {
+                              pindexNew->bnChainTrust = 0;
+                              if (fDebug)
+                                  printf(" 'AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s,\n",
+                                  bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
+                                  ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                                  bestblockindex->GetBlockTime()).c_str());
+                                  printf("  priority has a second block, NewChainTrust=%s down\n", pindexNew->bnChainTrust.ToString().c_str());
+                              break;
+                     }
+                     else if (newblockindex->GetBlockTime() < bestblockindex->GetBlockTime() &&
+                              nPossibleHeight > pindexBest->nHeight - nMaxDepthReplacement)
+                     {
+                              bnBestChainTrust = bestblockindex->pprev->bnChainTrust;;
+                              if (fDebug)
+                                  printf(" 'AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s,\n",
+                                  bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
+                                  ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                                  bestblockindex->GetBlockTime()).c_str());
+                                  printf("  priority has the first block, BestChainTrust=%s down\n", bnBestChainTrust.ToString().c_str());
+                              break;
+                     }
+                 }
+                 newblockindex =  newblockindex->pprev;
+             }
+        }
+    }
+
+    if (nPossibleHeight < pindexBest->nHeight && fHardForkOne)
+    {
         pblockindex = FindBlockByHeight(nPossibleHeight);
         if (pindexNew->GetBlockTime() > pblockindex->GetBlockTime())
         {
@@ -3085,7 +3141,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         }
         else if (pindexNew->GetBlockTime() < pblockindex->GetBlockTime())
         {
-                 if (nPossibleHeight < pindexBest->nHeight && nPossibleHeight > pindexBest->nHeight - nTriggerDepth)
+                 if (nPossibleHeight < pindexBest->nHeight && nPossibleHeight > pindexBest->nHeight - nMaxDepthReplacement)
                  {
                      if (fDebug)
                          printf(" 'AddToBlockIndex()' - The generation time of a new block date=%s earlier than the one in the database date=%s\n",
@@ -3227,17 +3283,17 @@ bool CBlock::HardForkControl(CValidationState &state) const
     if (nValueHardForkControlAddress >= nHardForkOneValue && nValueHardForkControlAddress != 0)
     {
         fHardForkOne = true;
-        printf(" 'CBlock' - fHardForkOne = true\n");
+        printf(" 'HardForkControl' - fHardForkOne = true\n");
     }
     if (nValueHardForkControlAddress >= nHardForkTwoValue && fHardForkOne)
     {
         fHardForkTwo = true;
-        printf(" 'CBlock' - fHardForkTwo = true\n");
+        printf(" 'HardForkControl' - fHardForkTwo = true\n");
     }
     if (nValueHardForkControlAddress >= nHardForkThreeValue && fHardForkTwo)
     {
         fHardForkThree = true;
-        printf(" 'CBlock' - fHardForkThree = true\n");
+        printf(" 'HardForkControl' - fHardForkThree = true\n");
     }
 
     if (true)
@@ -3253,8 +3309,8 @@ bool CBlock::HardForkControl(CValidationState &state) const
                       if (CBitcoinAddress(address).ToString() == HardForkControlAddress)
                       {
                           if (fHardForkOne)
-                              return DoS(10, error(" 'CBlock' -  Attempt to send transaction to HardForkControlAddress"));
-                          printf(" 'CBlock' - Input transaction to HardForkControlAddress %s\n", txout.ToString().c_str());
+                              return DoS(10, error(" 'HardForkControl' -  Attempt to send transaction to HardForkControlAddress"));
+                          printf(" 'HardForkControl' - Input transaction to HardForkControlAddress %s\n", txout.ToString().c_str());
                       }
                   }
              }
