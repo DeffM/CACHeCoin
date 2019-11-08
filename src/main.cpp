@@ -3057,7 +3057,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     if (!txdb.TxnCommit())
         return false;
 
-    CBlockIndex* pblockindex = NULL;
     int nPossibleHeight = pindexNew->pprev->nHeight + 1;
     if (fDebug)
         printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, block chain height %d\n", nPossibleHeight,
@@ -3066,6 +3065,8 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     nMaxDepthReplacement = GetArg("-maxdepthreplacement", 50);
 
     int nFixPrev = 0;
+    bool fIgnoreLaterFoundBlocks = GetArg("-ignorelaterfoundblocks", 1);
+    bool fSetVirtualDecentralizedCheckPoint = GetArg("-setvirtualdecentralizedcheckpoint", 1);
     CBlockIndex* newblockindex = pindexNew;
     int nFixPindexBestnHeight = pindexBest->nHeight;
     if (fHardForkOne)
@@ -3091,64 +3092,52 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
              {
                  if (newblockindex->pprev->GetBlockHash() == bestblockindex->pprev->GetBlockHash())
                  {
-                     if (nPossibleHeight <= pindexBest->nHeight - nMaxDepthReplacement)
+                     if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
                      {
-                         pindexNew->bnChainTrust = 0;
+                         pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
                          if (fDebug)
-                             printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, maximum allowed block height for a competing chain %d\n", nPossibleHeight,
-                             pindexBest->nHeight - nMaxDepthReplacement);
+                         {
+                             printf(" 'AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s,\n",
+                             bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
+                             ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                             bestblockindex->GetBlockTime()).c_str());
+                             printf("  priority has a second block, NewChainTrust=%s down\n", pindexNew->bnChainTrust.ToString().c_str());
+                         }
+                         if (fSetVirtualDecentralizedCheckPoint)
+                             Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
+                         if (fIgnoreLaterFoundBlocks)
+                             return false;
                          break;
                      }
-                     else if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
+                     else if (nPossibleHeight <= pindexBest->nHeight - nMaxDepthReplacement)
                      {
-                              pindexNew->bnChainTrust = 0;
+                              pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
                               if (fDebug)
-                                  printf(" 'AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s,\n",
-                                  bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
-                                  ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
-                                  bestblockindex->GetBlockTime()).c_str());
-                                  printf("  priority has a second block, NewChainTrust=%s down\n", pindexNew->bnChainTrust.ToString().c_str());
+                                  printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, maximum allowed block height for a competing chain %d, NewChainTrust=%s down\n", nPossibleHeight,
+                                  pindexBest->nHeight - nMaxDepthReplacement, pindexNew->bnChainTrust.ToString().c_str());
+                              if (fIgnoreLaterFoundBlocks)
+                                  return false;
                               break;
                      }
                      else if (newblockindex->GetBlockTime() < bestblockindex->GetBlockTime() &&
                               nPossibleHeight > pindexBest->nHeight - nMaxDepthReplacement)
                      {
-                              bnBestChainTrust = bestblockindex->pprev->bnChainTrust;;
+                              bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
                               if (fDebug)
+                              {
                                   printf(" 'AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s,\n",
                                   bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
                                   ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
                                   bestblockindex->GetBlockTime()).c_str());
                                   printf("  priority has the first block, BestChainTrust=%s down\n", bnBestChainTrust.ToString().c_str());
+                              }
+                              if (fSetVirtualDecentralizedCheckPoint)
+                                  Checkpoints::hashSyncCheckpoint = newblockindex->GetBlockHash();
                               break;
                      }
                  }
                  newblockindex =  newblockindex->pprev;
              }
-        }
-    }
-
-    if (nPossibleHeight < pindexBest->nHeight && fHardForkOne)
-    {
-        pblockindex = FindBlockByHeight(nPossibleHeight);
-        if (pindexNew->GetBlockTime() > pblockindex->GetBlockTime())
-        {
-            if (fDebug)
-                printf(" 'AddToBlockIndex()' - Generation time of a new block date=%s later than available in the database date=%s\n",
-                DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
-                pblockindex->GetBlockTime()).c_str());
-            pindexNew->bnChainTrust = 0;
-        }
-        else if (pindexNew->GetBlockTime() < pblockindex->GetBlockTime())
-        {
-                 if (nPossibleHeight < pindexBest->nHeight && nPossibleHeight > pindexBest->nHeight - nMaxDepthReplacement)
-                 {
-                     if (fDebug)
-                         printf(" 'AddToBlockIndex()' - The generation time of a new block date=%s earlier than the one in the database date=%s\n",
-                         DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
-                         pblockindex->GetBlockTime()).c_str());
-                     bnBestChainTrust = pblockindex->pprev->bnChainTrust;
-                 }
         }
     }
 
