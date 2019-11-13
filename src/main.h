@@ -652,14 +652,7 @@ public:
 
     /** HardForkControlFunction
     */
-    bool HardForkControl(CValidationState &state, const MapPrevTx& mapInputs) const;
-
-    /** Check for standard transaction types
-        @param[in] mapInputs	Map of previous transactions that have outputs we're spending
-        @return True if all inputs (scriptSigs) use only standard transaction forms
-        @see CTransaction::FetchInputs
-    */
-    bool AreInputsStandard(const MapPrevTx& mapInputs) const;
+    bool HardForkAndInputsControl(CValidationState &state, const MapPrevTx& mapInputs, int64 nWatchOnlyAddressCalc=0) const;
 
     /** Count ECDSA signature operations the old-fashioned (pre-0.6) way
         @return number of sigops this transaction's outputs will produce when spent
@@ -1399,6 +1392,7 @@ public:
 
 
     bool HardForkControl(CValidationState &state) const;
+    bool ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs) const;
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);
