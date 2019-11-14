@@ -47,7 +47,7 @@ void StartNode(void* parg);
 bool StopNode();
 void SocketSendData(CNode *pnode);
 extern int nMaxConnections;
-extern int nTheEndTimeOfTheTestBlock;
+extern int nControlTimeStartCync;
 extern bool IsUntilFullCompleteOneHundredFortyFourBlocks();
 
 enum
@@ -222,7 +222,6 @@ public:
     int nVersion;
     std::string strSubVer, cleanSubVer;
     bool fGoInv;
-    bool fGoGetdata;
     bool fOneShot;
     bool fClient;
     bool fInbound;
@@ -304,7 +303,6 @@ public:
         fStartSync = false;
         fGetAddr = false;
         fGoInv = false;
-        fGoGetdata = false;
         nMisbehavior = 0;
         hashCheckpointKnown = 0;
         fRelayTxes = false;
@@ -441,15 +439,11 @@ public:
         ENTER_CRITICAL_SECTION(cs_vSend);
         assert(vSend.size() == 0);
         vSend << CMessageHeader(pszCommand, 0);
-        std::string wait1(pszCommand), psCommand1("getdata");
         std::string wait2(pszCommand), psCommand2("inv");
+
         if (fDebug)
             printf("sending: %s ", pszCommand);
-        if (wait1 == psCommand1)
-        {
-            fGoGetdata = true;
-            nTheEndTimeOfTheTestBlock = 0;
-        }
+
         if (wait2 == psCommand2)
         {
             fGoInv = true;
@@ -487,23 +481,9 @@ public:
         assert(vSend.size () >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
         memcpy((char*)&vSend[CMessageHeader::CHECKSUM_OFFSET], &nChecksum, sizeof(nChecksum));
 
-        bool fSetControlRealTime = GetArg("-setcontrolrealtime", 0);
-
         if (fDebug)
         {
             printf("(%d bytes)\n", nSize);
-        }
-
-        if (fGoGetdata)
-        {
-            fGoGetdata = false;
-            nSizeGetdata = nSize;
-            if (fSetControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && nSizeExtern != nSizeGetdata)
-            {
-                printf("   Unnecessary 'inv' - nSize: %d - %d\n", nSizeExtern, nSizeGetdata);
-                AbortMessage();
-                return;
-            }
         }
 
         if (fGoInv)

@@ -1084,10 +1084,10 @@ unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fPr
     double nReverseEffectPow = 0;
     if(nActualTimeIntervalXUXLpow < nNix)
        nReverseEffectPow = nActualTimeIntervalXUXLpow / nNix;
-       else if(nActualTimeIntervalXUXLpow > nPTSp && nActualTimeIntervalXUXLpow <= nPTSp + ( nPTSp - nNix))
-               nReverseEffectPow = ( nPTSp / nPTSp ) / 2;
-       else if(nActualTimeIntervalXUXLpow > nPTSp + ( nPTSp - nNix) && nActualTimeIntervalXUXLpow < powLowermax)
-               nReverseEffectPow = (( nPTSp + ( nPTSp - nNix )) / nActualTimeIntervalXUXLpow ) / 2;
+       else if(nActualTimeIntervalXUXLpow > nPTSp && nActualTimeIntervalXUXLpow <= nPTSp + (nPTSp - nNix))
+               nReverseEffectPow = (nPTSp / nPTSp) / 2;
+       else if(nActualTimeIntervalXUXLpow > nPTSp + (nPTSp - nNix) && nActualTimeIntervalXUXLpow < powLowermax)
+               nReverseEffectPow = ((nPTSp + (nPTSp - nNix)) / nActualTimeIntervalXUXLpow) / 2;
                else
                    nReverseEffectPow = 1;
        powUpperLower = (nPTSp / 2) * nReverseEffectPow; // interval sampling 2:1 variable
@@ -1207,7 +1207,7 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
     //int64 PosPindexPrevPrevPrevTime = pospindexPrevPrevPrev->GetBlockTime();
     //int64 PosPindexPrevPrevPrevPrevTime = pospindexPrevPrevPrevPrev->GetBlockTime();
           nLastCoinPosSearchInterval = (nLastCoinSearchTime - nPosPindexPrevPrevTime) - (nLastCoinSearchTime - nPosPindexPrevTime);
-    //int64 nLastCoinPosSearchIntervalPrev = (nLastCoinSearchTime - nPosPindexPrevPrevPrevTime) - (nLastCoinSearchTime - PosPindexPrevPrevTime );
+    //int64 nLastCoinPosSearchIntervalPrev = (nLastCoinSearchTime - nPosPindexPrevPrevPrevTime) - (nLastCoinSearchTime - PosPindexPrevPrevTime);
     //int64 nLastCoinPosSearchIntervalPrevPrev = (nLastCoinSearchTime - nPosPindexPrevPrevPrevPrevTime) - (nLastCoinSearchTime - nPosPindexPrevPrevPrevTime);
           nLastCoinPosTwoInterval = nActualSpacingTotalsPos;
           nActualSpacingPos = (nActualSpacingTotalsPos + nActualTimeIntervalLongPosSecond) / 2;
@@ -1243,7 +1243,7 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
     if(nActualTimeIntervalXUXLpos < nNix)
        nReverseEffectPos = nActualTimeIntervalXUXLpos / nNix;
        else if(nActualTimeIntervalXUXLpos > nSTSp && nActualTimeIntervalXUXLpos <= nSTSp + (nSTSp - nNix))
-               nReverseEffectPos = (nSTSp / nSTSp ) / 2;
+               nReverseEffectPos = (nSTSp / nSTSp) / 2;
        else if(nActualTimeIntervalXUXLpos > nSTSp + (nSTSp - nNix) && nActualTimeIntervalXUXLpos < posLowermax)
                nReverseEffectPos = ((nSTSp + (nSTSp - nNix)) / nActualTimeIntervalXUXLpos) / 2;
                else
@@ -2696,44 +2696,46 @@ bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex
     return true;
 }
 
-bool fReload = false;
+bool fStartCync = false;
 bool fRestartCync = false;
-int nTimeUpReconnectPresentTime = 0;
-int nTheEndTimeOfTheTestBlock = 0;
-int nNumberOfErrorsForSyncRestart = 0;
+int nControlTimeStartCync = 0;
+int nControlTimeRestartCync = 0;
+
+int nSetTimeBeforeSwitching = 0;
+int nControlTimeBeforeSwitching = 0;
 bool SetReload()
 {
-     bool fSetReload = GetArg("-setreload", 0);
-     if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+     bool fSetStrictMode = GetArg("-setstrictmode", 0);
+     if (fSetStrictMode && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
      {
-            nTheEndTimeOfTheTestBlock++;
+            nControlTimeStartCync++;
 
-            if (nTheEndTimeOfTheTestBlock > 3)
+            if (nControlTimeStartCync > 10)
             {
-                fReload = true;
-                nTheEndTimeOfTheTestBlock = 0;
-                nNumberOfErrorsForSyncRestart++;
+                fStartCync = true;
+                nControlTimeStartCync = 0;
+                nControlTimeRestartCync++;
                 if (fDebug)
-                    printf("     SetReload pause - queue: %d loops from: max\n", nTheEndTimeOfTheTestBlock);
+                    printf("     SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
             }
-            if (nNumberOfErrorsForSyncRestart > 4)
+            if (nControlTimeRestartCync > 2)
             {
                 fRestartCync = true;
-                nNumberOfErrorsForSyncRestart = 0;
+                nControlTimeRestartCync = 0;
                 if (fDebug)
-                    printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
+                    printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
             }
      }
-     nTimeUpReconnectPresentTime = (int)GetArg("-timeupreconnectpresenttime", 60 * 20);
-     bool fSetReconnectPresentTime = GetArg("-setreconnectpresenttime", 1);
-     if (fSetReconnectPresentTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+     nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
+     bool fTimeBeforeSwitching = GetArg("-timebeforeswitching", 1);
+     if (fTimeBeforeSwitching && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
      {
-            nNumberOfErrorsForSyncRestart++;
-            if (nNumberOfErrorsForSyncRestart > nTimeUpReconnectPresentTime)
+            nControlTimeBeforeSwitching++;
+            if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
             {
                 fRestartCync = true;
-                nNumberOfErrorsForSyncRestart = 0;
-                printf("     For a long time without new blocks - queue: %d loops from: max\n", nNumberOfErrorsForSyncRestart);
+                nControlTimeBeforeSwitching = 0;
+                printf("     For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
             }
      }
      return true;
@@ -3449,7 +3451,7 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
     // Check coinbase reward
     double nGetValueOut = 0;
     if (GetBlockTime() <= nPowForceTimestamp + NTest + NTest && vtx[0].GetValueOut() > (IsProofOfWork()? (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
-        nGetValueOut = (( MINT_PROOF_OF_WORK / COIN * 2 - 1 ) * 1000000 - vtx[0].GetValueOut() ) / ((double)MINT_PROOF_OF_WORK / (double)MIN_MINT_PROOF_OF_WORK );
+        nGetValueOut = ((MINT_PROOF_OF_WORK / COIN * 2 - 1) * 1000000 - vtx[0].GetValueOut()) / ((double)MINT_PROOF_OF_WORK / (double)MIN_MINT_PROOF_OF_WORK);
         else nGetValueOut = vtx[0].GetValueOut();
 
     if (nGetValueOut > (IsProofOfWork()? (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
@@ -3853,8 +3855,9 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         mapOrphanBlocksByPrev.erase(hashPrev);
     }
 
-    nTheEndTimeOfTheTestBlock = 0;
-    nNumberOfErrorsForSyncRestart = 0;
+    nControlTimeStartCync = 0;
+    nControlTimeRestartCync = 0;
+    nControlTimeBeforeSwitching = 0;
     printf("ProcessBlock: ACCEPTED %s BLOCK\n", pblock->IsProofOfStake()?"POS":"POW");
 
     // ppcoin: if responsible for sync-checkpoint send it
@@ -4738,33 +4741,32 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoInv = true;
     bool fGoBlock = true;
     bool fGoGetblocks = true;
-    bool fSetReload = GetArg("-setreload", 0);
-    bool fSetControlRealTime = GetArg("-setcontrolrealtime", 0);
-    //bool fSetReconnectingControlRealTime = GetArg("-setreconnectingcontrolrealtime", 0);
+    bool fSetStrictMode = GetArg("-setstrictmode", 0);
+    bool fSetOfAdditionalChecks = GetArg("-setofadditionalchecks", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     std::string wait2(strCommand.c_str()), stCommand2("getdata");
     if (wait1 == stCommand1 || wait2 == stCommand2)
     {
-        nTheEndTimeOfTheTestBlock = 0;
+        nControlTimeStartCync = 0;
         pfrom->nSizeExtern = vRecv.size();
     }
 
-    if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getblocks")
+    if (fSetStrictMode && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getblocks")
     {
         fGoGetblocks = false;
     }
 
-    if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "tx")
+    if (fSetStrictMode && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "tx")
     {
         fGoTx = false;
     }
 
-    unsigned int nSize = 370;
-    if (fSetReload && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" &&
+    unsigned int nSize = 40;
+    if (fSetStrictMode && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" &&
         pfrom->nSizeExtern != pfrom->nSizeGetdata)
     {
-         nNumberOfErrorsForSyncRestart = 0;
+         nControlTimeRestartCync = 0;
          if (pfrom->nSizeExtern > pfrom->nSizeGetdata && pfrom->nSizeGetdata == 0)
          {
              nInvMakeSureSpam++;
@@ -4785,7 +4787,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
          else if (pfrom->nSizeExtern < pfrom->nSizeGetdata)
          {
                   nInvMakeSureSpam++;
-                  fGoBlock = false;
                   if (fDebug)
                   {
                       printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
@@ -4801,7 +4802,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     }
 
-    if (fSetControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
+    if (fSetOfAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
     {
         if (pfrom->nSizeExtern != pfrom->nSizeInv)
         {
@@ -4810,7 +4811,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
     }
 
-    if (fSetControlRealTime && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
+    if (fSetOfAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
     {
         nInvMakeSureSpam++;
         if (InvSpamIpTimer())
@@ -4824,15 +4825,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     if (fGoTx && fGoInv && fGoBlock && fGoGetblocks)
     {
-        nTheEndTimeOfTheTestBlock = 0;
+        nControlTimeStartCync = 0;
         if (fDebug)
         {
             printf("%s ", DateTimeStrFormat(GetTime()).c_str());
             printf("received: %s (%" PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
         }
     }
-
-
 
     if (strCommand == "version")
     {
@@ -5105,17 +5104,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 }
             }
 
-            if (true)
-            {
-                nTheEndTimeOfTheTestBlock = 0;
-                if (fGoBlock)
-                {
-                    printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
-                    printf("  strCommand 'inv' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                }
-            }
+            nControlTimeStartCync = 0;
             if (fGoBlock)
             {
+                printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
+                printf("  strCommand 'inv' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+
                 if (!fAlreadyHave)
                 {
                     if (!fImporting && !fReindex)
@@ -5436,17 +5430,17 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         bool fStop = false;
         MapPrevTx mapInputs;
         CValidationState state;
-        bool fSetReload = GetArg("-setreload", 0);
+        bool fSetStrictMode = GetArg("-setstrictmode", 0);
         bool fSetReconnecting = GetArg("-setreconnecting", 1);
         if (!ProcessBlock(state, pfrom, &block))
         {
             fGo = false;
             if (IsUntilFullCompleteOneHundredFortyFourBlocks())
                 fStop = true;
-            if ((!block.ValidatoinCheckBlock(state, mapInputs) || fStop) && !fSetReload && fSetReconnecting)
+            if ((!block.ValidatoinCheckBlock(state, mapInputs) || fStop) && !fSetStrictMode && fSetReconnecting)
                 pfrom->fDisconnect = true;
             if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect &&
-                !fSetReload && (!block.ValidatoinCheckBlock(state, mapInputs) || fStop))
+                !fSetStrictMode && (!block.ValidatoinCheckBlock(state, mapInputs) || fStop))
                 pfrom->fStartSync = true;
             printf("received block ignoring - 'IsInitialBlockDownload()' %s\n", hashBlock.ToString().substr(0,20).c_str());
             return true;
@@ -5841,9 +5835,9 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         }
 
         if (pto->fSuccessfullyConnected && !pto->fClient && !pto->fOneShot && !pto->fDisconnect &&
-            fReload && !fImporting && !fReindex && IsUntilFullCompleteOneHundredFortyFourBlocks())
+            fStartCync && !fImporting && !fReindex && IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
-            fReload = false;
+            fStartCync = false;
             pto->fStartSync = true;
         }
 
@@ -6708,7 +6702,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBloc
                         if (GetTime() - nLogTime > 30 * 60)
                         {
                             nLogTime = GetTime();
-                            printf("hashmeter %3d CPUs %.0f hash/s\n", vnThreadsRunning[THREAD_MINER], dHashesPerSec );
+                            printf("hashmeter %3d CPUs %.0f hash/s\n", vnThreadsRunning[THREAD_MINER], dHashesPerSec);
                         }
                     }
                 }
