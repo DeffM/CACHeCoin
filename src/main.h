@@ -1392,6 +1392,7 @@ public:
 
 
     bool HardForkControl(CValidationState &state) const;
+    bool CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256 &pForkChainHash, int &nMainChainHeight, int &nForkChainHeight);
     bool ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs) const;
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);

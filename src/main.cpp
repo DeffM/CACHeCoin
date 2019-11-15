@@ -2966,6 +2966,41 @@ bool CBlock::GetCoinAge(uint64& nCoinAge) const
     return true;
 }
 
+// check fork
+CBlockIndex* pindexMainChain = NULL;
+CBlockIndex* pindexForkChain = NULL;
+bool CBlock::CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256 &pForkChainHash,
+                       int &nMainChainHeight, int &nForkChainHeight)
+{
+    CBlockIndex* xindexMainChain = pindexMainChain;
+    CBlockIndex* xindexForkChain = pindexForkChain;
+    map<uint256, CBlockIndex*>::iterator miPrev = mapBlockIndex.find(hashPrevBlock);
+    if (miPrev != mapBlockIndex.end() && xindexMainChain && xindexForkChain)
+    {
+        if (xindexMainChain == xindexForkChain)
+        {
+            pMainChainHash = xindexMainChain->GetBlockHash();
+            pForkChainHash = xindexForkChain->GetBlockHash();
+            nMainChainHeight = xindexMainChain->nHeight;
+            nForkChainHeight = xindexForkChain->nHeight;
+            //printf("          hash(==)=%s, hash(==)=%s\n", xindexMainChain->GetBlockHash().ToString().substr(0,8).c_str(), xindexForkChain->GetBlockHash().ToString().substr(0,8).c_str());
+            //printf("          height(==)=%d, height(==)=%d\n", xindexMainChain->nHeight, xindexForkChain->nHeight);
+            return false;
+        }
+        else
+        {
+            pMainChainHash = xindexMainChain->GetBlockHash();
+            pForkChainHash = xindexForkChain->GetBlockHash();
+            nMainChainHeight = xindexMainChain->nHeight;
+            nForkChainHeight = xindexForkChain->nHeight;
+            //printf("          hash(!=)=%s, hash(!=)=%s\n", xindexMainChain->GetBlockHash().ToString().substr(0,8).c_str(), xindexForkChain->GetBlockHash().ToString().substr(0,8).c_str());
+            //printf("          height(!=)=%d, height(!=)=%d\n", xindexMainChain->nHeight, xindexForkChain->nHeight);
+            return true;
+        }
+    }
+    return true;
+}
+
 int nMinDepthReplacement = 2;
 int nMaxDepthReplacement = 0;
 bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos)
@@ -3107,6 +3142,8 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
              {
                  if (newblockindex->pprev->GetBlockHash() == bestblockindex->pprev->GetBlockHash())
                  {
+                     pindexMainChain = bestblockindex;
+                     pindexForkChain = newblockindex;
                      if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
                      {
                          bool fGoIgnoreLaterFoundBlocks = true;
@@ -3389,12 +3426,32 @@ bool CBlock::HardForkControl(CValidationState &state) const
 
 bool CBlock::ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs) const
 {
-     // Get prev block index - malapropos block, isinitialblockdownload only
-    map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashPrevBlock);
-    if ((IsUntilFullCompleteOneHundredFortyFourBlocks() && mi == mapBlockIndex.end()) &&
-       (IsProofOfStake() || IsProofOfWork()))
+    // Get prev block index - malapropos block proof-of-work or proof-of-stake
+    map<uint256, CBlockIndex*>::iterator miPrev = mapBlockIndex.find(hashPrevBlock);
+    if (miPrev == mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
-        printf(" 'ValidatoinCheckBlock()' - Malapropos block %s\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
+        printf(" 'ValidatoinCheckBlock()' - Malapropos block %s, prev block not found\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
+        return false;
+    }
+
+    // Control the minimum block height for entry
+    if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
+    {
+        CBlockIndex* pindexPrev = (*miPrev).second;
+        if (pindexPrev->nHeight <= pindexBest->pprev->nHeight)
+            printf(" 'ValidatoinCheckBlock()' - Entry at block height=%d, fork\n", pindexPrev->nHeight);
+        if (pindexPrev->nHeight < pindexBest->pprev->nHeight - nMaxDepthReplacement)
+        {
+            printf(" 'ValidatoinCheckBlock()' - Malapropos block=%d, exceeded the minimum block height for entry\n", pindexBest->pprev->nHeight);
+            return false;
+        }
+    }
+
+    // Check for duplicate
+    uint256 hash = GetHash();
+    if (mapBlockIndex.count(hash))
+    {
+        printf(" 'ValidatoinCheckBlock()' - Malapropos block %s, block already in mapBlockIndex\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
         return false;
     }
     return true;
@@ -3695,7 +3752,6 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     if (pblock->IsProofOfStake())
     {
         std::pair<COutPoint, unsigned int> proofOfStake = pblock->GetProofOfStake();
-
         if (pindexBest->IsProofOfStake() && proofOfStake.first == pindexBest->prevoutStake)
             // If the best block's stake is reused, we cancel the best block after the block checks
             fDuplicateStakeOfBestBlock = true;
@@ -3729,15 +3785,23 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     int64 deltaTime = 0;
     bnNewBlock.SetCompact(pblock->nBits);
     CBigNum bnRequired;
+    int nMainChainHeight;
+    int nForkChainHeight;
+    uint256 pMainChainHash;
+    uint256 pForkChainHash;
     CBlockIndex* pcheckpoint = Checkpoints::GetLastSyncCheckpoint();
-    if (pcheckpoint && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+    if (!pblock->CheckFork(state, pMainChainHash, pForkChainHash, nMainChainHeight, nForkChainHeight))
     {
-        // Extra checks to prevent "fill up memory by spamming with bogus blocks"
-        deltaTime = pblock->GetBlockTime() - pcheckpoint->nTime;
-        bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndex(pcheckpoint, pblock->IsProofOfStake())->nBits, deltaTime));
-        if (bnNewBlock > bnRequired)
+        //printf("          hash(1)=%s, hash(2)=%s\n", pMainChainHash.ToString().substr(0,8).c_str(), pForkChainHash.ToString().substr(0,8).c_str());
+        if (pcheckpoint && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
         {
-            return state.DoS(100, error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
+            // Extra checks to prevent "fill up memory by spamming with bogus blocks"
+            deltaTime = pblock->GetBlockTime() - pcheckpoint->nTime;
+            bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndex(pcheckpoint, pblock->IsProofOfStake())->nBits, deltaTime));
+            if (bnNewBlock > bnRequired)
+            {
+                return state.DoS(100, error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
+            }
         }
     }
 
@@ -3840,8 +3904,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     {
         uint256 hashPrev = vWorkQueue[i];
         for (multimap<uint256, CBlock*>::iterator mi = mapOrphanBlocksByPrev.lower_bound(hashPrev);
-             mi != mapOrphanBlocksByPrev.upper_bound(hashPrev);
-             ++mi)
+             mi != mapOrphanBlocksByPrev.upper_bound(hashPrev); ++mi)
         {
             CBlock* pblockOrphan = (*mi).second;
             // Use a dummy CValidationState so someone can't setup nodes to counter-DoS based on orphan resolution (that is, feeding people an invalid block based on LegitBlockX in order to get anyone relaying LegitBlockX banned)
@@ -5432,22 +5495,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         CValidationState state;
         bool fSetStrictMode = GetArg("-setstrictmode", 0);
         bool fSetReconnecting = GetArg("-setreconnecting", 1);
-        if (!ProcessBlock(state, pfrom, &block))
+        if (block.ValidatoinCheckBlock(state, mapInputs))
         {
-            fGo = false;
-            if (IsUntilFullCompleteOneHundredFortyFourBlocks())
-                fStop = true;
-            if ((!block.ValidatoinCheckBlock(state, mapInputs) || fStop) && !fSetStrictMode && fSetReconnecting)
-                pfrom->fDisconnect = true;
-            if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect &&
-                !fSetStrictMode && (!block.ValidatoinCheckBlock(state, mapInputs) || fStop))
-                pfrom->fStartSync = true;
-            printf("received block ignoring - 'IsInitialBlockDownload()' %s\n", hashBlock.ToString().substr(0,20).c_str());
-            return true;
+            if (!ProcessBlock(state, pfrom, &block))
+            {
+                fGo = false;
+                if (IsUntilFullCompleteOneHundredFortyFourBlocks())
+                    fStop = true;
+                if (fStop && !fSetStrictMode && fSetReconnecting)
+                    pfrom->fDisconnect = true;
+                if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect &&
+                    !fSetStrictMode && fStop)
+                    pfrom->fStartSync = true;
+                printf("received block ignoring - 'IsInitialBlockDownload()' %s\n", hashBlock.ToString().substr(0,20).c_str());
+                return true;
+            }
+            else if (fGo || state.CorruptionPossible())
+                     mapAlreadyAskedFor.erase(inv);
         }
-        else if (fGo || state.CorruptionPossible())
-                 mapAlreadyAskedFor.erase(inv);
-
         int nDoS = 0;
         if (state.IsInvalid(nDoS))
             if (nDoS > 0)
