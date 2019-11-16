@@ -3144,6 +3144,16 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                  {
                      pindexMainChain = bestblockindex;
                      pindexForkChain = newblockindex;
+                     if (nPossibleHeight <= pindexBest->nHeight - nMaxDepthReplacement)
+                     {
+                         pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
+                         if (fDebug)
+                             printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, minimum allowed block height %d, NewChainTrust=%s down\n", nPossibleHeight,
+                             pindexBest->nHeight - nMaxDepthReplacement, pindexNew->bnChainTrust.ToString().c_str());
+                         return false;
+
+                     }
+
                      if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
                      {
                          bool fGoIgnoreLaterFoundBlocks = true;
@@ -3174,15 +3184,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          if (fIgnoreLaterFoundBlocks && fGoIgnoreLaterFoundBlocks)
                              return false;
                          break;
-                     }
-                     else if (nPossibleHeight <= pindexBest->nHeight - nMaxDepthReplacement)
-                     {
-                              pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
-                              if (fDebug)
-                                  printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, maximum allowed block height for a competing chain %d, NewChainTrust=%s down\n", nPossibleHeight,
-                                  pindexBest->nHeight - nMaxDepthReplacement, pindexNew->bnChainTrust.ToString().c_str());
-                              return false;
-
                      }
                      else if (newblockindex->GetBlockTime() < bestblockindex->GetBlockTime())
                      {
@@ -3424,27 +3425,32 @@ bool CBlock::HardForkControl(CValidationState &state) const
     return true;
 }
 
-bool CBlock::ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs) const
+bool CBlock::ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs)
 {
+    bool fGoFalse = false;
     // Get prev block index - malapropos block proof-of-work or proof-of-stake
     map<uint256, CBlockIndex*>::iterator miPrev = mapBlockIndex.find(hashPrevBlock);
     if (miPrev == mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
-        printf(" 'ValidatoinCheckBlock()' - Malapropos block %s, prev block not found\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
-        return false;
+        fGoFalse = true;
     }
 
-    // Control the minimum block height for entry
+    // Search for useful in the trash
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
+        if (pindexPrev->nHeight > 0)
         if (pindexPrev->nHeight <= pindexBest->pprev->nHeight)
-            printf(" 'ValidatoinCheckBlock()' - Entry at block height=%d, fork\n", pindexPrev->nHeight);
-        if (pindexPrev->nHeight < pindexBest->pprev->nHeight - nMaxDepthReplacement)
         {
-            printf(" 'ValidatoinCheckBlock()' - Malapropos block=%d, exceeded the minimum block height for entry\n", pindexBest->pprev->nHeight);
-            return false;
+            fGoFalse = false;
+            printf(" 'ValidatoinCheckBlock()' - Entry at block height=%d, useful fork - accepted\n", pindexPrev->nHeight + 1);
         }
+    }
+
+    if (fGoFalse)
+    {
+        printf(" 'ValidatoinCheckBlock()' - Malapropos block %s, prev block not found\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
+        return false;
     }
 
     // Check for duplicate
@@ -3560,8 +3566,6 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
 
 bool CBlock::AcceptBlock()
 {
-    CNode* pfrom;
-
     // Checks for hardforkcontrol function
     CValidationState state;
     if (!HardForkControl(state))
@@ -3616,7 +3620,7 @@ bool CBlock::AcceptBlock()
     {
        if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
        {
-           pfrom->fDisconnect = true;
+           //pfrom->fDisconnect = true;
            return DoS(5, error("AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
        }
     }
@@ -5490,18 +5494,18 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         pfrom->AddInventoryKnown(inv);
 
         bool fGo = true;
-        bool fStop = false;
+        bool fStop = true;
         MapPrevTx mapInputs;
         CValidationState state;
         bool fSetStrictMode = GetArg("-setstrictmode", 0);
         bool fSetReconnecting = GetArg("-setreconnecting", 1);
         if (block.ValidatoinCheckBlock(state, mapInputs))
+            fStop = false;
+        if (!fStop || IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
             if (!ProcessBlock(state, pfrom, &block))
             {
                 fGo = false;
-                if (IsUntilFullCompleteOneHundredFortyFourBlocks())
-                    fStop = true;
                 if (fStop && !fSetStrictMode && fSetReconnecting)
                     pfrom->fDisconnect = true;
                 if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect &&
@@ -5510,9 +5514,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 printf("received block ignoring - 'IsInitialBlockDownload()' %s\n", hashBlock.ToString().substr(0,20).c_str());
                 return true;
             }
-            else if (fGo || state.CorruptionPossible())
-                     mapAlreadyAskedFor.erase(inv);
+            if (fGo || state.CorruptionPossible())
+                mapAlreadyAskedFor.erase(inv);
         }
+        else if (fSetReconnecting)
+                 pfrom->fDisconnect = true;
         int nDoS = 0;
         if (state.IsInvalid(nDoS))
             if (nDoS > 0)
