@@ -1054,16 +1054,8 @@ void CWallet::ResendWalletTransactions()
         BOOST_FOREACH(PAIRTYPE(const unsigned int, CWalletTx*)& item, mapSorted)
         {
             CWalletTx& wtx = *item.second;
-            CTxDB txdb;
-            MapPrevTx mapInputs;
-            bool fInvalid = false;
             CValidationState state;
-            bool fScriptChecks = true;
-            map<uint256, CTxIndex> mapUnused;
-            std::vector<CScriptCheck> vChecks;
-            if (wtx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, true, mapInputs, fInvalid,
-                                          fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
-                                          STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
+            if (wtx.BasicCheckTransaction(state))
                 wtx.RelayWalletTransaction(txdb);
             else
                 printf("ResendWalletTransactions() : CheckTransaction failed for transaction %s\n", wtx.GetHash().ToString().c_str());
@@ -1720,16 +1712,10 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
 bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
 {
     CTxDB txdb;
-    MapPrevTx mapInputs;
-    bool fInvalid = false;
     CValidationState state;
-    bool fScriptChecks = true;
-    map<uint256, CTxIndex> mapUnused;
-    std::vector<CScriptCheck> vChecks;
-    if (!wtxNew.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, true, mapInputs, fInvalid,
-                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
-                                      STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
-    return false;
+    bool fMissingInputs = false;
+    if (!mempool.CheckTxMemPool(state, txdb, wtxNew, true, false, &fMissingInputs, false, false, false, true, false))
+        return false;
 
     {
         LOCK2(cs_main, cs_wallet);
@@ -1766,7 +1752,7 @@ bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
         mapRequestCount[wtxNew.GetHash()] = 0;
 
         // Broadcast
-        if (!wtxNew.ThreadAnalyzerHandlerToMemoryPool(state, txdb))
+        if (!wtxNew.GoMerkleTxToMemoryPool(txdb, true, false))
         {
             // This must not fail. The transaction has already been signed and recorded.
             printf("CommitTransaction() : Error: Transaction not valid\n");

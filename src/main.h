@@ -650,9 +650,10 @@ public:
     */
     bool IsStandardCach(std::string& strReason) const;
 
-    /** HardForkControlFunction
+    /** Hard fork and inputs control
     */
-    bool HardForkAndInputsControl(CValidationState &state, const MapPrevTx& mapInputs, int64 nWatchOnlyAddressCalc=0) const;
+    bool HardForkAndInputsControl(CValidationState &state, const MapPrevTx &mapInputs, int64 &nWatchOnlyAddressCalc,
+                                  bool &fInvalid) const;
 
     /** Count ECDSA signature operations the old-fashioned (pre-0.6) way
         @return number of sigops this transaction's outputs will produce when spent
@@ -773,18 +774,11 @@ public:
         printf("%s", ToString().c_str());
     }
 
-
-    bool ReadFromDisk(CTxDB& txdb, COutPoint prevout, CTxIndex& txindexRet);
-    bool ReadFromDisk(CTxDB& txdb, COutPoint prevout);
-    bool ReadFromDisk(COutPoint prevout);
     bool DisconnectInputs(CTxDB& txdb);
-
-    bool ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const std::map<uint256,
-                               CTxIndex>& mapTestPool, const CBlockIndex* pindexBlock, bool fBlock,
-                               bool fMiner, bool fTxOnly, MapPrevTx& inputsRet, bool& fInvalid,
-                               bool fScriptChecks=true, std::vector<CScriptCheck> *pvChecks = NULL,
-                               unsigned int flags=STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) const;
-
+    bool ReadFromDisk(COutPoint prevout);
+    bool ReadFromDisk(CTxDB& txdb, COutPoint prevout);
+    bool BasicCheckTransaction(CValidationState &state) const;
+    bool ReadFromDisk(CTxDB& txdb, COutPoint prevout, CTxIndex& txindexRet);
 
     /** Sanity check previous transactions, then, if all checks succeed,
         mark them as spent by this transaction.
@@ -801,16 +795,15 @@ public:
         @param[in] fStrictPayToScriptHash	true if fully validating p2sh transactions
         @return Returns true if all checks succeed
      */
-    bool CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, MapPrevTx inputs, std::map<uint256,
-                             CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx, const CBlockIndex* pindexBlock,
-                             bool fBlock, bool fMiner, bool fScriptChecks=true, unsigned int flags=STRICT_FLAGS |
-                             SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC, std::vector<CScriptCheck> *pvChecks = NULL,
-                             bool fStrictPayToScriptHash=true);
+
+    bool CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb,  MapPrevTx& inputsRet, const std::map<uint256,
+                             CTxIndex>& mapTestPool, const CBlockIndex* pindexBlock, bool fBlock,
+                             bool fMiner, bool fScriptChecks=true, bool fReserve=true,
+                             std::vector<CScriptCheck> *pvChecks = NULL, unsigned int flags=STRICT_FLAGS |
+                             SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE) const;
     bool ClientConnectInputs();
-    bool ThreadAnalyzerHandlerToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
-                                           bool fLimitFree=true, bool* pfMissingInputs=NULL);
-    bool AcceptToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
-                            bool fLimitFree=true, bool* pfMissingInputs=NULL);
+    bool GoTxToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
+                          bool fLimitFree=true, bool* pfMissingInputs=NULL);
     bool GetCoinAge(CTxDB& txdb, uint64& nCoinAge) const;  // ppcoin: get transaction coin age
 
 protected:
@@ -890,7 +883,7 @@ public:
     int GetDepthInMainChain() const { CBlockIndex *pindexRet; return GetDepthInMainChain(pindexRet); }
     bool IsInMainChain() const { return GetDepthInMainChain() > 0; }
     int GetBlocksToMaturity() const;
-    bool ThreadAnalyzerHandlerToMemoryPool(CValidationState& state, CTxDB& txdb, bool fCheckInputs=true, bool fLimitFree=true);
+    bool GoMerkleTxToMemoryPool(CTxDB& txdb, bool fCheckInputs=true, bool fLimitFree=true);
 };
 
 
@@ -1393,7 +1386,7 @@ public:
 
     bool HardForkControl(CValidationState &state) const;
     bool CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256 &pForkChainHash, int &nMainChainHeight, int &nForkChainHeight);
-    bool ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs);
+    bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs);
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);
@@ -1906,10 +1899,13 @@ public:
     std::map<COutPoint, CInPoint> mapNextTx;
 
     bool removeConflicts(const CTransaction &tx);
-    bool ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTransaction &tx,
-                               bool fCheckInputs, bool fLimitFree, bool* pfMissingInputs);
-    bool CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransaction &tx,
-                        MapPrevTx& TxMemPoolInputs, const std::map<uint256, CTxIndex>& mapMemPool);
+    bool CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, std::map<uint256,
+                        CTxIndex>& mapMemPool, CTransaction &tx, bool fCheckInputs,
+                        bool fLimitFree, bool* pfMissingInputs, bool fBlock, bool fMiner, bool fScriptChecks,
+                        bool fCheckTxOnly, bool fGoCheckInputsLevelTwo);
+    bool CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
+                        bool fLimitFree, bool* pfMissingInputs, bool fBlock, bool fMiner, bool fScriptChecks,
+                        bool fCheckTxOnly, bool fGoCheckInputsLevelTwo);
     bool addUnchecked(const uint256& hash, CTransaction &tx);
     bool remove(const CTransaction &tx, bool fRecursive = false);
     void clear();

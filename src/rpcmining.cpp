@@ -499,14 +499,10 @@ Value getblocktemplate(const Array& params, bool fHelp)
         entry.push_back(Pair("hash", txHash.GetHex()));
 
         MapPrevTx mapInputs;
-        bool fInvalid = false;
+        bool fMissingInputs = false;
         CValidationState state;
-        bool fScriptChecks = true;
         map<uint256, CTxIndex> mapUnused;
-        std::vector<CScriptCheck> vChecks;
-        if (tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
-                                     fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                     SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
+        if (mempool.CheckTxMemPool(state, txdb, mapInputs, mapUnused, tx, true, false, &fMissingInputs, false, false, false, false, false))
         {
             entry.push_back(Pair("fee", (int64_t)(tx.GetValueIn(mapInputs) - tx.GetValueOut())));
 

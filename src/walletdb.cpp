@@ -204,17 +204,8 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssKey >> hash;
             CWalletTx& wtx = pwallet->mapWallet[hash];
             ssValue >> wtx;
-            CTxDB txdb;
-            MapPrevTx mapInputs;
-            bool fInvalid = false;
             CValidationState state;
-            bool fScriptChecks = true;
-            map<uint256, CTxIndex> mapUnused;
-            std::vector<CScriptCheck> vChecks;
-            if (wtx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, true, mapInputs, fInvalid,
-                                          fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
-                                          STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) &&
-               (wtx.GetHash() == hash) && state.IsValid())
+            if (wtx.BasicCheckTransaction(state) && (wtx.GetHash() == hash) && state.IsValid())
                 wtx.BindWallet(pwallet);
             else
             {

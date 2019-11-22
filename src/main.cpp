@@ -91,7 +91,6 @@ int nScriptCheckThreads = 0;
 bool fImporting = false;
 bool fConnected = false;
 bool fReindex = false;
-bool fStoreTxMemory = false;
 
 CMedianFilter<int> cPeerBlockCounts(5, 0); // Amount of blocks that other nodes claim to have
 
@@ -493,11 +492,13 @@ int CMerkleTx::SetMerkleBranch(const CBlock* pblock)
     return pindexBest->nHeight - pindex->nHeight + 1;
 }
 
-bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPrevTx& mapInputs, int64 nWatchOnlyAddressCalc) const
+bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPrevTx &mapInputs, int64 &nWatchOnlyAddressCalc,
+                                            bool &fInvalid) const
 {
     CScript scriptWatchOnlyAddress;
     scriptWatchOnlyAddress.SetDestination(CBitcoinAddress(WatchOnlyAddress).Get());
 
+    fInvalid = false;
     bool fIn = false;
     bool fOut = false;
     bool fInOut = false;
@@ -519,13 +520,13 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
                      fInOut = true;
                      IsWatchOnlyAddressTx = true;
                      nCreditWatchAddress += txout.nValue;
-                     printf(" 'Tx-HardForkControl' - Input transaction to IsWatchOnlyAddress %s\n", txout.ToString().c_str());
+                     printf(" 'CTransaction - HardForkAndInputsControl()' - Input transaction to IsWatchOnlyAddress %s\n", txout.ToString().c_str());
                  }
                  else if (CBitcoinAddress(address).ToString() == HardForkControlAddress)
                  {
                           if (fHardForkOne)
                               return false;
-                          printf(" 'Tx-HardForkControl' - Input transaction to HardForkControlAddress %s\n", txout.ToString().c_str());
+                          printf(" 'CTransaction - HardForkAndInputsControl()' - Input transaction to HardForkControlAddress %s\n", txout.ToString().c_str());
                  }
               }
         }
@@ -534,9 +535,11 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
         for (unsigned int i = 0; i < vin.size(); i++)
         {
              CTxDB txdb;
+             CTxIndex txindex;
              CTransaction prev;
-             COutPoint prevout = vin[i].prevout;
+             const COutPoint prevout = vin[i].prevout;
              if(txdb.ReadDiskTx(prevout.hash, prev))
+             {
                 if (prevout.n < prev.vout.size())
                 {
                     CTxDestination address;
@@ -549,7 +552,7 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
                             fOut = false;
                             fInOut = true;
                             nDebitWatchAddress -= vout.nValue;
-                            printf(" 'Tx-HardForkControl' - Output transaction from IsWatchOnlyAddress(in its address) %s\n", vout.ToString().c_str());
+                            printf(" 'CTransaction - HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(in its address) %s\n", vout.ToString().c_str());
                         }
                         else if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && !fInOut)
                         {
@@ -558,7 +561,7 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
                                  fInOut = false;
                                  IsWatchOnlyAddressTx = true;
                                  nDebitWatchAddress -= vout.nValue;
-                                 printf(" 'Tx-HardForkControl' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
+                                 printf(" 'CTransaction - HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
                         }
                     }
                     vector<vector<unsigned char> > vSolutions;
@@ -601,6 +604,18 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
                     if (stack.size() != (unsigned int)nArgsExpected)
                         return false;
                 }
+                else if (prevout.n >= prev.vout.size())
+                {
+                         fInvalid = true;
+                         return false;
+                }
+             }
+             else if(txdb.ReadTxIndex(prevout.hash, txindex))
+                     if (prevout.n >= txindex.vSpent.size())
+                     {
+                         fInvalid = true;
+                         return false;
+                     }
         }
 
         for (unsigned int i = 0; i < vout.size(); i++)
@@ -613,7 +628,7 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
                  {
                      nDebitWatchAddress = 0;
                      nDebitWatchAddress -= txout.nValue;
-                     printf(" 'Tx-HardForkControl' - Output transaction from IsWatchOnlyAddress(to a different address(in)) %s\n", txout.ToString().c_str());
+                     printf(" 'CTransaction - HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(to a different address(in)) %s\n", txout.ToString().c_str());
                  }
              }
         }
@@ -686,17 +701,86 @@ int64 CTransaction::GetMinFee(unsigned int nBlockSize, bool fAllowFree,
     return nMinFee;
 }
 
-bool CTransaction::ThreadAnalyzerHandlerToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs,
-                                                     bool fLimitFree, bool* pfMissingInputs)
+bool CTransaction::GoTxToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs, bool fLimitFree,
+                                    bool* pfMissingInputs)
 {
+    MapPrevTx TxMemPoolInputs;
+    std::map<uint256, CTxIndex> mapMemPool;
+
     try
     {
-        return mempool.ThreadAnalyzerHandler(state, txdb, *this, fCheckInputs, fLimitFree, pfMissingInputs);
+        return mempool.CheckTxMemPool(state, txdb, TxMemPoolInputs, mapMemPool, *this, fCheckInputs, fLimitFree, pfMissingInputs, false, false, true, false, false);
     }
     catch(std::runtime_error &e)
     {
         return state.Abort(_("System error: ") + e.what());
     }
+}
+
+bool CTransaction::BasicCheckTransaction(CValidationState &state) const
+{
+    // Basic checks that don't depend on any context
+    if (vin.empty() || vout.empty())
+        return state.DoS(10, error("CTransaction - BasicCheckTransaction() : %s", vin.empty() ? "vin empty" : "vout empty"));
+
+    // Time (prevent mempool memory exhaustion attack)
+    if (nTime > GetAdjustedTime() + nMaxClockDrift)
+        return state.DoS(10, error("CTransaction - BasicCheckTransaction() : timestamp is too far into the future"));
+
+    // Size limits
+    if (::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
+        return state.DoS(100, error("CTransaction - BasicCheckTransaction() : size limits failed"));
+
+    // Check for negative or overflow output values
+    int64 nValueOut = 0;
+    BOOST_FOREACH(const CTxOut& txout, vout)
+    {
+        if (txout.IsEmpty() && (!IsCoinBase()) && (!IsCoinStake()))
+        {
+            return state.DoS(100, error("CTransaction - BasicCheckTransaction() : txout empty for user transaction"));
+        }
+        if (txout.nValue < 0)
+        {
+            return DoS(100, error("CTransaction - BasicCheckTransaction() : txout.nValue is negative"));
+        }
+        // ppcoin: enforce minimum output amount
+        if ((!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
+        {
+            return state.DoS(100, error("CTransaction - BasicCheckTransaction() : txout.nValue below minimum"));
+        }
+        if (txout.nValue > MAX_MONEY)
+        {
+            return state.DoS(100, error("CTransaction - BasicCheckTransaction() : txout.nValue too high"));
+        }
+        nValueOut += txout.nValue;
+        if (!MoneyRange(nValueOut))
+        {
+            return state.DoS(100, error("CTransaction - BasicCheckTransaction() : txout total out of range"));
+        }
+    }
+
+    // Check for duplicate inputs
+    set<COutPoint> vInOutPoints;
+    BOOST_FOREACH(const CTxIn& txin, vin)
+    {
+        if (vInOutPoints.count(txin.prevout))
+            return state.DoS(100, error("CTransaction - BasicCheckTransaction() : duplicate inputs"));
+        vInOutPoints.insert(txin.prevout);
+    }
+
+    if (IsCoinBase())
+    {
+        if (vin[0].scriptSig.size() < 2 || vin[0].scriptSig.size() > 100)
+            return state.DoS(100, error("CTransaction - BasicCheckTransaction() : coinbase script size"));
+    }
+    else
+    {
+        BOOST_FOREACH(const CTxIn& txin, vin)
+            if (txin.prevout.IsNull())
+                return state.DoS(10, error("CTransaction - BasicCheckTransaction() : prevout is null"));
+    }
+
+    return true;
 }
 
 bool CTxMemPool::addUnchecked(const uint256& hash, CTransaction &tx)
@@ -805,9 +889,10 @@ int CMerkleTx::GetBlocksToMaturity() const
     return max(0, (nCoinbaseMaturity+20) - GetDepthInMainChain());
 }
 
-bool CMerkleTx::ThreadAnalyzerHandlerToMemoryPool(CValidationState& state, CTxDB& txdb, bool fCheckInputs, bool fLimitFree)
+bool CMerkleTx::GoMerkleTxToMemoryPool(CTxDB& txdb, bool fCheckInputs, bool fLimitFree)
 {
-    return CTransaction::ThreadAnalyzerHandlerToMemoryPool(state, txdb, fCheckInputs, fLimitFree);
+    CValidationState state;
+    return CTransaction::GoTxToMemoryPool(state, txdb, fCheckInputs, fLimitFree);
 }
 
 bool CWalletTx::AcceptWalletTransaction(CValidationState& state, CTxDB& txdb, bool fCheckInputs)
@@ -821,10 +906,10 @@ bool CWalletTx::AcceptWalletTransaction(CValidationState& state, CTxDB& txdb, bo
             {
                 uint256 hash = tx.GetHash();
                 if (!mempool.exists(hash) && !txdb.ContainsTx(hash))
-                    tx.ThreadAnalyzerHandlerToMemoryPool(state, txdb, fCheckInputs, false);
+                    tx.GoMerkleTxToMemoryPool(txdb, fCheckInputs, false);
             }
         }
-        return ThreadAnalyzerHandlerToMemoryPool(state, txdb, fCheckInputs);
+        return GoMerkleTxToMemoryPool(txdb, fCheckInputs, false);
     }
     return false;
 }
@@ -1403,11 +1488,10 @@ int64 GetProofOfWorkReward(unsigned int nBits)
     else return min(nSubsidy, MINT_PROOF_OF_WORK);
 }
 
-int nMaxOrphanBlocks = DEFAULT_MAX_ORPHAN_BLOCKS;
 // Remove a random orphan block (which does not have any dependent orphans).
-void static PruneOrphanBlocks()
+void static PruneOrphanBlocks(int64 nSetMaxOrphanBlocks)
 {
-    if (mapOrphanBlocksByPrev.size() <= (size_t)std::max((int64)0, GetArg("-maxorphanblocks", nMaxOrphanBlocks)))
+    if (mapOrphanBlocksByPrev.size() <= (size_t)std::max((int64)0, nSetMaxOrphanBlocks))
         return;
 
     // Pick a random orphan block.
@@ -1493,241 +1577,236 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits)
     return true;
 }
 
-bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransaction &tx, MapPrevTx& TxMemPoolInputs,
-                                const map<uint256, CTxIndex>& mapMemPool)
+bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, map<uint256, CTxIndex>& mapMemPool,
+                                CTransaction &tx, bool fCheckInputs, bool fLimitFree, bool* pfMissingInputs,
+                                bool fBlock, bool fMiner, bool fScriptChecks, bool fCheckTxOnly, bool fGoCheckInputsLevelTwo)
 {
-    for (unsigned int i = 0; i < tx.vin.size(); i++)
+    uint256 hash = tx.GetHash();
+    if (fCheckInputs)
     {
-        bool fTransferPointTrigger = false;
-        COutPoint prevout = tx.vin[i].prevout;
-        // Read txindex
-        CTxIndex& txindex = TxMemPoolInputs[prevout.hash].first;
-        // Read txPrev
-        CTransaction& txPrev = TxMemPoolInputs[prevout.hash].second;
-        if (mapMemPool.count(prevout.hash))
-            txindex = mapMemPool.find(prevout.hash)->second;
+        for (unsigned int i = 0; i < tx.vin.size(); i++)
+        {
+            bool fTransferPointTrigger = false;
+            COutPoint prevout = tx.vin[i].prevout;
+            if (TxMemPoolInputs.count(prevout.hash))
+                continue; // Got it already
+            // Read txindex
+            CTxIndex& txindex = TxMemPoolInputs[prevout.hash].first;
+            // Read txPrev
+            CTransaction& txPrev = TxMemPoolInputs[prevout.hash].second;
+            if (mapMemPool.count(prevout.hash))
+                txindex = mapMemPool.find(prevout.hash)->second;
             else if (!txdb.ReadTxIndex(prevout.hash, txindex) || txindex.pos == CDiskTxPos(1,1,1))
             {
-                      // Get prev tx from single transactions in memory
-                      LOCK(mempool.cs);
-                      if (!mempool.exists(prevout.hash))
-                      {
-                          fTransferPointTrigger = true;
-                      }
-                      else if (mempool.exists(prevout.hash))
-                               txPrev = mempool.lookup(prevout.hash);
+                     // Get prev tx from single transactions in memory
+                     LOCK(mempool.cs);
+                     if (!mempool.exists(prevout.hash))
+                     {
+                         fTransferPointTrigger = true;
+                     }
+                     else if (mempool.exists(prevout.hash))
+                              txPrev = mempool.lookup(prevout.hash);
 
-                      if (!txdb.ReadTxIndex(prevout.hash, txindex))
-                      {
-                          txindex.vSpent.resize(txPrev.vout.size());
-                          return error("'CTxMemPool - CheckTxMemPool' : %s prev tx %s index entry not found",
-                                       tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-                      }
-                      else if (fTransferPointTrigger)
-                               return error("'CTxMemPool - CheckTxMemPool' : %s mempool Tx prev not found %s",
-                                            tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-                               else
-                               {
-                               // Ok end force majeure
-                               }
+                     if (!txdb.ReadTxIndex(prevout.hash, txindex))
+                     {
+                         txindex.vSpent.resize(txPrev.vout.size());
+                         return error("'CTxMemPool - CheckTxMemPool()' : %s prev tx %s index entry not found",
+                                      tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                     }
+                     else if (fTransferPointTrigger)
+                              return error("'CTxMemPool - CheckTxMemPool()' : %s mempool Tx prev not found %s",
+                                           tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                     else
+                         {
+                         // Ok end force majeure
+                         }
             }
             // Get prev tx from disk
             else if (!txPrev.ReadFromDisk(txindex.pos))
-                     return error("'CTxMemPool - CheckTxMemPool' : %s ReadFromDisk prev tx %s failed",
+                     return error("'CTxMemPool - CheckTxMemPool()' : %s ReadFromDisk prev tx %s failed",
                                   tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-                     else
-                     {
-                     // Ok end force majeure
-                     }
+            else
+                {
+                // Ok end force majeure
+                }
+        }
+
+        bool fInvalid = false;
+        // Check for non-standard pay-to-script-hash in inputs or hard fork control address transaction
+        if (!tx.HardForkAndInputsControl(state, TxMemPoolInputs, nWatchOnlyAddressCalc, fInvalid) && !fTestNet)
+        {
+            if (!fInvalid)
+                return error("'CTxMemPool - CheckTxMemPool()' : nonstandard transaction input or attempt to send transaction to HardForkControlAddress");
+            if (fInvalid)
+            {
+                if (pfMissingInputs && !fCheckTxOnly)
+                {
+                    *pfMissingInputs = true;
+                }
+                printf(" 'CTxMemPool - CheckTxMemPool()' : inputs found invalid tx %s", hash.ToString().substr(0,10).c_str());
+                return false;
+            }
+        }
     }
-
-    // Coinbase is only valid in a block, not as a loose transaction
-    if (tx.IsCoinBase())
-        return state.DoS(100, error("'CTxMemPool - CheckTxMemPool' : coinbase as individual tx"));
-
-    // ppcoin: coinstake is also only valid in a block, not as a loose transaction
-    if (tx.IsCoinStake())
-        return state.DoS(100, error("'CTxMemPool - CheckTxMemPool' : coinstake as individual tx"));
-
-    // To help v0.1.5 clients who would see it as a negative number
-    if ((int64)tx.nLockTime > std::numeric_limits<int>::max())
-        return error("'CTxMemPool - CheckTxMemPool' : not accepting nLockTime beyond 2038 yet");
-
-    if (tx.nTime > GetAdjustedTime() + nMaxClockDrift)
-         return state.DoS(10, error("'CTxMemPool - CheckTxMemPool' : timestamp is too far into the future"));
-
-    if (pindexBest->GetBlockTime() > nPowForceTimestamp)
-    {
-        if (tx.nTime < GetAdjustedTime() - nMaxClockDrift * 360)
-            return state.DoS(10, error("'CTxMemPool - CheckTxMemPool' : timestamp is too far into the past"));
-    }
-    return true;
-}
-
-bool CTxMemPool::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, CTransaction &tx, bool fCheckInputs, bool fLimitFree,
-                                       bool* pfMissingInputs)
-{
-    MapPrevTx mapInputs;
-    bool fInvalid = false;
-    bool fScriptChecks = true;
-    map<uint256, CTxIndex> mapUnused;
-    std::vector<CScriptCheck> vChecks;
 
     if (pfMissingInputs)
         *pfMissingInputs = false;
 
-    if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
-                                  fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
-                                  STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
-        return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : CheckTransaction failed");
-
-    // Check for non-standard pay-to-script-hash in inputs or hard fork control address transaction
-    if (!tx.HardForkAndInputsControl(state, mapInputs) && !fTestNet)
-        return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : nonstandard transaction input or attempt to send transaction to HardForkControlAddress");
-
-    // Coinbase is only valid in a block, not as a loose transaction
-    if (tx.IsCoinBase())
-        return state.DoS(100, error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : coinbase as individual tx"));
-
-    // ppcoin: coinstake is also only valid in a block, not as a loose transaction
-    if (tx.IsCoinStake())
-        return state.DoS(100, error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : coinstake as individual tx"));
-
-    // To help v0.1.5 clients who would see it as a negative number
-    if ((int64)tx.nLockTime > std::numeric_limits<int>::max())
-        return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : not accepting nLockTime beyond 2038 yet");
-
-    // Rather not work on nonstandard transactions (unless -testnet)
-    string strNonStd;
-    if (!fTestNet && !tx.IsStandardCach(strNonStd))
-        return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : nonstandard transaction (%s)", strNonStd.c_str());
-
-    // is it already in the memory pool?
-    uint256 hash = tx.GetHash();
+    CTransaction* ptxOld = NULL;
+    if (!fGoCheckInputsLevelTwo)
     {
-        LOCK(cs);
-        if (mapTx.count(hash))
-        {
-            printf("ThreadAnalyzerHandlerToMemoryPool - Is it already in the memory pool\n");
-            return false;
-        }
+       if (!tx.BasicCheckTransaction(state))
+           return error("'CTxMemPool - CheckTxMemPool()' : BasicCheckTransaction failed");
+
+       // Coinbase is only valid in a block, not as a loose transaction
+       if (tx.IsCoinBase())
+           return state.DoS(100, error("'CTxMemPool - CheckTxMemPool()' : coinbase as individual tx"));
+
+       // ppcoin: coinstake is also only valid in a block, not as a loose transaction
+       if (tx.IsCoinStake())
+           return state.DoS(100, error("'CTxMemPool - CheckTxMemPool()' : coinstake as individual tx"));
+
+       // To help v0.1.5 clients who would see it as a negative number
+       if ((int64)tx.nLockTime > std::numeric_limits<int>::max())
+           return error("'CTxMemPool - CheckTxMemPool()' : not accepting nLockTime beyond 2038 yet");
+
+       // Rather not work on nonstandard transactions (unless -testnet)
+       string strNonStd;
+       if (!fTestNet && !tx.IsStandardCach(strNonStd))
+           return error("'CTxMemPool - CheckTxMemPool()' : nonstandard transaction (%s)", strNonStd.c_str());
+
+       if (tx.nTime > GetAdjustedTime() + nMaxClockDrift)
+           return state.DoS(10, error("'CTxMemPool - CheckTxMemPool()' : timestamp is too far into the future"));
+
+       if (pindexBest->GetBlockTime() > nPowForceTimestamp)
+       {
+           if (tx.nTime < GetAdjustedTime() - nMaxClockDrift * 360)
+               return state.DoS(10, error("'CTxMemPool - CheckTxMemPool()' : timestamp is too far into the past"));
+       }
+
+       // is it already in the memory pool?
+       {
+           LOCK(cs);
+           if (mapTx.count(hash))
+               return false;
+       }
+
+       // Check for conflicts with in-memory transactions
+       for (unsigned int i = 0; i < tx.vin.size(); i++)
+       {
+           COutPoint outpoint = tx.vin[i].prevout;
+           if (mapNextTx.count(outpoint))
+           {
+               // Disable replacement feature for now
+               return false;
+
+               // Allow replacing with a newer version of the same transaction
+               if (i != 0)
+                   return false;
+               ptxOld = mapNextTx[outpoint].ptx;
+               if (ptxOld->IsFinal())
+                   return false;
+               if (!tx.IsNewerThan(*ptxOld))
+                   return false;
+               for (unsigned int i = 0; i < tx.vin.size(); i++)
+               {
+                   COutPoint outpoint = tx.vin[i].prevout;
+                   if (!mapNextTx.count(outpoint) || mapNextTx[outpoint].ptx != ptxOld)
+                       return false;
+               }
+               break;
+           }
+       }
+
+       if (fCheckInputs)
+       {
+           // Note: if you modify this code to accept non-standard transactions, then
+           // you should add code here to check that the transaction does a
+           // reasonable number of ECDSA signature verifications.
+           int64 nFees = tx.GetValueIn(TxMemPoolInputs)-tx.GetValueOut();
+           unsigned int nSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
+
+           // Don't accept it if it can't get into a block
+           int64 txMinFee = tx.GetMinFee(1000, false, GMF_RELAY);
+           if (nFees < txMinFee)
+               return error("'CTxMemPool - CheckTxMemPool()' : not enough fees %s, %" PRI64d" < %" PRI64d,
+                            hash.ToString().c_str(), nFees, txMinFee);
+
+           // Continuously rate-limit free transactions
+           // This mitigates 'penny-flooding' -- sending thousands of free transactions just to
+           // be annoying or make others' transactions take longer to confirm.
+           if (fLimitFree && nFees < MIN_RELAY_TX_FEE)
+           {
+               static double dFreeCount;
+               static int64 nLastTime;
+               int64 nNow = GetTime();
+
+               LOCK(cs);
+
+               // Use an exponentially decaying ~10-minute window:
+               dFreeCount *= pow(1.0 - 1.0/600.0, (double)(nNow - nLastTime));
+               nLastTime = nNow;
+               // -limitfreerelay unit is thousand-bytes-per-minute
+               // At default rate it would take over a month to fill 1GB
+               if (dFreeCount >= GetArg("-limitfreerelay", 15)*10*1000 && !IsFromMe(tx))
+                   return error("'CTxMemPool - CheckTxMemPool()' : free transaction rejected by rate limiter");
+               if (fDebug)
+                   printf("Rate limit dFreeCount: %g => %g\n", dFreeCount, dFreeCount+nSize);
+               dFreeCount += nSize;
+           }
+       }
     }
 
-    // Check for conflicts with in-memory transactions
-    CTransaction* ptxOld = NULL;
-    for (unsigned int i = 0; i < tx.vin.size(); i++)
+    if (fCheckTxOnly)
     {
-        COutPoint outpoint = tx.vin[i].prevout;
-        if (mapNextTx.count(outpoint))
-        {
-            // Disable replacement feature for now
-            return false;
-
-            // Allow replacing with a newer version of the same transaction
-            if (i != 0)
-                return false;
-            ptxOld = mapNextTx[outpoint].ptx;
-            if (ptxOld->IsFinal())
-                return false;
-            if (!tx.IsNewerThan(*ptxOld))
-                return false;
-            for (unsigned int i = 0; i < tx.vin.size(); i++)
-            {
-                COutPoint outpoint = tx.vin[i].prevout;
-                if (!mapNextTx.count(outpoint) || mapNextTx[outpoint].ptx != ptxOld)
-                    return false;
-            }
-            break;
-        }
+        fCheckTxOnly = false;
+        return true;
     }
 
     if (fCheckInputs)
     {
-        CTxDB txdb;
-        MapPrevTx mapInputs;
-        bool fInvalid = false;
-        bool fScriptChecks = true;
-        map<uint256, CTxIndex> mapUnused;
+        bool fReserve = false;
         std::vector<CScriptCheck> vChecks;
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
-                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
-        {
-            if (fInvalid)
-                return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : Inputs found invalid tx %s", hash.ToString().substr(0,10).c_str());
-
-            if (pfMissingInputs)
-                *pfMissingInputs = true;
-            return false;
-        }
-
-        // Note: if you modify this code to accept non-standard transactions, then
-        // you should add code here to check that the transaction does a
-        // reasonable number of ECDSA signature verifications.
-
-        int64 nFees = tx.GetValueIn(mapInputs)-tx.GetValueOut();
-        unsigned int nSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
-
-        // Don't accept it if it can't get into a block
-        int64 txMinFee = tx.GetMinFee(1000, false, GMF_RELAY);
-        if (nFees < txMinFee)
-            return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : not enough fees %s, %" PRI64d" < %" PRI64d,
-                         hash.ToString().c_str(), nFees, txMinFee);
-
-        // Continuously rate-limit free transactions
-        // This mitigates 'penny-flooding' -- sending thousands of free transactions just to
-        // be annoying or make others' transactions take longer to confirm.
-        if (fLimitFree && nFees < MIN_RELAY_TX_FEE)
-        {
-            static double dFreeCount;
-            static int64 nLastTime;
-            int64 nNow = GetTime();
-
-            LOCK(cs);
-
-            // Use an exponentially decaying ~10-minute window:
-            dFreeCount *= pow(1.0 - 1.0/600.0, (double)(nNow - nLastTime));
-            nLastTime = nNow;
-            // -limitfreerelay unit is thousand-bytes-per-minute
-            // At default rate it would take over a month to fill 1GB
-            if (dFreeCount >= GetArg("-limitfreerelay", 15)*10*1000 && !IsFromMe(tx))
-                return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : free transaction rejected by rate limiter");
-            if (fDebug)
-                printf("Rate limit dFreeCount: %g => %g\n", dFreeCount, dFreeCount+nSize);
-            dFreeCount += nSize;
-        }
-
         // Check against previous transactions
         // This is done last to help prevent CPU exhaustion denial-of-service attacks.
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
-                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
+        if (!tx.CheckInputsLevelTwo(state, txdb, TxMemPoolInputs, mapMemPool, pindexBest, fBlock, fMiner, fScriptChecks, fReserve,
+                                    nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC |
+                                    SCRIPT_VERIFY_NOCACHE))
         {
-            return error("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : ConnectInputs failed %s", hash.ToString().c_str());
+            return error("'CTxMemPool - CheckTxMemPool()' : CheckTxMemPool failed %s", hash.ToString().c_str());
         }
     }
 
     // Store transaction in memory
-    if (fStoreTxMemory)
+    if (!fGoCheckInputsLevelTwo)
     {
+        LOCK(cs);
+        if (ptxOld)
         {
-            LOCK(cs);
-            if (ptxOld)
-            {
-                printf("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : replacing tx %s with new version\n", ptxOld->GetHash().ToString().c_str());
-                remove(*ptxOld);
-            }
-            addUnchecked(hash, tx);
+            printf("'CTxMemPool - CheckTxMemPool()' : replacing tx %s with new version\n", ptxOld->GetHash().ToString().c_str());
+            remove(*ptxOld);
         }
+
+        addUnchecked(hash, tx);
 
         ///// are we sure this is ok when loading transactions or restoring block txes
         // If updated, erase old tx from wallet
         if (ptxOld)
             EraseFromWallets(ptxOld->GetHash());
         SyncWithWallets(tx, NULL, true, true);
-        printf("'CTxMemPool - Accept' - ThreadAnalyzerHandler() : accepted %s (poolsz %"PRIszu")\n", hash.ToString().substr(0,10).c_str(), mapTx.size());
+        printf("'CTxMemPool - CheckTxMemPool()' : accepted %s (poolsz %"PRIszu")\n", hash.ToString().substr(0,10).c_str(), mapTx.size());
     }
     return true;
+}
+
+bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
+                                bool fLimitFree, bool* pfMissingInputs, bool fBlock, bool fMiner,
+                                bool fScriptChecks, bool fCheckTxOnly, bool fGoCheckInputsLevelTwo)
+{
+    MapPrevTx TxMemPoolInputs;
+    std::map<uint256, CTxIndex> mapMemPool;
+    return CheckTxMemPool(state, txdb, TxMemPoolInputs, mapMemPool, tx, fCheckInputs, fLimitFree, pfMissingInputs, fBlock, fMiner,
+                          fScriptChecks, fCheckTxOnly, fGoCheckInputsLevelTwo);
 }
 
 unsigned char SpamHashList()
@@ -1761,159 +1840,11 @@ unsigned char SpamHashList()
     return false;
 }
 
-bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, const map<uint256, CTxIndex>& mapTestPool,
-                                         const CBlockIndex* pindexBlock, bool fBlock, bool fMiner, bool fTxOnly, MapPrevTx& inputsRet,
-                                         bool& fInvalid, bool fScriptChecks, std::vector<CScriptCheck> *pvChecks,
-                                         unsigned int flags) const
+bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, MapPrevTx& inputsRet, const map<uint256,
+                                       CTxIndex>& mapTestPool, const CBlockIndex* pindexBlock, bool fBlock, bool fMiner,
+                                       bool fScriptChecks, bool fReserve, std::vector<CScriptCheck> *pvChecks,
+                                       unsigned int flags) const
 {
-     // Basic checks that don't depend on any context
-    if (vin.empty())
-    {
-        return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : vin empty"));
-    }
-
-    if (vout.empty())
-    {
-        return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : vout empty"));
-    }
-
-    // Time (prevent mempool memory exhaustion attack)
-    if (nTime > GetAdjustedTime() + nMaxClockDrift)
-    {
-        return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : timestamp is too far into the future"));
-    }
-
-    // Size limits
-    if (::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
-    {
-        return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : size limits failed"));
-    }
-
-    // Check for negative or overflow output values
-    int64 nValueOut = 0;
-    BOOST_FOREACH(const CTxOut& txout, vout)
-    {
-        if (txout.IsEmpty() && (!IsCoinBase()) && (!IsCoinStake()))
-        {
-            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout empty for user transaction"));
-        }
-        if (txout.nValue < 0)
-        {
-            return DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue is negative"));
-        }
-        // ppcoin: enforce minimum output amount
-        if ((!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
-        {
-            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue below minimum"));
-        }
-        if (txout.nValue > MAX_MONEY)
-        {
-            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout.nValue too high"));
-        }
-        nValueOut += txout.nValue;
-        if (!MoneyRange(nValueOut))
-        {
-            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : txout total out of range"));
-        }
-    }
-
-    // Check for duplicate inputs
-    set<COutPoint> vInOutPoints;
-    BOOST_FOREACH(const CTxIn& txin, vin)
-    {
-        if (vInOutPoints.count(txin.prevout))
-        {
-            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : duplicate inputs"));
-        }
-        vInOutPoints.insert(txin.prevout);
-    }
-
-    if (IsCoinBase())
-    {
-        if (vin[0].scriptSig.size() < 2 || vin[0].scriptSig.size() > 100)
-        {
-            return state.DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : coinbase script size"));
-        }
-    }
-    else
-    {
-        BOOST_FOREACH(const CTxIn& txin, vin)
-            if (txin.prevout.IsNull())
-            {
-                return state.DoS(10, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : prevout is null"));
-            }
-    }
-    if (fTxOnly)
-        return true;
-
-    fInvalid = false;
-
-    for (unsigned int i = 0; i < vin.size(); i++)
-    {
-        COutPoint prevout = vin[i].prevout;
-        if (inputsRet.count(prevout.hash))
-            continue; // Got it already
-
-        // Read txindex
-        CTxIndex& txindex = inputsRet[prevout.hash].first;
-        bool fFound = true;
-        if (mapTestPool.count(prevout.hash))
-        {
-            // Get txindex from current proposed changes
-            txindex = mapTestPool.find(prevout.hash)->second;
-        }
-        else
-        {
-            // Read txindex from txdb
-            fFound = txdb.ReadTxIndex(prevout.hash, txindex);
-        }
-        if (!fFound)
-        {
-            return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s prev tx %s index entry not found", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-        }
-
-        // Read txPrev
-        CTransaction& txPrev = inputsRet[prevout.hash].second;
-        if (!fFound || txindex.pos == CDiskTxPos(1,1,1))
-        {
-            // Get prev tx from single transactions in memory
-            {
-                LOCK(mempool.cs);
-                if (!mempool.exists(prevout.hash))
-                {
-                    return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s mempool Tx prev not found %s", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-                }
-                    txPrev = mempool.lookup(prevout.hash);
-            }
-            if (!fFound)
-                txindex.vSpent.resize(txPrev.vout.size());
-        }
-        else
-        {
-            // Get prev tx from disk
-            if (!txPrev.ReadFromDisk(txindex.pos))
-            {
-                return error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s ReadFromDisk prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-            }
-        }
-    }
-
-    // Make sure all prevout.n indexes are valid:
-    for (unsigned int i = 0; i < vin.size(); i++)
-    {
-        const COutPoint prevout = vin[i].prevout;
-        assert(inputsRet.count(prevout.hash) != 0);
-        const CTxIndex& txindex = inputsRet[prevout.hash].first;
-        const CTransaction& txPrev = inputsRet[prevout.hash].second;
-        if (prevout.n >= txPrev.vout.size() || prevout.n >= txindex.vSpent.size())
-        {
-            // Revisit this if/when transaction replacement is implemented and allows
-            // adding inputs:
-            fInvalid = true;
-            return DoS(100, error("'Transaction - CheckTransaction' - ThreadAnalyzerHandler() : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s", GetHash().ToString().substr(0,10).c_str(), prevout.n, txPrev.vout.size(), txindex.vSpent.size(), prevout.hash.ToString().substr(0,10).c_str(), txPrev.ToString().c_str()));
-        }
-    }
-
     if (!IsCoinBase())
     {
         if (pvChecks)
@@ -1932,7 +1863,7 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
 
             if (prevout.n >= txcoins.vout.size() || prevout.n >= txindexcoins.vSpent.size())
             {
-                return DoS(100, error("'Transaction - CheckInputs' : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s",
+                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s",
                 GetHash().ToString().substr(0,10).c_str(), prevout.n, txcoins.vout.size(), txindexcoins.vSpent.size(),
                 prevout.hash.ToString().substr(0,10).c_str(), txcoins.ToString().c_str()));
             }
@@ -1942,20 +1873,20 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
                 for (const CBlockIndex* pindex = pindexBlock; pindex && pindexBlock->nHeight - pindex->nHeight < nCoinbaseMaturity; pindex = pindex->pprev)
                     if (pindex->nBlockPos == txindexcoins.pos.nBlockPos && pindex->nFile == txindexcoins.pos.nFile)
                     {
-                        return error("'Transaction - CheckInputs' : tried to spend %s at depth %d", txcoins.IsCoinBase() ? "coinbase" : "coinstake", pindexBlock->nHeight - pindex->nHeight);
+                        return error("'CTransaction - CheckInputsLevelTwo()' : tried to spend %s at depth %d", txcoins.IsCoinBase() ? "coinbase" : "coinstake", pindexBlock->nHeight - pindex->nHeight);
                     }
 
             // ppcoin: check transaction timestamp
             if (txcoins.nTime > nTime)
             {
-                return state.DoS(100, error("'Transaction - CheckInputs' : transaction timestamp earlier than input transaction"));
+                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : transaction timestamp earlier than input transaction"));
             }
 
             // Check for negative or overflow input values
             nValueIn += txcoins.vout[prevout.n].nValue;
             if (!MoneyRange(txcoins.vout[prevout.n].nValue) || !MoneyRange(nValueIn))
             {
-                return state.DoS(100, error("'Transaction - CheckInputs' : txin values out of range"));
+                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : txin values out of range"));
             }
         }
 
@@ -1965,37 +1896,37 @@ bool CTransaction::ThreadAnalyzerHandler(CValidationState &state, CTxDB& txdb, c
             uint64 nCoinAge;
             if (!GetCoinAge(txdb, nCoinAge))
             {
-                return error("'Transaction - CheckInputs' : %s unable to get coin age for coinstake", GetHash().ToString().c_str());
+                return error("'CTransaction - CheckInputsLevelTwo()' : %s unable to get coin age for coinstake", GetHash().ToString().c_str());
             }
 
             int64 nStakeReward = GetValueOut() - nValueIn;
             if (nStakeReward > GetProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE)
             {
-                return state.DoS(100, error("'Transaction - CheckInputs' : %s stake reward exceeded", GetHash().ToString().c_str()));
+                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s stake reward exceeded", GetHash().ToString().c_str()));
             }
         }
         else
         {
             if (nValueIn < GetValueOut())
             {
-                return state.DoS(100, error("'Transaction - CheckInputs' : %s value in < value out", GetHash().ToString().c_str()));
+                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s value in < value out", GetHash().ToString().c_str()));
             }
 
             // Tally transaction fees
             int64 nTxFee = nValueIn - GetValueOut();
             if (nTxFee < 0)
             {
-                return state.DoS(100, error("'Transaction - CheckInputs' : %s nTxFee < 0", GetHash().ToString().c_str()));
+                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s nTxFee < 0", GetHash().ToString().c_str()));
             }
             // ppcoin: enforce transaction fees for every block
             if (nTxFee < GetMinFee())
             {
-                return state.DoS(100, error("'Transaction - CheckInputs' : %s not paying required fee=%s, paid=%s", GetHash().ToString().c_str(), FormatMoney(GetMinFee()).c_str(), FormatMoney(nTxFee).c_str()));
+                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s not paying required fee=%s, paid=%s", GetHash().ToString().c_str(), FormatMoney(GetMinFee()).c_str(), FormatMoney(nTxFee).c_str()));
             }
             nFees += nTxFee;
             if (!MoneyRange(nFees))
             {
-                return state.DoS(100, error("'Transaction - CheckInputs' : nFees out of range"));
+                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : nFees out of range"));
             }
         }
 
@@ -2192,150 +2123,6 @@ bool VerifySignatureCach(const CTransaction& txFrom, const CTransaction& txTo, u
      return CScriptCheck(txFrom, txTo, nIn, flags, nHashType)();
 }
 
-bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, MapPrevTx inputs, map<uint256,
-                                       CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx,
-                                       const CBlockIndex* pindexBlock, bool fBlock, bool fMiner, bool fScriptChecks,
-                                       unsigned int flags, std::vector<CScriptCheck> *pvChecks,
-                                       bool fStrictPayToScriptHash)
-{
-    // Take over previous transactions' spent pointers
-    // fBlock is true when this is called from AcceptBlock when a new best-block is added to the blockchain
-    // fMiner is true when called from the internal bitcoin miner
-    // ... both are false when called from CTransaction::AcceptToMemoryPool
-    if (!IsCoinBase())
-    {
-        int64 nValueIn = 0;
-        int64 nFees = 0;
-        for (unsigned int i = 0; i < vin.size(); i++)
-        {
-            COutPoint prevout = vin[i].prevout;
-            assert(inputs.count(prevout.hash) > 0);
-            CTxIndex& txindex = inputs[prevout.hash].first;
-            CTransaction& txPrev = inputs[prevout.hash].second;
-
-            if (prevout.n >= txPrev.vout.size() || prevout.n >= txindex.vSpent.size())
-                return DoS(100, error("ConnectInputs() : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s", GetHash().ToString().substr(0,10).c_str(), prevout.n, txPrev.vout.size(), txindex.vSpent.size(), prevout.hash.ToString().substr(0,10).c_str(), txPrev.ToString().c_str()));
-
-            // If prev is coinbase or coinstake, check that it's matured
-            if (txPrev.IsCoinBase() || txPrev.IsCoinStake())
-                for (const CBlockIndex* pindex = pindexBlock; pindex && pindexBlock->nHeight - pindex->nHeight < nCoinbaseMaturity; pindex = pindex->pprev)
-                    if (pindex->nBlockPos == txindex.pos.nBlockPos && pindex->nFile == txindex.pos.nFile)
-                        return error("ConnectInputs() : tried to spend %s at depth %d", txPrev.IsCoinBase() ? "coinbase" : "coinstake", pindexBlock->nHeight - pindex->nHeight);
-
-            // ppcoin: check transaction timestamp
-            if (txPrev.nTime > nTime)
-                return DoS(100, error("ConnectInputs() : transaction timestamp earlier than input transaction"));
-
-            // Check for negative or overflow input values
-            nValueIn += txPrev.vout[prevout.n].nValue;
-            if (!MoneyRange(txPrev.vout[prevout.n].nValue) || !MoneyRange(nValueIn))
-                return DoS(100, error("ConnectInputs() : txin values out of range"));
-
-        }
-
-        if (pvChecks)
-            pvChecks->reserve(vin.size());
-
-        // The first loop above does all the inexpensive checks.
-        // Only if ALL inputs pass do we perform expensive ECDSA signature checks.
-        // Helps prevent CPU exhaustion attacks.
-        for (unsigned int i = 0; i < vin.size(); i++)
-        {
-            COutPoint prevout = vin[i].prevout;
-            assert(inputs.count(prevout.hash) > 0);
-            CTxIndex& txindex = inputs[prevout.hash].first;
-            CTransaction& txPrev = inputs[prevout.hash].second;
-
-            // Check for conflicts (double-spend)
-            // This doesn't trigger the DoS code on purpose; if it did, it would make it easier
-            // for an attacker to attempt to split the network.
-            if (!txindex.vSpent[prevout.n].IsNull())
-                return fMiner ? false : error("ConnectInputs() : %s prev tx already used at %s", GetHash().ToString().substr(0,10).c_str(), txindex.vSpent[prevout.n].ToString().c_str());
-
-            // Skip ECDSA signature verification when connecting blocks (fBlock=true)
-            // before the last blockchain checkpoint. This is safe because block merkle hashes are
-            // still computed and checked, and any change will be caught at the next checkpoint.
-            if (fScriptChecks)
-            {
-                // Verify signature
-                CScriptCheck check(txPrev, *this, i, flags, 0);
-                if (pvChecks)
-                {
-                    pvChecks->push_back(CScriptCheck());
-                    check.swap(pvChecks->back());
-                }
-                else if (!check())
-                {
-                    if (flags & STRICT_FLAGS)
-                    {
-                        // Don't trigger DoS code in case of STRICT_FLAGS caused failure.
-                        CScriptCheck check(txPrev, *this, i, flags & ~STRICT_FLAGS, 0);
-                        if (check())
-                            return error("ConnectInputs() : %s strict VerifySignature failed", GetHash().ToString().substr(0,10).c_str());
-                    }
-                    return DoS(100,error("ConnectInputs() : %s VerifySignature failed", GetHash().ToString().substr(0,10).c_str()));
-                }
-            }
-
-            // Skip ECDSA signature verification when connecting blocks (fBlock=true)
-            // before the last blockchain checkpoint. This is safe because block merkle hashes are
-            // still computed and checked, and any change will be caught at the next checkpoint.
-            if (!(fBlock && (nBestHeight < Checkpoints::GetTotalBlocksEstimate())))
-            {
-                // Verify signature
-                if (!VerifySignature(txPrev, *this, i, fStrictPayToScriptHash, 0))
-                {
-                    // only during transition phase for P2SH: do not invoke anti-DoS code for
-                    // potentially old clients relaying bad P2SH transactions
-                    if (fStrictPayToScriptHash && VerifySignature(txPrev, *this, i, false, 0))
-                        return error("ConnectInputs() : %s P2SH VerifySignature failed", GetHash().ToString().substr(0,10).c_str());
-
-                    return DoS(100,error("ConnectInputs() : %s VerifySignature failed", GetHash().ToString().substr(0,10).c_str()));
-                }
-            }
-
-            // Mark outpoints as spent
-            txindex.vSpent[prevout.n] = posThisTx;
-
-            // Write back
-            if (fBlock || fMiner)
-            {
-                mapTestPool[prevout.hash] = txindex;
-            }
-        }
-
-        if (IsCoinStake())
-        {
-            // ppcoin: coin stake tx earns reward instead of paying fee
-            uint64 nCoinAge;
-            if (!GetCoinAge(txdb, nCoinAge))
-                return error("ConnectInputs() : %s unable to get coin age for coinstake", GetHash().ToString().substr(0,10).c_str());
-            int64 nStakeReward = GetValueOut() - nValueIn;
-            if (nStakeReward > GetProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE)
-                return DoS(100, error("ConnectInputs() : %s stake reward exceeded", GetHash().ToString().substr(0,10).c_str()));
-        }
-        else
-        {
-            if (nValueIn < GetValueOut())
-                return DoS(100, error("ConnectInputs() : %s value in < value out", GetHash().ToString().substr(0,10).c_str()));
-
-            // Tally transaction fees
-            int64 nTxFee = nValueIn - GetValueOut();
-            if (nTxFee < 0)
-                return DoS(100, error("ConnectInputs() : %s nTxFee < 0", GetHash().ToString().substr(0,10).c_str()));
-            // ppcoin: enforce transaction fees for every block
-            if (nTxFee < GetMinFee())
-                return fBlock? DoS(100, error("ConnectInputs() : %s not paying required fee=%s, paid=%s", GetHash().ToString().substr(0,10).c_str(), FormatMoney(GetMinFee()).c_str(), FormatMoney(nTxFee).c_str())) : false;
-
-            nFees += nTxFee;
-            if (!MoneyRange(nFees))
-                return DoS(100, error("ConnectInputs() : nFees out of range"));
-        }
-    }
-
-    return true;
-}
-
 bool CTransaction::ClientConnectInputs()
 {
     if (IsCoinBase())
@@ -2492,10 +2279,11 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
             nValueOut += tx.GetValueOut();
         else
         {
-            bool fInvalid;
-            if (!tx.ThreadAnalyzerHandler(state, txdb, mapQueuedChanges, 0, true, false, false, mapInputs, fInvalid,
-                                          fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                          SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
+            bool fMissingInputs  = false;
+            //if (!tx.CheckInputsLevelTwo(state, txdb, mapInputs, mapQueuedChanges, pindex, true, false, true,
+            //                            false, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
+            //                            SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE))
+            if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapQueuedChanges, tx, true, false, &fMissingInputs, true, false, true, false, true))
                 return false;
 
             if (fStrictPayToScriptHash)
@@ -2515,15 +2303,8 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
             if (!tx.IsCoinStake())
                 nFees += nTxValueIn - nTxValueOut;
 
-            std::vector<CScriptCheck> vChecks;
-            if (!tx.CheckInputsLevelTwo(state, txdb, mapInputs, mapQueuedChanges, posThisTx, pindex, true, false, fScriptChecks, SCRIPT_VERIFY_NOCACHE | SCRIPT_VERIFY_P2SH, nScriptCheckThreads ? &vChecks : NULL))
-                return false;
             control.Add(vChecks);
-
-            if (!tx.CheckInputsLevelTwo(state, txdb, mapInputs, mapQueuedChanges, posThisTx, pindex, true, false, fStrictPayToScriptHash))
-                return false;
         }
-
         mapQueuedChanges[hashTx] = CTxIndex(posThisTx, tx.vout.size());
     }
 
@@ -2650,7 +2431,11 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
 
     // Resurrect memory transactions that were in the disconnected branch
     BOOST_FOREACH(CTransaction& tx, vResurrect)
-        tx.ThreadAnalyzerHandlerToMemoryPool(state, txdb, false);
+    {
+        CValidationState stateDummy;
+        if (!tx.GoTxToMemoryPool(stateDummy, txdb, true, false))
+            mempool.remove(tx, true);
+    }
 
     // Delete redundant memory transactions that are in the connected branch
     BOOST_FOREACH(CTransaction& tx, vDelete)
@@ -3425,12 +3210,12 @@ bool CBlock::HardForkControl(CValidationState &state) const
     return true;
 }
 
-bool CBlock::ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs)
+bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs)
 {
     bool fGoFalse = false;
     // Get prev block index - malapropos block proof-of-work or proof-of-stake
     map<uint256, CBlockIndex*>::iterator miPrev = mapBlockIndex.find(hashPrevBlock);
-    if (miPrev == mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
+    if (miPrev == mapBlockIndex.end() && fHardForkOne && (IsProofOfStake() || IsProofOfWork()))
     {
         fGoFalse = true;
     }
@@ -3439,17 +3224,17 @@ bool CBlock::ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs)
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
-        if (pindexPrev->nHeight > 0)
+        if (fHardForkOne)
         if (pindexPrev->nHeight <= pindexBest->pprev->nHeight)
         {
             fGoFalse = false;
-            printf(" 'ValidatoinCheckBlock()' - Entry at block height=%d, useful fork - accepted\n", pindexPrev->nHeight + 1);
+            printf(" 'ValidationCheckBlock()' - Entry at block height=%d, useful fork - accepted\n", pindexPrev->nHeight + 1);
         }
     }
 
     if (fGoFalse)
     {
-        printf(" 'ValidatoinCheckBlock()' - Malapropos block %s, prev block not found\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
+        printf(" 'ValidationCheckBlock()' - Malapropos block %s, prev block not found\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
         return false;
     }
 
@@ -3457,7 +3242,7 @@ bool CBlock::ValidatoinCheckBlock(CValidationState &state, MapPrevTx& mapInputs)
     uint256 hash = GetHash();
     if (mapBlockIndex.count(hash))
     {
-        printf(" 'ValidatoinCheckBlock()' - Malapropos block %s, block already in mapBlockIndex\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
+        printf(" 'ValidationCheckBlock()' - Malapropos block %s, block already in mapBlockIndex\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
         return false;
     }
     return true;
@@ -3467,13 +3252,6 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
 {
     // These are checks that are independent of context
     // that can be verified before saving an orphan block.
-
-    CTxDB txdb;
-    MapPrevTx mapInputs;
-    bool fInvalid = false;
-    bool fScriptChecks = true;
-    map<uint256, CTxIndex> mapUnused;
-    std::vector<CScriptCheck> vChecks;
 
     // Size limits
     if (vtx.empty() || vtx.size() > MAX_BLOCK_SIZE || ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
@@ -3525,10 +3303,8 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
     // Check transactions
     BOOST_FOREACH(const CTransaction& tx, vtx)
     {
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, true, mapInputs, fInvalid,
-                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL,
-                                      STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
-            return DoS(tx.nDoS, error("CheckBlock() : CheckTransaction failed"));
+        if (!tx.BasicCheckTransaction(state))
+            return DoS(tx.nDoS, error("CheckBlock() : BasicCheckTransaction failed"));
 
         // ppcoin: check transaction timestamp
         if (GetBlockTime() < (int64)tx.nTime)
@@ -3850,22 +3626,25 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
 
     // If we don't already have its previous block, shunt it off to holding area until we get it
     bool fGo = true;
+    int nSetMaxOrphanBlocks = GetArg("-maxorphanblocks", DEFAULT_MAX_ORPHAN_BLOCKS);
     if (pblock->hashPrevBlock != 0 && !mapBlockIndex.count(pblock->hashPrevBlock))
     {
         if (IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
             fGo = false;
-            nMaxOrphanBlocks = 0;
             printf("ProcessBlock: At 'IsInitialBlockDownload()' we do not save the block without the previous, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
             printf("ProcessBlock: Before switching mode left, blocks=%d\n", nFullCompleteBlocks - nBestHeight);
         }
         else
+        {
+            nSetMaxOrphanBlocks = GetArg("-maxorphanblocks", DEFAULT_MAX_ORPHAN_BLOCKS);
             printf("ProcessBlock: ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().c_str());
+        }
 
         // Accept orphans as long as there is a node to request its parents from
         if (pfrom)
         {
-            PruneOrphanBlocks();
+            PruneOrphanBlocks(nSetMaxOrphanBlocks);
             CBlock* pblock2 = new CBlock(*pblock);
             // ppcoin: check proof-of-stake
             if (pblock2->IsProofOfStake())
@@ -5376,47 +5155,39 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         CInv inv(MSG_TX, tx.GetHash());
 
-        bool fInvalid = false;
-        bool fScriptChecks = true;
         bool fMissingInputs = false;
         std::vector<CScriptCheck> vChecks;
         bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-        if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
+        bool fSetCheckBeforeEvent = GetArg("-setcheckbeforeevent", 1);
+        if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && fSetCheckBeforeEvent)
         {
             unsigned int nSearched = 0;
             for (; nSearched <= nNumberOfLines; nSearched++)
             {
-                 if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
-                 {
-                    printf("strCommand 'tx' - The executor of the rules performed the work\n");
-                    printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                    printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-                    return false;
-                 }
+               if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
+               {
+                  printf("strCommand 'tx' - The executor of the rules performed the work\n");
+                  printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                  printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                  return false;
+               }
+               else if (!mempool.CheckTxMemPool(state, txdb, tx, true, false, &fMissingInputs, false, false, true, true, true))
+               {
+                        waitTxSpam = inv.ToString().substr(3,20).c_str();
+                        SpamHashList();
+                        printf("strCommand 'tx' - The executor of the rules performed the work\n");
+                        printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                        printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                        return false;
+               }
             }
         }
 
-        if (!tx.ThreadAnalyzerHandler(state, txdb, mapUnused, 0, false, false, false, mapInputs, fInvalid,
-                                      fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                      SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC) ||!mempool.CheckTxMemPool
-                                      (state, txdb, tx, mapInputs, mapUnused))
-        {
-            if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
-            {
-                waitTxSpam = inv.ToString().substr(3,20).c_str();
-                SpamHashList();
-            }
-            printf("strCommand 'tx' - The executor of the rules performed the work\n");
-            printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-            printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-            return false;
-        }
-
-        fStoreTxMemory = true;
+        fMissingInputs = false;
         pfrom->AddInventoryKnown(inv);
 
-        if (tx.ThreadAnalyzerHandlerToMemoryPool(state, txdb, true, true, &fMissingInputs))
+        if (tx.GoTxToMemoryPool(state, txdb, true, true, &fMissingInputs))
         {
             SyncWithWallets(tx, NULL, true);
             RelayTransaction(tx, inv.hash);
@@ -5441,7 +5212,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     bool fMissingInputs2 = false;
                     CValidationState stateDummy;
 
-                    if (tx.ThreadAnalyzerHandlerToMemoryPool(stateDummy, txdb, true, true, &fMissingInputs2))
+                    if (tx.GoTxToMemoryPool(stateDummy, txdb, true, true, &fMissingInputs2))
                     {
                         printf("   accepted orphan tx %s\n", orphanTxHash.ToString().substr(0,10).c_str());
                         SyncWithWallets(tx, NULL, true);
@@ -5459,7 +5230,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 }
             }
 
-            fStoreTxMemory = false;
             BOOST_FOREACH(uint256 hash, vEraseQueue)
                 EraseOrphanTx(hash);
         }
@@ -5498,8 +5268,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         MapPrevTx mapInputs;
         CValidationState state;
         bool fSetStrictMode = GetArg("-setstrictmode", 0);
-        bool fSetReconnecting = GetArg("-setreconnecting", 1);
-        if (block.ValidatoinCheckBlock(state, mapInputs))
+        bool fSetReconnecting = GetArg("-setreconnecting", 0);
+        if (block.ValidationCheckBlock(state, mapInputs))
             fStop = false;
         if (!fStop || IsUntilFullCompleteOneHundredFortyFourBlocks())
         {
@@ -6421,13 +6191,13 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
             // because we're already processing them in order of dependency
             map<uint256, CTxIndex> mapTestPoolTmp(mapTestPool);
             std::vector<CScriptCheck> vChecks;
-            bool fScriptChecks = true;
             CValidationState state;
             MapPrevTx mapInputs;
-            bool fInvalid;
-            if (!tx.ThreadAnalyzerHandler(state, txdb, mapTestPoolTmp, 0, false, true, false, mapInputs, fInvalid,
-                                          fScriptChecks, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                          SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC))
+            bool fMissingInputs  = false;
+            //if (!tx.CheckInputsLevelTwo(state, txdb, mapInputs, mapTestPoolTmp, pindex, false, true, true,
+            //                            false, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
+            //                            SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE))
+            if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapTestPoolTmp, tx, true, false, &fMissingInputs, false, true, true, false, true))
                 continue;
 
             int64 nTxFees = tx.GetValueIn(mapInputs)-tx.GetValueOut();
@@ -6438,8 +6208,6 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
             if (nBlockSigOps + nTxSigOps >= MAX_BLOCK_SIGOPS)
                 continue;
 
-            if (!tx.CheckInputsLevelTwo(state, txdb, mapInputs, mapTestPoolTmp, CDiskTxPos(1,1,1), pindexPrev, false, true))
-                continue;
             mapTestPoolTmp[tx.GetHash()] = CTxIndex(CDiskTxPos(1,1,1), tx.vout.size());
             swap(mapTestPool, mapTestPoolTmp);
 
