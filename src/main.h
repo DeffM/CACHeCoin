@@ -150,7 +150,6 @@ void ThreadAnalyzerHandlerInit(void* parg);
 void RegisterWallet(CWallet* pwalletIn);
 void UnregisterWallet(CWallet* pwalletIn);
 void SyncWithWallets(const CTransaction& tx, const CBlock* pblock = NULL, bool fUpdate = false, bool fConnect = true);
-bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
 bool CheckDiskSpace(uint64 nAdditionalBytes=0);
 FILE* OpenBlockFile(unsigned int nFile, unsigned int nBlockPos, const char* pszMode="rb");
 FILE* AppendBlockFile(unsigned int& nFileRet);
@@ -173,6 +172,7 @@ void ThreadScriptCheckQuit();
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
 void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
 CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake=false, bool fProofOfWork=false);
+bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
 bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey);
@@ -1383,10 +1383,9 @@ public:
         printf("\n");
     }
 
-
     bool HardForkControl(CValidationState &state) const;
     bool CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256 &pForkChainHash, int &nMainChainHeight, int &nForkChainHeight);
-    bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs);
+    bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, bool &fsdas);
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);

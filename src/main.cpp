@@ -1586,49 +1586,52 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
     {
         for (unsigned int i = 0; i < tx.vin.size(); i++)
         {
-            bool fTransferPointTrigger = false;
             COutPoint prevout = tx.vin[i].prevout;
             if (TxMemPoolInputs.count(prevout.hash))
                 continue; // Got it already
+
             // Read txindex
             CTxIndex& txindex = TxMemPoolInputs[prevout.hash].first;
             // Read txPrev
             CTransaction& txPrev = TxMemPoolInputs[prevout.hash].second;
+            bool fOkCheckIndex = true;
+            bool fGoCheckIndexDb = true;
+            bool fGoCheckTxDb = false;
             if (mapMemPool.count(prevout.hash))
-                txindex = mapMemPool.find(prevout.hash)->second;
-            else if (!txdb.ReadTxIndex(prevout.hash, txindex) || txindex.pos == CDiskTxPos(1,1,1))
             {
-                     // Get prev tx from single transactions in memory
-                     LOCK(mempool.cs);
-                     if (!mempool.exists(prevout.hash))
-                     {
-                         fTransferPointTrigger = true;
-                     }
-                     else if (mempool.exists(prevout.hash))
-                              txPrev = mempool.lookup(prevout.hash);
-
-                     if (!txdb.ReadTxIndex(prevout.hash, txindex))
-                     {
-                         txindex.vSpent.resize(txPrev.vout.size());
-                         return error("'CTxMemPool - CheckTxMemPool()' : %s prev tx %s index entry not found",
-                                      tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-                     }
-                     else if (fTransferPointTrigger)
-                              return error("'CTxMemPool - CheckTxMemPool()' : %s mempool Tx prev not found %s",
-                                           tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-                     else
-                         {
-                         // Ok end force majeure
-                         }
+                // Get txindex from current proposed changes
+                fGoCheckIndexDb = false;
+                txindex = mapMemPool.find(prevout.hash)->second;
             }
-            // Get prev tx from disk
-            else if (!txPrev.ReadFromDisk(txindex.pos))
-                     return error("'CTxMemPool - CheckTxMemPool()' : %s ReadFromDisk prev tx %s failed",
-                                  tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-            else
+            if (fGoCheckIndexDb && !txdb.ReadTxIndex(prevout.hash, txindex))
+            {
+                fOkCheckIndex = false;
+            }
+
+            if (!fOkCheckIndex || txindex.pos == CDiskTxPos(1,1,1))
+            {
+                // Get prev tx from single transactions in memory
                 {
-                // Ok end force majeure
+                    LOCK(mempool.cs);
+                    if (!mempool.exists(prevout.hash))
+                    {
+                        fGoCheckTxDb = true;
+                    }
+                    txPrev = mempool.lookup(prevout.hash);
                 }
+                if (!fOkCheckIndex)
+                    txindex.vSpent.resize(txPrev.vout.size());
+            }
+
+            // Inspection summary
+            if (!txPrev.ReadFromDisk(txindex.pos))
+                return error("'CTxMemPool - CheckTxMemPool()' : %s ReadFromDisk prev tx %s failed", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+
+            if (fGoCheckTxDb)
+                return error("'CTxMemPool - CheckTxMemPool()' : %s mempool Tx prev not found %s", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+
+            if (!fOkCheckIndex)
+                return error("'CTxMemPool - CheckTxMemPool()' : %s prev tx %s index entry not found", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
         }
 
         bool fInvalid = false;
@@ -1678,7 +1681,7 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
        if (tx.nTime > GetAdjustedTime() + nMaxClockDrift)
            return state.DoS(10, error("'CTxMemPool - CheckTxMemPool()' : timestamp is too far into the future"));
 
-       if (pindexBest->GetBlockTime() > nPowForceTimestamp)
+       if (fHardForkOne)
        {
            if (tx.nTime < GetAdjustedTime() - nMaxClockDrift * 360)
                return state.DoS(10, error("'CTxMemPool - CheckTxMemPool()' : timestamp is too far into the past"));
@@ -1845,6 +1848,59 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                                        bool fScriptChecks, bool fReserve, std::vector<CScriptCheck> *pvChecks,
                                        unsigned int flags) const
 {
+    if (false)
+    {
+        for (unsigned int i = 0; i < vin.size(); i++)
+        {
+            COutPoint prevout = vin[i].prevout;
+            if (inputsRet.count(prevout.hash))
+                continue; // Got it already
+
+            // Read txindex
+            CTxIndex& txindex = inputsRet[prevout.hash].first;
+            // Read txPrev
+            CTransaction& txPrev = inputsRet[prevout.hash].second;
+            bool fOkCheckIndex = true;
+            bool fGoCheckIndexDb = true;
+            bool fGoCheckTxDb = false;
+            if (mapTestPool.count(prevout.hash))
+            {
+                // Get txindex from current proposed changes
+                fGoCheckIndexDb = false;
+                txindex = mapTestPool.find(prevout.hash)->second;
+            }
+            if (fGoCheckIndexDb && !txdb.ReadTxIndex(prevout.hash, txindex))
+            {
+                fOkCheckIndex = false;
+            }
+
+            if (!fOkCheckIndex || txindex.pos == CDiskTxPos(1,1,1))
+            {
+                // Get prev tx from single transactions in memory
+                {
+                    LOCK(mempool.cs);
+                    if (!mempool.exists(prevout.hash))
+                    {
+                        fGoCheckTxDb = true;
+                    }
+                    txPrev = mempool.lookup(prevout.hash);
+                }
+                if (!fOkCheckIndex)
+                    txindex.vSpent.resize(txPrev.vout.size());
+            }
+
+            // Inspection summary
+            if (!txPrev.ReadFromDisk(txindex.pos))
+                return error("'CTransaction - CheckInputsLevelTwo()' : %s ReadFromDisk prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+
+            if (fGoCheckTxDb)
+                return error("'CTransaction - CheckInputsLevelTwo()' : %s mempool Tx prev not found %s", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+
+            if (!fOkCheckIndex)
+                return error("'CTransaction - CheckInputsLevelTwo()' : %s prev tx %s index entry not found", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+        }
+    }
+
     if (!IsCoinBase())
     {
         if (pvChecks)
@@ -2490,20 +2546,20 @@ int nSetTimeBeforeSwitching = 0;
 int nControlTimeBeforeSwitching = 0;
 bool SetReload()
 {
-     bool fSetStrictMode = GetArg("-setstrictmode", 0);
-     if (fSetStrictMode && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+     bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 0);
+     if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
      {
             nControlTimeStartCync++;
+            nControlTimeRestartCync++;
 
-            if (nControlTimeStartCync > 10)
+            if (nControlTimeStartCync > 60)
             {
                 fStartCync = true;
                 nControlTimeStartCync = 0;
-                nControlTimeRestartCync++;
                 if (fDebug)
                     printf("     SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
             }
-            if (nControlTimeRestartCync > 2)
+            if (nControlTimeRestartCync > 180)
             {
                 fRestartCync = true;
                 nControlTimeRestartCync = 0;
@@ -3210,7 +3266,7 @@ bool CBlock::HardForkControl(CValidationState &state) const
     return true;
 }
 
-bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs)
+bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, bool &fAlreadyHaveBlock)
 {
     bool fGoFalse = false;
     // Get prev block index - malapropos block proof-of-work or proof-of-stake
@@ -3220,7 +3276,6 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs)
         fGoFalse = true;
     }
 
-    // Search for useful in the trash
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
@@ -3228,21 +3283,25 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs)
         if (pindexPrev->nHeight <= pindexBest->pprev->nHeight)
         {
             fGoFalse = false;
-            printf(" 'ValidationCheckBlock()' - Entry at block height=%d, useful fork - accepted\n", pindexPrev->nHeight + 1);
+            if (fDebug)
+                printf(" 'ValidationCheckBlock()' - Entry at block height=%d, accepted\n", pindexPrev->nHeight + 1);
         }
+    }
+
+    fAlreadyHaveBlock = false;
+    uint256 hash = GetHash();
+    if (mapBlockIndex.count(hash) || mapOrphanBlocks.count(hash))
+    {
+        fAlreadyHaveBlock = true;
+        if (mapBlockIndex.count(hash))
+            printf("ProcessBlock() : already have block %d %s", mapBlockIndex[hash]->nHeight, hash.ToString().c_str());
+        else
+            printf("ProcessBlock() : already have block (orphan) %s", hash.ToString().c_str());
     }
 
     if (fGoFalse)
     {
         printf(" 'ValidationCheckBlock()' - Malapropos block %s, prev block not found\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
-        return false;
-    }
-
-    // Check for duplicate
-    uint256 hash = GetHash();
-    if (mapBlockIndex.count(hash))
-    {
-        printf(" 'ValidationCheckBlock()' - Malapropos block %s, block already in mapBlockIndex\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
         return false;
     }
     return true;
@@ -3514,10 +3573,10 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     if (nBlocksToIgnore)
     {
         nBlocksToIgnore--;
-        setIgnoredBlockHashes.insert(pblock->GetHash());
+        setIgnoredBlockHashes.insert(GetHash());
         return error("ProcessBlock() : block ignored");
     }
-    if (setIgnoredBlockHashes.count(pblock->GetHash()))
+    if (setIgnoredBlockHashes.count(GetHash()))
         return error("ProcessBlock() : block ignored");
 #endif
     // Check for duplicate
@@ -3625,21 +3684,10 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         CleanUpOldDuplicateStakeBlocks();
 
     // If we don't already have its previous block, shunt it off to holding area until we get it
-    bool fGo = true;
     int nSetMaxOrphanBlocks = GetArg("-maxorphanblocks", DEFAULT_MAX_ORPHAN_BLOCKS);
     if (pblock->hashPrevBlock != 0 && !mapBlockIndex.count(pblock->hashPrevBlock))
     {
-        if (IsUntilFullCompleteOneHundredFortyFourBlocks())
-        {
-            fGo = false;
-            printf("ProcessBlock: At 'IsInitialBlockDownload()' we do not save the block without the previous, prev=%s\n", pblock->hashPrevBlock.ToString().substr(0,20).c_str());
-            printf("ProcessBlock: Before switching mode left, blocks=%d\n", nFullCompleteBlocks - nBestHeight);
-        }
-        else
-        {
-            nSetMaxOrphanBlocks = GetArg("-maxorphanblocks", DEFAULT_MAX_ORPHAN_BLOCKS);
-            printf("ProcessBlock: ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().c_str());
-        }
+        printf("ProcessBlock: ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().c_str());
 
         // Accept orphans as long as there is a node to request its parents from
         if (pfrom)
@@ -3673,7 +3721,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
             if (!IsInitialBlockDownload())
                 pfrom->AskFor(CInv(MSG_BLOCK, WantedByOrphan(pblock2)));
         }
-        return fGo;
+        return true;
     }
 
     // Store to disk
@@ -4587,8 +4635,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoInv = true;
     bool fGoBlock = true;
     bool fGoGetblocks = true;
-    bool fSetStrictMode = GetArg("-setstrictmode", 0);
-    bool fSetOfAdditionalChecks = GetArg("-setofadditionalchecks", 0);
+    bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 0);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     std::string wait2(strCommand.c_str()), stCommand2("getdata");
@@ -4598,36 +4645,35 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         pfrom->nSizeExtern = vRecv.size();
     }
 
-    if (fSetStrictMode && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getblocks")
+    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getblocks")
     {
         fGoGetblocks = false;
     }
 
-    if (fSetStrictMode && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "tx")
+    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "tx")
     {
         fGoTx = false;
     }
 
-    unsigned int nSize = 40;
-    if (fSetStrictMode && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" &&
+    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" &&
         pfrom->nSizeExtern != pfrom->nSizeGetdata)
     {
          nControlTimeRestartCync = 0;
          if (pfrom->nSizeExtern > pfrom->nSizeGetdata && pfrom->nSizeGetdata == 0)
          {
              nInvMakeSureSpam++;
-             if (pfrom->nSizeExtern < nSize)
+             if (pfrom->nSizeGetdata != 0)
                  fGoBlock = false;
              if (fDebug)
              {
-                 printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
+                 printf("   'Additional Checks()' - 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
              }
              if (InvSpamIpTimer())
              {
                  nInvTimerStart = 0;
                  nInvMakeSureSpam = 0;
                  pfrom->fDisconnect = true;
-                 printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                 printf("   'Additional Checks()' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
              }
          }
          else if (pfrom->nSizeExtern < pfrom->nSizeGetdata)
@@ -4635,29 +4681,29 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                   nInvMakeSureSpam++;
                   if (fDebug)
                   {
-                      printf("   Unnecessary 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
+                      printf("   'Additional Checks()' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
                   }
                   if (InvSpamIpTimer())
                   {
                       nInvTimerStart = 0;
                       nInvMakeSureSpam = 0;
                       pfrom->fDisconnect = true;
-                      printf("   Unnecessary 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+                      printf("   'Additional Checks()' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
                   }
          }
 
     }
 
-    if (fSetOfAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
+    if (fSetAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
     {
         if (pfrom->nSizeExtern != pfrom->nSizeInv)
         {
-            printf("   Unnecessary 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
+            printf("   'Additional Checks()' - 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
             fLimitGetblocks = true;
         }
     }
 
-    if (fSetOfAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
+    if (fSetAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
     {
         nInvMakeSureSpam++;
         if (InvSpamIpTimer())
@@ -4934,7 +4980,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
 
-            if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
+            bool fSetCheckBeforeEvent = GetArg("-setcheckbeforeevent", 1);
+            if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && fSetCheckBeforeEvent)
             {
                 unsigned int nSearched = 0;
                 for (; nSearched <= nNumberOfLines; nSearched++)
@@ -5189,7 +5236,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         if (tx.GoTxToMemoryPool(state, txdb, true, true, &fMissingInputs))
         {
-            SyncWithWallets(tx, NULL, true);
             RelayTransaction(tx, inv.hash);
             mapAlreadyAskedFor.erase(inv);
             vWorkQueue.push_back(inv.hash);
@@ -5215,7 +5261,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     if (tx.GoTxToMemoryPool(stateDummy, txdb, true, true, &fMissingInputs2))
                     {
                         printf("   accepted orphan tx %s\n", orphanTxHash.ToString().substr(0,10).c_str());
-                        SyncWithWallets(tx, NULL, true);
                         RelayTransaction(orphanTx, orphanTxHash);
                         mapAlreadyAskedFor.erase(CInv(MSG_TX, orphanTxHash));
                         vWorkQueue.push_back(orphanTxHash);
@@ -5252,48 +5297,46 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
     }
 
-    else if (strCommand == "block" && !fImporting && !fReindex) // Ignore blocks received while importing
+    else if (strCommand == "block" && !fImporting && !fReindex)
     {
-        CBlock block;
-        vRecv >> block;
-        uint256 hashBlock = block.GetHash();
+             CBlock block;
+             vRecv >> block;
+             bool fGo = false;
+             MapPrevTx mapInputs;
+             CValidationState state;
+             uint256 hashBlock = block.GetHash();
+             CInv inv(MSG_BLOCK, hashBlock);
+             bool fAlreadyHaveBlock = false;
+             if (block.ValidationCheckBlock(state, mapInputs, fAlreadyHaveBlock))
+                 fGo = true;
+             if (!fAlreadyHaveBlock)
+             {
+                 printf("received block %s\n", hashBlock.ToString().substr(0,20).c_str());
 
-        printf("received block %s\n", hashBlock.ToString().substr(0,20).c_str());
-
-        CInv inv(MSG_BLOCK, hashBlock);
-        pfrom->AddInventoryKnown(inv);
-
-        bool fGo = true;
-        bool fStop = true;
-        MapPrevTx mapInputs;
-        CValidationState state;
-        bool fSetStrictMode = GetArg("-setstrictmode", 0);
-        bool fSetReconnecting = GetArg("-setreconnecting", 0);
-        if (block.ValidationCheckBlock(state, mapInputs))
-            fStop = false;
-        if (!fStop || IsUntilFullCompleteOneHundredFortyFourBlocks())
-        {
-            if (!ProcessBlock(state, pfrom, &block))
-            {
-                fGo = false;
-                if (fStop && !fSetStrictMode && fSetReconnecting)
-                    pfrom->fDisconnect = true;
-                if (pfrom->fSuccessfullyConnected && !pfrom->fClient && !pfrom->fOneShot && !pfrom->fDisconnect &&
-                    !fSetStrictMode && fStop)
-                    pfrom->fStartSync = true;
-                printf("received block ignoring - 'IsInitialBlockDownload()' %s\n", hashBlock.ToString().substr(0,20).c_str());
-                return true;
-            }
-            if (fGo || state.CorruptionPossible())
-                mapAlreadyAskedFor.erase(inv);
-        }
-        else if (fSetReconnecting)
-                 pfrom->fDisconnect = true;
-        int nDoS = 0;
-        if (state.IsInvalid(nDoS))
-            if (nDoS > 0)
-                pfrom->Misbehaving(nDoS);
+                 pfrom->AddInventoryKnown(inv);
+                 bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 0);
+                 bool fSetReconnecting = GetArg("-setreconnecting", 0);
+                 if (ProcessBlock(state, pfrom, &block) || state.CorruptionPossible())
+                 {
+                     if (!fGo && fSetReconnecting && IsUntilFullCompleteOneHundredFortyFourBlocks())
+                     {
+                         pfrom->fDisconnect = true;
+                         printf("'IsInitialBlockDownload()' - reconnecting, canceled hash %s\n", hashBlock.ToString().substr(0,20).c_str());
+                     }
+                     mapAlreadyAskedFor.erase(inv);
+                 }
+                 else if (!ProcessBlock(state, pfrom, &block) && pfrom->fSuccessfullyConnected && !pfrom->fClient &&
+                          !pfrom->fOneShot && !pfrom->fDisconnect && !fSetAdditionalChecks)
+                 {
+                          pfrom->fStartSync = true;
+                 }
+                 int nDoS = 0;
+                 if (state.IsInvalid(nDoS))
+                     if (nDoS > 0)
+                         pfrom->Misbehaving(nDoS);
+             }
     }
+
     // This asymmetric behavior for inbound and outbound connections was introduced
     // to prevent a fingerprinting attack: an attacker can send specific fake addresses
     // to users' AddrMan and later request them by sending getaddr messages. 
