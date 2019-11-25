@@ -5219,7 +5219,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                   printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
                   return false;
                }
-               else if (!mempool.CheckTxMemPool(state, txdb, tx, true, false, &fMissingInputs, false, false, true, true, true))
+               else if (!mempool.CheckTxMemPool(state, txdb, tx, true, false, &fMissingInputs, false, false, true, false, false))
                {
                         waitTxSpam = inv.ToString().substr(3,20).c_str();
                         SpamHashList();
