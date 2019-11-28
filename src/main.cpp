@@ -1606,6 +1606,7 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
             if (fGoCheckIndexDb && !txdb.ReadTxIndex(prevout.hash, txindex))
             {
                 fOkCheckIndex = false;
+                printf("'CTxMemPool - CheckTxMemPool()' WARNING : %s prev tx %s index entry not found, verification continues\n", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
             }
 
             if (!fOkCheckIndex || txindex.pos == CDiskTxPos(1,1,1))
@@ -1616,6 +1617,7 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
                     if (!mempool.exists(prevout.hash))
                     {
                         fGoCheckTxDb = true;
+                        printf("'CTxMemPool - CheckTxMemPool()' WARNING : %s mempool Tx prev not found %s, verification continues\n", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
                     }
                     txPrev = mempool.lookup(prevout.hash);
                 }
@@ -1625,10 +1627,8 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
 
             // Inspection summary
             if (!txPrev.ReadFromDisk(txindex.pos))
-                return error("'CTxMemPool - CheckTxMemPool()' : %s ReadFromDisk prev tx %s failed", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-
-            if (fGoCheckTxDb)
-                return error("'CTxMemPool - CheckTxMemPool()' : %s mempool Tx prev not found %s", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                if (fGoCheckTxDb)
+                    return error("'CTxMemPool - CheckTxMemPool()' : %s ReadFromDisk prev tx end mempool Tx prev %s not found", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
 
             if (!fOkCheckIndex)
                 return error("'CTxMemPool - CheckTxMemPool()' : %s prev tx %s index entry not found", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
@@ -2915,7 +2915,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         nFixPindexBestnHeight = pindexBest->nHeight;
     }
     CBlockIndex* newblockindex = pindexNew;
-    nMaxDepthReplacement = GetArg("-maxdepthreplacement", 150);
+    nMaxDepthReplacement = GetArg("-maxdepthreplacement", 50);
     bool fIgnoreLaterFoundBlocks = GetArg("-ignorelaterfoundblocks", 1);
     bool fSetVirtualDecentralizedCheckPoint = GetArg("-setvirtualdecentralizedcheckpoint", 1);
     if (!fHardForkOne && nPossibleHeight > 0)
@@ -2976,7 +2976,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             }
         }
         // Parallel search
-        for (int k = nFixPindexBestnHeight; k > nFixPindexBestnHeight - nMaxDepthReplacement; k--)
+        for (int k = nFixPindexBestnHeight; k >= nFixHardForkOne; k--)
         {
              CBlockIndex* bestblockindex = FindBlockByHeight(k);
              if (k == k)
@@ -2985,11 +2985,11 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                  {
                      pindexMainChain = bestblockindex;
                      pindexForkChain = newblockindex;
-                     if (nPossibleHeight <= pindexBest->nHeight - nMaxDepthReplacement)
+                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nMaxDepthReplacement)
                      {
                          pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
                          if (fDebug)
-                             printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, minimum allowed block height %d, NewChainTrust=%s down\n", nPossibleHeight,
+                             printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, minimum allowed block height %d, NewChainTrust=%s down\n", newblockindex->nHeight,
                              pindexBest->nHeight - nMaxDepthReplacement, pindexNew->bnChainTrust.ToString().c_str());
                          return false;
 
@@ -2998,13 +2998,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                      if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
                      {
                          bool fGoIgnoreLaterFoundBlocks = true;
-                         if (pindexBest->nHeight < nFullCompleteBlocks - nMinDepthReplacement * 5)
+                         if (pindexBest->nHeight < nFullCompleteBlocks - nMinDepthReplacement * 3)
                          {
                              fGoIgnoreLaterFoundBlocks = false;
                              bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
                              Checkpoints::hashSyncCheckpoint = newblockindex->GetBlockHash();
                              if (fDebug)
-                                 printf(" 'AddToBlockIndex()' - This fork has an earlier timestamp, but the information was spread late - switching to a longer branch, the height of the blocks is %d, the maximum height of the blocks is %d\n",
+                                 printf(" 'AddToBlockIndex()' - This fork has an earlier timestamp, but the information was spread late - switching to longer branch, the height of the blocks is %d, the maximum height of the blocks is %d\n",
                                  pindexBest->nHeight, nFullCompleteBlocks);
                              fRestartCync = true;
                          }
@@ -3020,7 +3020,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                              if (fGoIgnoreLaterFoundBlocks)
                                  printf("  priority has a second block, NewChainTrust=%s down\n", pindexNew->bnChainTrust.ToString().c_str());
                          }
-                         if (fSetVirtualDecentralizedCheckPoint && nPossibleHeight < pindexBest->nHeight && fGoIgnoreLaterFoundBlocks)
+                         if (fSetVirtualDecentralizedCheckPoint && fGoIgnoreLaterFoundBlocks && false)
                              Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
                          if (fIgnoreLaterFoundBlocks && fGoIgnoreLaterFoundBlocks)
                              return false;
@@ -3029,11 +3029,21 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                      else if (newblockindex->GetBlockTime() < bestblockindex->GetBlockTime())
                      {
                               bool fGoCheckPoint = true;
-                              if (nPossibleHeight < pindexBest->nHeight - nMinDepthReplacement)
+                              if (nPossibleHeight >= bestblockindex->pprev->nHeight + nMaxDepthReplacement)
+                                  pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
+                              if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nMinDepthReplacement)
                               {
+                                  bool fTrustDown = false;
                                   fGoCheckPoint = false;
-                                  if (fDebug)
-                                      printf(" 'AddToBlockIndex()' - The protocol registered a new block with a height %d, with an erarlier timestamp, but the information delayed, the height of the blockchain %d, 'Trust' control enabled\n",
+                                  if (nPossibleHeight >= pindexBest->nHeight)
+                                  {
+                                      fTrustDown = true;
+                                      bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
+                                      printf(" 'AddToBlockIndex()' - A new block with a propagation delay of height %d, is adopted by the protocol\n",
+                                      nPossibleHeight);
+                                  }
+                                  if (fDebug && !fTrustDown)
+                                      printf(" 'AddToBlockIndex()' - The protocol registered a new block with a height %d, with an erarlyer timestamp, but the information delayed, the height of the blockchain %d, height comparison mode is enabled\n",
                                       nPossibleHeight, pindexBest->nHeight);
                               }
                               else
