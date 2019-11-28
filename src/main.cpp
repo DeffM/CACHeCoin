@@ -2985,12 +2985,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                  {
                      pindexMainChain = bestblockindex;
                      pindexForkChain = newblockindex;
-                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nMaxDepthReplacement)
+                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nMaxDepthReplacement &&
+                         newblockindex->GetBlockTime() != bestblockindex->GetBlockTime())
                      {
                          pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
                          if (fDebug)
-                             printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, minimum allowed block height %d, NewChainTrust=%s down\n", newblockindex->nHeight,
-                             pindexBest->nHeight - nMaxDepthReplacement, pindexNew->bnChainTrust.ToString().c_str());
+                             printf(" 'AddToBlockIndex()' - The new block pretends to a height %d, the chain starts at a height of %d, minimum allowed block height %d, NewChainTrust=%s down\n", nPossibleHeight,
+                             newblockindex->nHeight, pindexBest->nHeight - nMaxDepthReplacement, pindexNew->bnChainTrust.ToString().c_str());
                          return false;
 
                      }
