@@ -1385,7 +1385,7 @@ public:
 
     bool HardForkControl(CValidationState &state) const;
     bool CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256 &pForkChainHash, int &nMainChainHeight, int &nForkChainHeight);
-    bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, bool &fsdas);
+    bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug);
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);

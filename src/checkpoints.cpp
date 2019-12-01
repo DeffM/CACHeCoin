@@ -303,10 +303,12 @@ namespace Checkpoints
     }
 
     // ppcoin: reset synchronized checkpoint to last hardened checkpoint
-    bool ResetSyncCheckpoint()
+    bool ResetSyncCheckpoint(uint256 hashExternal, bool fUseMap)
     {
+        uint256& hash = hashExternal;
         LOCK(cs_hashSyncCheckpoint);
-        const uint256& hash = mapCheckpoints.rbegin()->second;
+        if (fUseMap)
+            hash = mapCheckpoints.rbegin()->second;
         if (mapBlockIndex.count(hash) && !mapBlockIndex[hash]->IsInMainChain())
         {
             // checkpoint block accepted but not yet in main chain
