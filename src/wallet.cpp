@@ -1714,7 +1714,7 @@ bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
     CTxDB txdb;
     CValidationState state;
     bool fMissingInputs = false;
-    if (!mempool.CheckTxMemPool(state, txdb, wtxNew, true, false, &fMissingInputs, false, false, false, true, false))
+    if (!mempool.CheckTxMemPool(state, txdb, wtxNew, true, false, &fMissingInputs, false, false, false, false, false))
         return false;
 
     {

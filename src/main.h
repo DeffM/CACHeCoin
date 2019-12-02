@@ -648,7 +648,7 @@ public:
     /** Check for standard transaction types
         @return True if all outputs (scriptPubKeys) use only standard transaction forms
     */
-    bool IsStandardCach(std::string& strReason) const;
+    bool IsStandard(std::string& strReason) const;
 
     /** Hard fork and inputs control
     */
@@ -1392,7 +1392,7 @@ public:
     bool SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pindexNew);
     bool AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos);
     bool CheckBlock(CValidationState &state, bool fCheckPOW=true, bool fCheckMerkleRoot=true, bool fCheckSig=true) const;
-    bool AcceptBlock();
+    bool AcceptBlock(CValidationState &state, CDiskBlockPos *dbp);
     bool GetCoinAge(uint64& nCoinAge) const; // ppcoin: calculate total coin age spent in block
     bool SignBlock(const CKeyStore& keystore);
     bool CheckBlockSignature() const;
@@ -1901,10 +1901,10 @@ public:
     bool CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, std::map<uint256,
                         CTxIndex>& mapMemPool, CTransaction &tx, bool fCheckInputs,
                         bool fLimitFree, bool* pfMissingInputs, bool fBlock, bool fMiner, bool fScriptChecks,
-                        bool fCheckTxOnly, bool fGoCheckInputsLevelTwo);
+                        bool fGoTxToMemoryPool, bool fGoCheckInputsLevelTwo);
     bool CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
                         bool fLimitFree, bool* pfMissingInputs, bool fBlock, bool fMiner, bool fScriptChecks,
-                        bool fCheckTxOnly, bool fGoCheckInputsLevelTwo);
+                        bool fGoTxToMemoryPool, bool fGoCheckInputsLevelTwo);
     bool addUnchecked(const uint256& hash, CTransaction &tx);
     bool remove(const CTransaction &tx, bool fRecursive = false);
     void clear();

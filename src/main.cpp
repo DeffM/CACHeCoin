@@ -136,7 +136,7 @@ bool fHardForkThree = false;
 
 // cacheproject: Spam Hash List
 std::string waitTxSpam = " Spam is missing now";
-const unsigned int nNumberOfLines = 250;
+const unsigned int nNumberOfLines = 1000;
 unsigned int nLinesSource = nNumberOfLines - 1;
 unsigned int nLinesReceiver = nNumberOfLines;
 char nSpamHashList[nNumberOfLines + 1][21];
@@ -360,7 +360,7 @@ bool CTransaction::ReadFromDisk(COutPoint prevout)
     return ReadFromDisk(txdb, prevout, txindex);
 }
 
-bool CTransaction::IsStandardCach(string& strReason) const
+bool CTransaction::IsStandard(string& strReason) const
 {
     if (nVersion > CTransaction::CURRENT_VERSION)
     {
@@ -709,7 +709,7 @@ bool CTransaction::GoTxToMemoryPool(CValidationState &state, CTxDB& txdb, bool f
 
     try
     {
-        return mempool.CheckTxMemPool(state, txdb, TxMemPoolInputs, mapMemPool, *this, fCheckInputs, fLimitFree, pfMissingInputs, false, false, true, false, false);
+        return mempool.CheckTxMemPool(state, txdb, TxMemPoolInputs, mapMemPool, *this, fCheckInputs, fLimitFree, pfMissingInputs, false, false, true, true, false);
     }
     catch(std::runtime_error &e)
     {
@@ -1013,6 +1013,34 @@ uint256 WantedByOrphan(const CBlock* pblockOrphan)
            pblockOrphan = mapOrphanBlocks[pblockOrphan->hashPrevBlock];
 
     return pblockOrphan->hashPrevBlock;
+}
+
+unsigned char SpamHashList()
+{
+    bool fWriting = true;
+
+    unsigned int nSearched = 0;
+    for (; nSearched <= nNumberOfLines; nSearched++)
+    {
+         if (strcmp(nSpamHashList[nSearched], waitTxSpam.substr(0,20).c_str()) == 0)
+         {
+             fWriting = false;
+             //printf("'SpamHashList' - previously saved spam-hash %s\n", nSpamHashList[nSearched]);
+         }
+         //printf("'SpamHashList' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
+    }
+
+    if (fWriting)
+    {
+        unsigned int nWriting = 0;
+        for (; nWriting <= nNumberOfLines; nWriting++)
+        {
+             if (nLinesReceiver - nWriting != 0)
+                 strcpy(nSpamHashList[nLinesReceiver - nWriting], nSpamHashList[nLinesSource - nWriting]);
+             strcpy(nSpamHashList[0], waitTxSpam.substr(0,20).c_str());
+        }
+    }
+    return false;
 }
 
 // cacheproject: increasing Nfactor gradually
@@ -1579,7 +1607,7 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits)
 
 bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, map<uint256, CTxIndex>& mapMemPool,
                                 CTransaction &tx, bool fCheckInputs, bool fLimitFree, bool* pfMissingInputs,
-                                bool fBlock, bool fMiner, bool fScriptChecks, bool fCheckTxOnly, bool fGoCheckInputsLevelTwo)
+                                bool fBlock, bool fMiner, bool fScriptChecks, bool fGoTxToMemoryPool, bool fGoCheckInputsLevelTwo)
 {
     uint256 hash = tx.GetHash();
     if (fCheckInputs)
@@ -1642,7 +1670,7 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
                 return error("'CTxMemPool->CheckTxMemPool()' : nonstandard transaction input or attempt to send transaction to HardForkControlAddress");
             if (fInvalid)
             {
-                if (pfMissingInputs && !fCheckTxOnly)
+                if (pfMissingInputs && fGoTxToMemoryPool)
                 {
                     *pfMissingInputs = true;
                 }
@@ -1675,7 +1703,7 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
 
        // Rather not work on nonstandard transactions (unless -testnet)
        string strNonStd;
-       if (!fTestNet && !tx.IsStandardCach(strNonStd))
+       if (!fTestNet && !tx.IsStandard(strNonStd))
            return error("'CTxMemPool->CheckTxMemPool()' : nonstandard transaction (%s)", strNonStd.c_str());
 
        if (tx.nTime > GetAdjustedTime() + nMaxClockDrift)
@@ -1691,7 +1719,10 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
        {
            LOCK(cs);
            if (mapTx.count(hash))
+           {
+               printf(" 'CTxMemPool->CheckTxMemPool()' - Is it already in the memory pool\n");
                return false;
+           }
        }
 
        // Check for conflicts with in-memory transactions
@@ -1760,12 +1791,6 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
        }
     }
 
-    if (fCheckTxOnly)
-    {
-        fCheckTxOnly = false;
-        return true;
-    }
-
     if (fCheckInputs)
     {
         bool fReserve = false;
@@ -1776,12 +1801,14 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
                                     nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC |
                                     SCRIPT_VERIFY_NOCACHE))
         {
+            waitTxSpam = hash.ToString().substr(3,20).c_str();
+            SpamHashList();
             return error("'CTxMemPool->CheckTxMemPool()' : CheckTxMemPool() failed %s", hash.ToString().c_str());
         }
     }
 
     // Store transaction in memory
-    if (!fGoCheckInputsLevelTwo)
+    if (!fGoCheckInputsLevelTwo && fGoTxToMemoryPool)
     {
         LOCK(cs);
         if (ptxOld)
@@ -1810,37 +1837,6 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransacti
     std::map<uint256, CTxIndex> mapMemPool;
     return CheckTxMemPool(state, txdb, TxMemPoolInputs, mapMemPool, tx, fCheckInputs, fLimitFree, pfMissingInputs, fBlock, fMiner,
                           fScriptChecks, fCheckTxOnly, fGoCheckInputsLevelTwo);
-}
-
-unsigned char SpamHashList()
-{
-    bool fWriting = true;
-
-    unsigned int nSearched = 0;
-    for (; nSearched <= nNumberOfLines; nSearched++)
-    {
-         if (strcmp(nSpamHashList[nSearched], waitTxSpam.substr(0,20).c_str()) == 0)
-         {
-         fWriting = false;
-         //printf("'SpamHashList' - previously saved spam-hash %s\n", nSpamHashList[nSearched]);
-         }
-         //printf("'SpamHashList' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
-    }
-
-    if (fWriting)
-    {
-        unsigned int nWriting = 0;
-        for (; nWriting <= nNumberOfLines; nWriting++)
-        {
-
-            {
-            if (nLinesReceiver - nWriting != 0)
-            strcpy(nSpamHashList[nLinesReceiver - nWriting], nSpamHashList[nLinesSource - nWriting]);
-            }
-            strcpy(nSpamHashList[0], waitTxSpam.substr(0,20).c_str());
-        }
-    }
-    return false;
 }
 
 bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, MapPrevTx& inputsRet, const map<uint256,
@@ -1891,13 +1887,13 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
 
             // Inspection summary
             if (!txPrev.ReadFromDisk(txindex.pos))
-                return error("'CTransaction - CheckInputsLevelTwo()' : %s ReadFromDisk prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                return error("CTransaction->CheckInputsLevelTwo() : %s ReadFromDisk() prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
 
             if (fGoCheckTxDb)
-                return error("'CTransaction - CheckInputsLevelTwo()' : %s mempool Tx prev not found %s", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                return error("CTransaction->CheckInputsLevelTwo() : %s mempool Tx prev not found %s", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
 
             if (!fOkCheckIndex)
-                return error("'CTransaction - CheckInputsLevelTwo()' : %s prev tx %s index entry not found", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                return error("CTransaction->CheckInputsLevelTwo() : %s prev tx %s index entry not found", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
         }
     }
 
@@ -1919,7 +1915,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
 
             if (prevout.n >= txcoins.vout.size() || prevout.n >= txindexcoins.vSpent.size())
             {
-                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s",
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s prevout.n out of range %d %"PRIszu" %"PRIszu" prev tx %s\n%s",
                 GetHash().ToString().substr(0,10).c_str(), prevout.n, txcoins.vout.size(), txindexcoins.vSpent.size(),
                 prevout.hash.ToString().substr(0,10).c_str(), txcoins.ToString().c_str()));
             }
@@ -1929,20 +1925,20 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                 for (const CBlockIndex* pindex = pindexBlock; pindex && pindexBlock->nHeight - pindex->nHeight < nCoinbaseMaturity; pindex = pindex->pprev)
                     if (pindex->nBlockPos == txindexcoins.pos.nBlockPos && pindex->nFile == txindexcoins.pos.nFile)
                     {
-                        return error("'CTransaction - CheckInputsLevelTwo()' : tried to spend %s at depth %d", txcoins.IsCoinBase() ? "coinbase" : "coinstake", pindexBlock->nHeight - pindex->nHeight);
+                        return error("CTransaction->CheckInputsLevelTwo() : tried to spend %s at depth %d", txcoins.IsCoinBase() ? "coinbase" : "coinstake", pindexBlock->nHeight - pindex->nHeight);
                     }
 
             // ppcoin: check transaction timestamp
             if (txcoins.nTime > nTime)
             {
-                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : transaction timestamp earlier than input transaction"));
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : transaction timestamp earlier than input transaction"));
             }
 
             // Check for negative or overflow input values
             nValueIn += txcoins.vout[prevout.n].nValue;
             if (!MoneyRange(txcoins.vout[prevout.n].nValue) || !MoneyRange(nValueIn))
             {
-                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : txin values out of range"));
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : txin values out of range"));
             }
         }
 
@@ -1952,37 +1948,37 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             uint64 nCoinAge;
             if (!GetCoinAge(txdb, nCoinAge))
             {
-                return error("'CTransaction - CheckInputsLevelTwo()' : %s unable to get coin age for coinstake", GetHash().ToString().c_str());
+                return error("CTransaction->CheckInputsLevelTwo() : %s unable to get coin age for coinstake", GetHash().ToString().c_str());
             }
 
             int64 nStakeReward = GetValueOut() - nValueIn;
             if (nStakeReward > GetProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE)
             {
-                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s stake reward exceeded", GetHash().ToString().c_str()));
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s stake reward exceeded", GetHash().ToString().c_str()));
             }
         }
         else
         {
             if (nValueIn < GetValueOut())
             {
-                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s value in < value out", GetHash().ToString().c_str()));
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s value in < value out", GetHash().ToString().c_str()));
             }
 
             // Tally transaction fees
             int64 nTxFee = nValueIn - GetValueOut();
             if (nTxFee < 0)
             {
-                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s nTxFee < 0", GetHash().ToString().c_str()));
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s nTxFee < 0", GetHash().ToString().c_str()));
             }
             // ppcoin: enforce transaction fees for every block
             if (nTxFee < GetMinFee())
             {
-                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : %s not paying required fee=%s, paid=%s", GetHash().ToString().c_str(), FormatMoney(GetMinFee()).c_str(), FormatMoney(nTxFee).c_str()));
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s not paying required fee=%s, paid=%s", GetHash().ToString().c_str(), FormatMoney(GetMinFee()).c_str(), FormatMoney(nTxFee).c_str()));
             }
             nFees += nTxFee;
             if (!MoneyRange(nFees))
             {
-                return state.DoS(100, error("'CTransaction - CheckInputsLevelTwo()' : nFees out of range"));
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : nFees out of range"));
             }
         }
 
@@ -2017,7 +2013,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                         if (check())
                             return state.Invalid();
                     }
-                    return state.DoS(100,false);
+                    return state.DoS(100, false);
                 }
             }
         }
@@ -2061,7 +2057,7 @@ bool IsInitialBlockDownload()
             pindexBest->GetBlockTime() < nCurrentTime - 24 * 60 * 60);
 }
 
-void static InvalidChainFoundCach(CBlockIndex* pindexNew)
+void static InvalidChainFound(CBlockIndex* pindexNew)
 {
     if (pindexNew->nChainTrust > nBestInvalidTrust)
     {
@@ -2516,7 +2512,7 @@ bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex
     if (!ConnectBlock(state, txdb, pindexNew) || !txdb.WriteHashBestChain(hash))
     {
         txdb.TxnAbort();
-        InvalidChainFoundCach(pindexNew);
+        InvalidChainFound(pindexNew);
         return false;
     }
 
@@ -2668,7 +2664,7 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
         if (!Reorganize(state, txdb, pindexIntermediate))
         {
             txdb.TxnAbort();
-            InvalidChainFoundCach(pindexNew);
+            InvalidChainFound(pindexNew);
             return error("SetBestChain() : Reorganize failed");
         }
 
@@ -2842,7 +2838,7 @@ bool CBlock::CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256
     return true;
 }
 
-int nMinDepthReplacement = 2;
+int nMinDepthReplacement = 3;
 int nMaxDepthReplacement = 0;
 bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos)
 {
@@ -3465,22 +3461,21 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
     return true;
 }
 
-bool CBlock::AcceptBlock()
+bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 {
     // Checks for hardforkcontrol function
-    CValidationState state;
     if (!HardForkControl(state))
-        return error("AcceptBlock() : Attempt to send transaction to HardForkControlAddress");
+        return state.Invalid(error("CBlock->AcceptBlock() : attempt to send transaction to HardForkControlAddress"));
 
     // Check for duplicate
     uint256 hash = GetHash();
     if (mapBlockIndex.count(hash))
-        return error("AcceptBlock() : block already in mapBlockIndex");
+        return state.Invalid(error("CBlock->AcceptBlock() : block already in mapBlockIndex"));
 
     // Get prev block index
     map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashPrevBlock);
     if (mi == mapBlockIndex.end())
-        return DoS(10, error("AcceptBlock() : prev block not found"));
+        return state.DoS(10, error("CBlock->AcceptBlock() : prev block not found"));
 
     // Check proof-of-work or proof-of-stake
     CBlockIndex* pindexPrev = (*mi).second;
@@ -3505,7 +3500,7 @@ bool CBlock::AcceptBlock()
     {
        if (nBits != GetNextTargetRequiredPow(pindexPrev, IsProofOfStake()))
        {
-           return DoS(5, error("AcceptBlock() : incorrect nBits - %s", "proof-of-work"));
+           return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-work"));
        }
     }
 
@@ -3513,7 +3508,7 @@ bool CBlock::AcceptBlock()
     {
        if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && false)
        {
-           return DoS(5, error("AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
+           return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
        }
     }
 
@@ -3521,8 +3516,7 @@ bool CBlock::AcceptBlock()
     {
        if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
        {
-           //pfrom->fDisconnect = true;
-           return DoS(5, error("AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
+           return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
        }
     }
 
@@ -3530,62 +3524,64 @@ bool CBlock::AcceptBlock()
     {
        if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()) && pindexBest->nHeight >= GetNumBlocksOfPeers())
        {
-           return DoS(5, error("AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
+           return state.DoS(5, error("CBlock->AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
        }
     }
 
     // Check timestamp against prev
     if (GetBlockTime() <= pindexPrev->GetMedianTimePast() || GetBlockTime() + nMaxClockDrift < pindexPrev->GetBlockTime())
-        return error("AcceptBlock() : block's timestamp is too early");
+        return state.Invalid(error("CBlock->AcceptBlock() : block's timestamp is too early"));
 
     // Hash spam control
     if(pindexPrev->GetBlockTime() > nPowForceTimestamp + NTest)
     {
        if (IsProofOfWork() && GetBlockTime() < nPowPindexPrevTime + (nPowTargetSpacing / 100 * nSpamHashControl))
        {
-           return error("AcceptBlock() : block's stopped by hash spam control - pow");
+           printf(" 'CBlock->AcceptBlock()' WARNING - block's stopped by hash spam control - proof-of-work\n");
+           return false;
        }
        if (IsProofOfStake() && GetBlockTime() < nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
        {
-           return error("AcceptBlock() : block's stopped by hash spam control - pos");
+           printf(" 'CBlock->AcceptBlock()' WARNING - block's stopped by hash spam control - proof-of-stake\n");
+           return false;
        }
     }
 
     // Check that all transactions are finalized
     BOOST_FOREACH(const CTransaction& tx, vtx)
         if (!tx.IsFinal(nHeight, GetBlockTime()))
-            return DoS(10, error("AcceptBlock() : contains a non-final transaction"));
+            return state.DoS(10, error("CBlock->AcceptBlock() : contains a non-final transaction"));
 
     // Check that the block chain matches the known block chain up to a checkpoint
     if (!Checkpoints::CheckHardened(nHeight, hash))
-        return DoS(100, error("AcceptBlock() : rejected by hardened checkpoint lock-in at %d", nHeight));
+        return state.DoS(100, error("CBlock->AcceptBlock() : rejected by hardened checkpoint lock-in at %d", nHeight));
 
     // ppcoin: check that the block satisfies synchronized checkpoint
     if (!Checkpoints::CheckSync(hash, pindexPrev))
-        return error("AcceptBlock() : rejected by synchronized checkpoint");
+        return state.Invalid(error("CBlock->AcceptBlock() : rejected by synchronized checkpoint"));
 
     // Reject block.nVersion < 3 blocks since 95% threshold on mainNet and always on testNet:
     // DIFF: will use only nVersion > 3
     if (nVersion < 3)
-        return error("CheckBlock() : rejected nVersion < 3 block");
+        return state.Invalid(error("CBlock->AcceptBlock() : rejected nVersion < 3 block"));
 
     // Enforce rule that the coinbase starts with serialized block height
     CScript expect = CScript() << nHeight;
     if (vtx[0].vin[0].scriptSig.size() < expect.size() ||
         !std::equal(expect.begin(), expect.end(), vtx[0].vin[0].scriptSig.begin()))
-        return DoS(100, error("AcceptBlock() : block height mismatch in coinbase"));
+        return state.DoS(100, error("CBlock->AcceptBlock() : block height mismatch in coinbase"));
 
     // Write block to history file
     if (!CheckDiskSpace(::GetSerializeSize(*this, SER_DISK, CLIENT_VERSION)))
-        return error("AcceptBlock() : out of disk space");
+        return state.Invalid(error("CBlock->AcceptBlock() : out of disk space"));
 
     unsigned int nFile = std::numeric_limits<unsigned int>::max();
     unsigned int nBlockPos = 0;
     if (!WriteToDisk(nFile, nBlockPos))
-        return error("AcceptBlock() : WriteToDisk failed");
+        return state.Invalid(error("CBlock->AcceptBlock() : CBlock->WriteToDisk() failed"));
 
     if (!AddToBlockIndex(state, nFile, nBlockPos))
-        return error("AcceptBlock() : AddToBlockIndex failed");
+        return state.Invalid(error("CBlock->AcceptBlock() : CBlock->AddToBlockIndex() failed"));
 
     // Relay inventory, but don't relay old inventory during initial block download
     int nBlockEstimate = Checkpoints::GetTotalBlocksEstimate();
@@ -3667,7 +3663,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
 
     // Preliminary checks
     if (!pblock->CheckBlock(state))
-        return error("ProcessBlock() : CheckBlock FAILED");
+        return error("ProcessBlock() : CheckBlock - FAILED");
 
     // ppcoin: verify hash target and signature of coinstake tx
     if (pblock->IsProofOfStake())
@@ -3723,7 +3719,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         // Cancel the best block
         CTxDB txdb;
         mapBlockIndex.erase(hash); // Remove from the list of immediate candidates for the best chain
-        InvalidChainFoundCach(pindexBest);
+        InvalidChainFound(pindexBest);
         CValidationState stateDummy;
         if (!pblock->SetBestChain(stateDummy, txdb, pindexBest->pprev))
             return error("ProcessBlock(): SetBestChain on previous best block failed");
@@ -3736,7 +3732,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         printf("ProcessBlock() : parent block was previously rejected because of stake duplication. Reaccepting parent\n");
         CBlock* pprevBlock = mapDuplicateStakeBlocks[pblock->hashPrevBlock];
         // Block was already checked when it was first received, so we can just accept it here
-        if (!pprevBlock->AcceptBlock())
+        if (!pprevBlock->AcceptBlock(state, dbp))
             return error("ProcessBlock() : AcceptBlock of previously duplicate block FAILED");
         mapDuplicateStakeBlocks.erase(pblock->hashPrevBlock);
         delete pprevBlock;
@@ -3787,7 +3783,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     }
 
     // Store to disk
-    if (!pblock->AcceptBlock())
+    if (!pblock->AcceptBlock(state, dbp))
         return error("ProcessBlock() : AcceptBlock FAILED");
 
     // Recursively process any orphan blocks that depended on this one
@@ -3802,7 +3798,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
             CBlock* pblockOrphan = (*mi).second;
             // Use a dummy CValidationState so someone can't setup nodes to counter-DoS based on orphan resolution (that is, feeding people an invalid block based on LegitBlockX in order to get anyone relaying LegitBlockX banned)
             CValidationState stateDummy;
-            if (pblockOrphan->AcceptBlock())
+            if (pblockOrphan->AcceptBlock(stateDummy, dbp))
                 vWorkQueue.push_back(pblockOrphan->GetHash());
             mapOrphanBlocks.erase(pblockOrphan->GetHash());
             setStakeSeenOrphan.erase(pblockOrphan->GetProofOfStake());
@@ -3811,9 +3807,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         mapOrphanBlocksByPrev.erase(hashPrev);
     }
 
-    nControlTimeStartCync = 0;
-    nControlTimeRestartCync = 0;
-    nControlTimeBeforeSwitching = 0;
+    nControlTimeStartCync = nControlTimeRestartCync = nControlTimeBeforeSwitching = 0;
     printf("ProcessBlock: ACCEPTED %s BLOCK\n", pblock->IsProofOfStake()?"POS":"POW");
 
     // ppcoin: if responsible for sync-checkpoint send it
@@ -5051,9 +5045,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 {
                      if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
                      {
-                        printf("strCommand 'inv' - The executor of the rules performed the work\n");
-                        printf("  strCommand 'inv' - spam hash previous: %s - %s\n", nSpamHashList[nSearched], fAlreadyHave ? "instock" : "outofstock");
-                        printf("  strCommand 'inv' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                        printf("strCommand 'inv-SpamHashList' - The executor of the rules performed the work\n");
+                        printf("  strCommand 'inv-SpamHashList' - spam hash previous: %s - %s\n", nSpamHashList[nSearched], fAlreadyHave ? "instock" : "outofstock");
+                        printf("  strCommand 'inv-SpamHashList' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
                         return false;
                      }
                      //printf("strCommand 'inv' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
@@ -5063,8 +5057,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             nControlTimeStartCync = 0;
             if (fGoBlock)
             {
-                printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
-                printf("  strCommand 'inv' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                if (fDebug && !fAlreadyHave)
+                {
+                    printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
+                    printf("  strCommand 'inv' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                }
 
                 if (!fAlreadyHave)
                 {
@@ -5277,9 +5274,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             {
                if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
                {
-                  printf("strCommand 'tx' - The executor of the rules performed the work\n");
-                  printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                  printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                  printf("strCommand 'tx-SpamHashList' - The executor of the rules performed the work\n");
+                  printf("  strCommand 'tx-SpamHashList' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                  printf("  strCommand 'tx-SpamHashList' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
                   return false;
                }
                else if (!mempool.CheckTxMemPool(state, txdb, tx, true, false, &fMissingInputs, false, false, true, false, false))
@@ -5418,18 +5415,36 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     else if (strCommand == "mempool")
     {
+        CTxDB txdb("r");
         std::vector<uint256> vtxid;
         LOCK2(mempool.cs, pfrom->cs_filter);
         mempool.queryHashes(vtxid);
         vector<CInv> vInv;
+        bool fSetCheckBeforeEvent = GetArg("-setcheckbeforeevent", 1);
         BOOST_FOREACH(uint256& hash, vtxid)
         {
-            CInv inv(MSG_TX, hash);
-            if ((pfrom->pfilter && pfrom->pfilter->IsRelevantAndUpdate(mempool.lookup(hash), hash)) ||
-               (!pfrom->pfilter))
-                vInv.push_back(inv);
-            if (vInv.size() == MAX_INV_SZ)
-                break;
+           CInv inv(MSG_TX, hash);
+           bool fAlreadyHave = AlreadyHave(txdb, inv);
+           if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && fSetCheckBeforeEvent)
+           {
+               unsigned int nSearched = 0;
+               for (; nSearched <= nNumberOfLines; nSearched++)
+               {
+                    if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
+                    {
+                       printf("strCommand 'mempool-SpamHashList' - The executor of the rules performed the work\n");
+                       printf("  strCommand 'mempool-SpamHashList' - spam hash previous: %s - %s\n", nSpamHashList[nSearched], fAlreadyHave ? "instock" : "outofstock");
+                       printf("  strCommand 'mempool-SpamHashList' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                       return false;
+                    }
+                    //printf("strCommand 'inv' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
+               }
+           }
+           if ((pfrom->pfilter && pfrom->pfilter->IsRelevantAndUpdate(mempool.lookup(hash), hash)) ||
+              (!pfrom->pfilter))
+               vInv.push_back(inv);
+           if (vInv.size() == MAX_INV_SZ)
+               break;
         }
         if (vInv.size() > 0)
             pfrom->PushMessage("inv", vInv);
