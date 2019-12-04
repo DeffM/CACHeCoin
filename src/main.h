@@ -1907,6 +1907,7 @@ public:
                         bool fGoTxToMemoryPool, bool fGoCheckInputsLevelTwo);
     bool addUnchecked(const uint256& hash, CTransaction &tx);
     bool remove(const CTransaction &tx, bool fRecursive = false);
+    bool inremove(const CTransaction tx, uint256 badhash, bool fExternHash);
     void clear();
     void queryHashes(std::vector<uint256>& vtxid);
 
