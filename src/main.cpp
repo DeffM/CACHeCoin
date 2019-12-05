@@ -1666,7 +1666,8 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
             if (fGoCheckIndexDb && !txdb.ReadTxIndex(prevout.hash, txindex))
             {
                 fOkCheckIndex = false;
-                printf(" 'CTxMemPool->CheckTxMemPool()' WARNING - %s prev tx %s index entry not found, verification continues\n", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                if (fDebug)
+                    printf(" 'CTxMemPool->CheckTxMemPool()' WARNING - %s prev tx %s index entry not found, verification continues\n", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
             }
 
             if (!fOkCheckIndex || txindex.pos == CDiskTxPos(1,1,1))
@@ -1677,7 +1678,8 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
                     if (!mempool.exists(prevout.hash))
                     {
                         fGoCheckTxDb = true;
-                        printf(" 'CTxMemPool->CheckTxMemPool()' WARNING - %s mempool Tx prev not found %s, verification continues\n", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                        if (fDebug)
+                            printf(" 'CTxMemPool->CheckTxMemPool()' WARNING - %s mempool Tx prev not found %s, verification continues\n", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
                     }
                     txPrev = mempool.lookup(prevout.hash);
                 }
@@ -1992,7 +1994,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                 return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s stake reward exceeded", GetHash().ToString().c_str()));
             }
         }
-        else
+        else if (!fMiner)
         {
             if (nValueIn < GetValueOut())
             {
@@ -2590,7 +2592,7 @@ bool SetReload()
                 if (fDebug)
                     printf("     SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
             }
-            if (nControlTimeRestartCync > 180)
+            if (nControlTimeRestartCync > 120)
             {
                 fRestartCync = true;
                 nControlTimeRestartCync = 0;
@@ -2946,7 +2948,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         nFixPindexBestnHeight = pindexBest->nHeight;
     }
     CBlockIndex* newblockindex = pindexNew;
-    nMaxDepthReplacement = GetArg("-maxdepthreplacement", 5);
+    nMaxDepthReplacement = GetArg("-maxdepthreplacement", 30);
     bool fIgnoreLaterFoundBlocks = GetArg("-ignorelaterfoundblocks", 1);
     //bool fSetVirtualDecentralizedCheckPoint = GetArg("-setvirtualdecentralizedcheckpoint", 1);
     if (!fHardForkOne && nPossibleHeight > 0)
@@ -3041,7 +3043,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          std::string ResultOfChecking;
                          bool fGoIgnoreLaterFoundBlocks = true;
                          ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
-                         if (nPossibleHeight > pindexBest->nHeight + nMinDepthReplacement * 3 && ResultOfChecking == "already have block")
+                         if (nPossibleHeight >= pindexBest->nHeight + nMinDepthReplacement && ResultOfChecking == "already have block")
                          {
                              if (fResetSyncCheckpoint)
                              {
@@ -3190,79 +3192,82 @@ bool CBlock::HardForkControl(CValidationState &state) const
     nWatchOnlyAddressCalc = 0;
     int64 nValueHardForkControlAddress = 0;
 
-    // Tally simplified
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
+    if (false)
     {
-        CTxDestination addressed;
-        const CWalletTx& wtx = (*it).second;
-        if (!wtx.IsFinal())
-            continue;
+        // Tally simplified
+        for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
+        {
+            CTxDestination addressed;
+            const CWalletTx& wtx = (*it).second;
+            if (!wtx.IsFinal())
+                continue;
 
-        BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-            if (ExtractDestination(txout.scriptPubKey, addressed))
-            {
-                if (CBitcoinAddress(addressed).ToString() == WatchOnlyAddress)
+            BOOST_FOREACH(const CTxOut& txout, wtx.vout)
+                if (ExtractDestination(txout.scriptPubKey, addressed))
                 {
-                    nAmount += txout.nValue;
+                    if (CBitcoinAddress(addressed).ToString() == WatchOnlyAddress)
+                    {
+                        nAmount += txout.nValue;
+                    }
+                    if (CBitcoinAddress(addressed).ToString() == HardForkControlAddress)
+                    {
+                        if (wtx.GetDepthInMainChain() >= nMinDepth)
+                            nValueHardForkControlAddress += txout.nValue;
+                    }
                 }
-                if (CBitcoinAddress(addressed).ToString() == HardForkControlAddress)
-                {
-                    if (wtx.GetDepthInMainChain() >= nMinDepth)
-                        nValueHardForkControlAddress += txout.nValue;
-                }
-            }
-    }
+        }
 
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
-    {
-         CTxDestination addressed;
-         const CWalletTx& wtx = (*it).second;
-         if (!wtx.IsFinal())
-             continue;
+        for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
+        {
+             CTxDestination addressed;
+             const CWalletTx& wtx = (*it).second;
+             if (!wtx.IsFinal())
+                 continue;
 
-         BOOST_FOREACH(const CTxIn& txin, wtx.vin)
-         {
-             CTxDB txdb;
-             CTransaction prev;
-             COutPoint prevout = txin.prevout;
-             if (txdb.ReadDiskTx(prevout.hash, prev))
-                 if (prevout.n < prev.vout.size())
-                 {
-                     const CTxOut &vout = prev.vout[prevout.n];
-                     if (ExtractDestination(vout.scriptPubKey, addressed))
+             BOOST_FOREACH(const CTxIn& txin, wtx.vin)
+             {
+                 CTxDB txdb;
+                 CTransaction prev;
+                 COutPoint prevout = txin.prevout;
+                 if (txdb.ReadDiskTx(prevout.hash, prev))
+                     if (prevout.n < prev.vout.size())
                      {
-                         if (CBitcoinAddress(addressed).ToString() == WatchOnlyAddress)
+                         const CTxOut &vout = prev.vout[prevout.n];
+                         if (ExtractDestination(vout.scriptPubKey, addressed))
                          {
-                             nAmount -= vout.nValue;
-                         }
-                         if (CBitcoinAddress(addressed).ToString() == HardForkControlAddress)
-                         {
-                             if (wtx.GetDepthInMainChain() >= nMinDepth)
-                                 nValueHardForkControlAddress -= vout.nValue;
+                             if (CBitcoinAddress(addressed).ToString() == WatchOnlyAddress)
+                             {
+                                 nAmount -= vout.nValue;
+                             }
+                             if (CBitcoinAddress(addressed).ToString() == HardForkControlAddress)
+                             {
+                                 if (wtx.GetDepthInMainChain() >= nMinDepth)
+                                     nValueHardForkControlAddress -= vout.nValue;
+                             }
                          }
                      }
-                 }
-         }
-    }
-    nWatchOnlyAddressCalc = nAmount;
+             }
+        }
+        nWatchOnlyAddressCalc = nAmount;
 
-    if (nValueHardForkControlAddress >= nHardForkOneValue && nValueHardForkControlAddress != 0)
-    {
-        fHardForkOne = true;
-        printf(" 'HardForkControl' - fHardForkOne = true\n");
-    }
-    if (nValueHardForkControlAddress >= nHardForkTwoValue && fHardForkOne)
-    {
-        fHardForkTwo = true;
-        printf(" 'HardForkControl' - fHardForkTwo = true\n");
-    }
-    if (nValueHardForkControlAddress >= nHardForkThreeValue && fHardForkTwo)
-    {
-        fHardForkThree = true;
-        printf(" 'HardForkControl' - fHardForkThree = true\n");
+        if (nValueHardForkControlAddress >= nHardForkOneValue && nValueHardForkControlAddress != 0)
+        {
+            fHardForkOne = true;
+            printf(" 'HardForkControl' - fHardForkOne = true\n");
+        }
+        if (nValueHardForkControlAddress >= nHardForkTwoValue && fHardForkOne)
+        {
+            fHardForkTwo = true;
+            printf(" 'HardForkControl' - fHardForkTwo = true\n");
+        }
+        if (nValueHardForkControlAddress >= nHardForkThreeValue && fHardForkTwo)
+        {
+            fHardForkThree = true;
+            printf(" 'HardForkControl' - fHardForkThree = true\n");
+        }
     }
 
-    if (true)
+    if (false)
     {
         for (unsigned int k = 0; k < vtx.size(); k++)
         {
@@ -3341,7 +3346,7 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
         fGoFalse = true;
     }
 
-    int nMaximumDepthInBlocksForEntry = 500;
+    int nMaximumDepthInBlocksForEntry = 750;
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
@@ -4750,6 +4755,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     if (wait1 == stCommand1 || wait2 == stCommand2)
     {
         nControlTimeStartCync = 0;
+        nControlTimeRestartCync = 0;
         pfrom->nSizeExtern = vRecv.size();
     }
 
@@ -4763,50 +4769,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         fGoTx = false;
     }
 
-    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv" &&
-        pfrom->nSizeExtern != pfrom->nSizeGetdata)
+    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv")
     {
-         nControlTimeRestartCync = 0;
-         if (pfrom->nSizeExtern > pfrom->nSizeGetdata && pfrom->nSizeGetdata == 0)
-         {
-             nInvMakeSureSpam++;
-             if (pfrom->nSizeGetdata != 0)
-                 fGoBlock = false;
-             if (fDebug)
-             {
-                 printf("   'Additional Checks()' - 'inv' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
-             }
-             if (InvSpamIpTimer())
-             {
-                 nInvTimerStart = 0;
-                 nInvMakeSureSpam = 0;
-                 pfrom->fDisconnect = true;
-                 printf("   'Additional Checks()' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
-             }
-         }
-         else if (pfrom->nSizeExtern < pfrom->nSizeGetdata)
-         {
-                  nInvMakeSureSpam++;
-                  if (fDebug)
-                  {
-                      printf("   'Additional Checks()' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeGetdata);
-                  }
-                  if (InvSpamIpTimer())
-                  {
-                      nInvTimerStart = 0;
-                      nInvMakeSureSpam = 0;
-                      pfrom->fDisconnect = true;
-                      printf("   'Additional Checks()' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
-                  }
-         }
-
+        nInvMakeSureSpam++;
+        if (InvSpamIpTimer())
+        {
+            nInvTimerStart = 0;
+            nInvMakeSureSpam = 0;
+            pfrom->fDisconnect = true;
+            printf("   'Additional Checks()' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+        }
     }
 
     if (fSetAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
     {
         if (pfrom->nSizeExtern != pfrom->nSizeInv)
         {
-            printf("   'Additional Checks()' - 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
+            if (fDebug)
+                printf("   'Additional Checks()' - 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
             fLimitGetblocks = true;
         }
     }
@@ -4819,13 +4799,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             nInvTimerStart = 0;
             nInvMakeSureSpam = 0;
             pfrom->fDisconnect = true;
-            printf("   All 'inv' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+            printf("   'Additional Checks()' - all inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
         }
     }
 
     if (fGoTx && fGoInv && fGoBlock && fGoGetblocks)
     {
-        nControlTimeStartCync = 0;
         if (fDebug)
         {
             printf("%s ", DateTimeStrFormat(GetTime()).c_str());
@@ -5105,7 +5084,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 }
             }
 
-            nControlTimeStartCync = 0;
             if (fGoBlock)
             {
                 if (fDebug && !fAlreadyHave)
@@ -5235,9 +5213,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         int nLimit = 500;
         if ((pindex ? pindex->nHeight : -1) > 150000)
-            nLimit = 30;
+            nLimit = 250;
         if (fLimitGetblocks)
-            nLimit = 10;
+            nLimit = 50;
         printf("getblocks %d to %s limit %d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString().substr(0,20).c_str(), nLimit);
 
         for (; pindex; pindex = pindex->pnext)
@@ -5424,7 +5402,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                  printf("received block %s\n", hashBlock.ToString().substr(0,20).c_str());
 
                  pfrom->AddInventoryKnown(inv);
-                 bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 0);
                  bool fSetReconnecting = GetArg("-setreconnecting", 0);
                  if (ProcessBlock(state, pfrom, &block) || state.CorruptionPossible())
                  {
@@ -5437,7 +5414,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                      mapAlreadyAskedFor.erase(inv);
                  }
                  else if (fBadProcessBlock && pfrom->fSuccessfullyConnected && !pfrom->fClient &&
-                          !pfrom->fOneShot && !pfrom->fDisconnect && !fSetAdditionalChecks)
+                          !pfrom->fOneShot && !pfrom->fDisconnect)
                  {
                           pfrom->fStartSync = true;
                  }
@@ -6136,7 +6113,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
         ParseMoney(mapArgs["-mintxfee"], nMinTxFee);
 
     // ppcoin: if pow available
-    if (fProofOfWork && pindexBest->GetBlockTime() > nPowForceTimestamp)
+    if (!fProofOfStake && pindexBest->GetBlockTime() > nPowForceTimestamp)
     {
         CBlockIndex* powpindexPrev = pindexBest;
         pblock->nBits = GetNextTargetRequiredPow(powpindexPrev, pblock->IsProofOfStake());
@@ -6210,6 +6187,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
         map<uint256, vector<COrphan*> > mapDependers;
 
         // This vector will be sorted into a priority queue:
+        CTransaction txPprev;
         vector<TxPriority> vecPriority;
         vecPriority.reserve(mempool.mapTx.size());
         for (map<uint256, CTransaction>::iterator mi = mempool.mapTx.begin(); mi != mempool.mapTx.end(); ++mi)
@@ -6225,9 +6203,8 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
             BOOST_FOREACH(const CTxIn& txin, tx.vin)
             {
                 // Read prev transaction
-                CTransaction txPrev;
                 CTxIndex txindex;
-                if (!txPrev.ReadFromDisk(txdb, txin.prevout, txindex))
+                if (!txPprev.ReadFromDisk(txdb, txin.prevout, txindex))
                 {
                     // This should never happen; all transactions in the memory
                     // pool should connect to either transactions in the chain
@@ -6254,7 +6231,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
                     nTotalIn += mempool.mapTx[txin.prevout.hash].vout[txin.prevout.n].nValue;
                     continue;
                 }
-                int64 nValueIn = txPrev.vout[txin.prevout.n].nValue;
+                int64 nValueIn = txPprev.vout[txin.prevout.n].nValue;
                 nTotalIn += nValueIn;
 
                 int nConf = txindex.GetDepthInMainChain();
@@ -6295,13 +6272,10 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
         MapPrevTx mapInputs;
         CValidationState state;
         bool fMissingInputs  = false;
-        BOOST_FOREACH(CTransaction& tx, pblock->vtx)
+        if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapTestPool, txPprev, true, false, &fMissingInputs, false, true, true, false, true))
         {
-             if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapTestPool, tx, true, false, &fMissingInputs, false, true, true, false, true))
-             {
-                fOk = false;
-                printf(" 'CBlock->CreateNewBlock' - The hash is ignored\n");
-             }
+            fOk = false;
+            printf(" 'CBlock->CreateNewBlock' - The hash is ignored\n");
         }
 
         while (!vecPriority.empty() && fOk)
