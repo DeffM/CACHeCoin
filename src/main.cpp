@@ -1748,7 +1748,7 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
 
        if (fHardForkOne)
        {
-           if (tx.nTime < GetAdjustedTime() - nMaxClockDrift * 360)
+           if (tx.nTime < nPowForceTimestamp)
                return state.DoS(10, error("'CTxMemPool->CheckTxMemPool()' : timestamp is too far into the past"));
        }
 
@@ -2042,15 +2042,15 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                 }
                 else if (!check())
                 {
-                    if (flags & SCRIPT_VERIFY_STRICTENC)
-                    {
-                        // For now, check whether the failure was caused by non-canonical
-                        // encodings or not; if so, don't trigger DoS protection.
-                        CScriptCheck check(txcoins, *this, i, flags & (~SCRIPT_VERIFY_STRICTENC), 0);
-                        if (check())
-                            return state.Invalid();
-                    }
-                    return state.DoS(100, false);
+                         if (flags & SCRIPT_VERIFY_STRICTENC)
+                         {
+                             // For now, check whether the failure was caused by non-canonical
+                             // encodings or not; if so, don't trigger DoS protection.
+                             CScriptCheck check(txcoins, *this, i, flags & (~SCRIPT_VERIFY_STRICTENC), 0);
+                             if (check())
+                                 return state.Invalid();
+                         }
+                         return state.DoS(100, false);
                 }
             }
         }
@@ -2625,8 +2625,8 @@ void ThreadAnalyzerHandler()
     while (!fShutdown)
     {
        SetReload();
-       int64 nTimeCount = GetTime() + nNewTimeBlock;
-       int64 nTimeCount2 = GetTime() + nNewTimeBlock;
+       int64 nTimeCount = GetAdjustedTime() + nNewTimeBlock;
+       int64 nTimeCount2 = GetAdjustedTime() + nNewTimeBlock;
              nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
              nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
        int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
@@ -3424,39 +3424,39 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
 
     // Size limits
     if (vtx.empty() || vtx.size() > MAX_BLOCK_SIZE || ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
-        return DoS(100, error("CheckBlock() : size limits failed"));
+        return state.DoS(100, error("CBlock->CheckBlock() : size limits failed"));
 
     // Check proof of work matches claimed amount
     if (fCheckPOW && IsProofOfWork() && !CheckProofOfWork(GetHash(), nBits))
-        return DoS(50, error("CheckBlock() : proof of work failed"));
+        return state.DoS(50, error("CBlock->CheckBlock() : proof of work failed"));
 
     // Check timestamp
     if (GetBlockTime() > GetAdjustedTime() + nMaxClockDrift)
-        return error("CheckBlock() : block timestamp too far in the future");
+        return state.Invalid(error("CBlock->CheckBlock() : block timestamp too far in the future"));
 
     // First transaction must be coinbase, the rest must not be
     if (vtx.empty() || !vtx[0].IsCoinBase())
-        return DoS(100, error("CheckBlock() : first tx is not coinbase"));
+        return state.DoS(100, error("CBlock->CheckBlock() : first tx is not coinbase"));
     for (unsigned int i = 1; i < vtx.size(); i++)
         if (vtx[i].IsCoinBase())
-            return DoS(100, error("CheckBlock() : more than one coinbase"));
+            return state.DoS(100, error("CBlock->CheckBlock() : more than one coinbase"));
 
     // ppcoin: only the second transaction can be the optional coinstake
     for (unsigned int i = 2; i < vtx.size(); i++)
         if (vtx[i].IsCoinStake())
-            return DoS(100, error("CheckBlock() : coinstake in wrong position"));
+            return state.DoS(100, error("CBlock->CheckBlock() : coinstake in wrong position"));
 
     // ppcoin: coinbase output should be empty if proof-of-stake block
     if (IsProofOfStake() && (vtx[0].vout.size() != 1 || !vtx[0].vout[0].IsEmpty()))
-        return error("CheckBlock() : coinbase output not empty for proof-of-stake block");
+        return error("CBlock->CheckBlock() : coinbase output not empty for proof-of-stake block");
 
     // Check coinbase timestamp
     if (GetBlockTime() > (int64)vtx[0].nTime + nMaxClockDrift)
-        return DoS(50, error("CheckBlock() : coinbase timestamp is too early"));
+        return state.DoS(50, error("CBlock->CheckBlock() : coinbase timestamp is too early"));
 
     // Check coinstake timestamp
     if (IsProofOfStake() && !CheckCoinStakeTimestamp(GetBlockTime(), (int64)vtx[1].nTime))
-        return DoS(50, error("CheckBlock() : coinstake timestamp violation nTimeBlock=%"PRI64d" nTimeTx=%u", GetBlockTime(), vtx[1].nTime));
+        return state.DoS(50, error("CBlock->CheckBlock() : coinstake timestamp violation nTimeBlock=%"PRI64d" nTimeTx=%u", GetBlockTime(), vtx[1].nTime));
 
     // Check coinbase reward
     double nGetValueOut = 0;
@@ -3465,19 +3465,19 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
         else nGetValueOut = vtx[0].GetValueOut();
 
     if (nGetValueOut > (IsProofOfWork()? (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
-        return DoS(50, error("CheckBlock() : coinbase reward exceeded %s > %s",
-                   FormatMoney(nGetValueOut).c_str(),
-                   FormatMoney(IsProofOfWork()? GetProofOfWorkReward(nBits) : 0).c_str()));
+        return state.DoS(50, error("CBlock->CheckBlock() : coinbase reward exceeded %s > %s",
+                         FormatMoney(nGetValueOut).c_str(),
+                         FormatMoney(IsProofOfWork()? GetProofOfWorkReward(nBits) : 0).c_str()));
 
     // Check transactions
     BOOST_FOREACH(const CTransaction& tx, vtx)
     {
         if (!tx.BasicCheckTransaction(state))
-            return DoS(tx.nDoS, error("CheckBlock() : BasicCheckTransaction failed"));
+            return state.DoS(tx.nDoS, error("CBlock->CheckBlock() : BasicCheckTransaction failed"));
 
         // ppcoin: check transaction timestamp
         if (GetBlockTime() < (int64)tx.nTime)
-            return DoS(50, error("CheckBlock() : block timestamp earlier than transaction timestamp %d",tx.nTime));
+            return state.DoS(50, error("CBlock->CheckBlock() : block timestamp earlier than transaction timestamp %d",tx.nTime));
     }
 
     // Check for duplicate txids. This is caught by ConnectInputs(),
@@ -3488,7 +3488,7 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
         uniqueTx.insert(tx.GetHash());
     }
     if (uniqueTx.size() != vtx.size())
-        return DoS(100, error("CheckBlock() : duplicate transaction"));
+        return state.DoS(100, error("CBlock->CheckBlock() : duplicate transaction"));
 
     unsigned int nSigOps = 0;
     BOOST_FOREACH(const CTransaction& tx, vtx)
@@ -3496,15 +3496,15 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
         nSigOps += tx.GetLegacySigOpCount();
     }
     if (nSigOps > MAX_BLOCK_SIGOPS)
-        return DoS(100, error("CheckBlock() : out-of-bounds SigOpCount"));
+        return state.DoS(100, error("CBlock->CheckBlock() : out-of-bounds SigOpCount"));
 
     // Check merkle root
     if (fCheckMerkleRoot && hashMerkleRoot != BuildMerkleTree())
-        return DoS(100, error("CheckBlock() : hashMerkleRoot mismatch"));
+        return state.DoS(100, error("CBlock->CheckBlock() : hashMerkleRoot mismatch"));
 
     // ppcoin: check block signature
     if (!CheckBlockSignature())
-        return DoS(100, error("CheckBlock() : bad block signature"));
+        return state.DoS(100, error("CBlock->CheckBlock() : bad block signature"));
 
     return true;
 }
@@ -3944,9 +3944,9 @@ bool CBlock::CheckBlockSignature() const
     if(IsProofOfStake())
     {
         const CTxOut& txout = vtx[1].vout[1];
-
         if (!Solver(txout.scriptPubKey, whichType, vSolutions))
             return false;
+
         if (whichType == TX_PUBKEY)
         {
             valtype& vchPubKey = vSolutions[0];
@@ -4012,8 +4012,10 @@ CMerkleBlock::CMerkleBlock(const CBlock& block, CBloomFilter& filter)
     txn = CPartialMerkleTree(vHashes, vMatch);
 }
 
-uint256 CPartialMerkleTree::CalcHash(int height, unsigned int pos, const std::vector<uint256> &vTxid) {
-    if (height == 0) {
+uint256 CPartialMerkleTree::CalcHash(int height, unsigned int pos, const std::vector<uint256> &vTxid)
+{
+    if (height == 0)
+    {
         // hash at height 0 is the txids themself
         return vTxid[pos];
     }
@@ -4031,7 +4033,8 @@ uint256 CPartialMerkleTree::CalcHash(int height, unsigned int pos, const std::ve
     }
 }
 
-void CPartialMerkleTree::TraverseAndBuild(int height, unsigned int pos, const std::vector<uint256> &vTxid, const std::vector<bool> &vMatch) {
+void CPartialMerkleTree::TraverseAndBuild(int height, unsigned int pos, const std::vector<uint256> &vTxid, const std::vector<bool> &vMatch)
+{
     // determine whether this node is the parent of at least one matched txid
     bool fParentOfMatch = false;
     for (unsigned int p = pos << height; p < (pos+1) << height && p < nTransactions; p++)
@@ -4052,7 +4055,8 @@ void CPartialMerkleTree::TraverseAndBuild(int height, unsigned int pos, const st
     }
 }
 
-uint256 CPartialMerkleTree::TraverseAndExtract(int height, unsigned int pos, unsigned int &nBitsUsed, unsigned int &nHashUsed, std::vector<uint256> &vMatch) {
+uint256 CPartialMerkleTree::TraverseAndExtract(int height, unsigned int pos, unsigned int &nBitsUsed, unsigned int &nHashUsed, std::vector<uint256> &vMatch)
+{
     if (nBitsUsed >= vBits.size())
     {
         // overflowed the bits array - failure
@@ -4087,7 +4091,8 @@ uint256 CPartialMerkleTree::TraverseAndExtract(int height, unsigned int pos, uns
     }
 }
 
-CPartialMerkleTree::CPartialMerkleTree(const std::vector<uint256> &vTxid, const std::vector<bool> &vMatch) : nTransactions(vTxid.size()), fBad(false) {
+CPartialMerkleTree::CPartialMerkleTree(const std::vector<uint256> &vTxid, const std::vector<bool> &vMatch) : nTransactions(vTxid.size()), fBad(false)
+{
     // reset state
     vBits.clear();
     vHash.clear();
@@ -4279,12 +4284,9 @@ bool LoadBlockIndex(bool fAllowNew)
 
         block.print();
 
-        //if(!fTestNet)
         printf("block.GetHash() == %s\n", block.GetHash().ToString().c_str());
         printf("hashGenesisBlock == %s\n", hashGenesisBlock.ToString().c_str());
         assert(block.GetHash() == hashGenesisBlock);
-        //else
-        //    assert(block.GetHash() == hashGenesisBlockTestNet);
 
         CValidationState state;
         assert(block.CheckBlock(state));
@@ -4406,13 +4408,15 @@ bool LoadExternalBlockFile(FILE* fileIn, CDiskBlockPos *dbp)
     int nLoaded = 0;
     {
         LOCK(cs_main);
-        try {
+        try
+        {
             CAutoFile blkdat(fileIn, SER_DISK, CLIENT_VERSION);
             unsigned int nPos = 0;
             while (nPos != std::numeric_limits<uint32_t>::max() && blkdat.good() && !fRequestShutdown)
             {
                 unsigned char pchData[65536];
-                do {
+                do
+                {
                     fseek(blkdat, nPos, SEEK_SET);
                     int nRead = fread(pchData, 1, sizeof(pchData), blkdat);
                     if (nRead <= 8)
@@ -4432,7 +4436,8 @@ bool LoadExternalBlockFile(FILE* fileIn, CDiskBlockPos *dbp)
                     }
                     else
                         nPos += sizeof(pchData) - sizeof(pchMessageStart) + 1;
-                } while(!fRequestShutdown);
+                }
+                while(!fRequestShutdown);
                 if (nPos == std::numeric_limits<uint32_t>::max())
                     break;
                 fseek(blkdat, nPos, SEEK_SET);
@@ -4484,14 +4489,6 @@ string GetWarnings(string strFor)
 
     if (GetBoolArg("-testsafemode"))
         strRPC = "test";
-/*
-    // ppcoin: wallet lock warning for minting
-    if (strMintWarning != "")
-    {
-        nPriority = 0;
-        strStatusBar = strMintWarning;
-    }
-*/
 
     // Misc warnings like out of disk space and clock is wrong
     if (strMiscWarning != "")
@@ -4665,7 +4662,8 @@ void static ProcessGetData(CNode* pfrom)
                         pushed = true;
                     }
                 }
-                if (!pushed) {
+                if (!pushed)
+                {
                     vNotFound.push_back(inv);
                 }
             }
@@ -6064,7 +6062,7 @@ public:
 
 // CreateNewBlock:
 //   fProofOfStake: try (best effort) to make a proof-of-stake block
-CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
+CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, bool fSetMinerSleep)
 {
     CReserveKey reservekey(pwallet);
 
@@ -6085,7 +6083,6 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
 
     // Add our coinbase tx as first transaction
     pblock->vtx.push_back(txNew);
-
 
 
     // Largest block you're willing to create:
@@ -6268,17 +6265,11 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
         TxPriorityCompare comparer(fSortedByFee);
         std::make_heap(vecPriority.begin(), vecPriority.end(), comparer);
 
-        bool fOk = true;
         MapPrevTx mapInputs;
         CValidationState state;
         bool fMissingInputs  = false;
-        if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapTestPool, txPprev, true, false, &fMissingInputs, false, true, true, false, true))
-        {
-            fOk = false;
-            printf(" 'CBlock->CreateNewBlock' - The hash is ignored\n");
-        }
 
-        while (!vecPriority.empty() && fOk)
+        while (!vecPriority.empty() && fSetMinerSleep)
         {
             // Take highest priority transaction off the priority queue:
             double dPriority = vecPriority.front().get<0>();
@@ -6326,8 +6317,8 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork)
             //if (!tx.CheckInputsLevelTwo(state, txdb, mapInputs, mapTestPoolTmp, pindex, false, true, true,
             //                            false, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
             //                            SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE))
-            //if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapTestPoolTmp, tx, true, false, &fMissingInputs, false, true, true, false, true))
-            //    continue;
+            if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapTestPoolTmp, tx, true, false, &fMissingInputs, false, true, true, false, true))
+                continue;
 
             int64 nTxFees = tx.GetValueIn(mapInputs)-tx.GetValueOut();
             if (nTxFees < nMinFee)
@@ -6711,7 +6702,8 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
     if (!fProofOfStake)
         return;
 
-    printf("CPUMiner started for proof-of-%s\n", fProofOfStake? "stake" : "work");
+    printf("      CPUMiner started for proof-of-%s\n", fProofOfStake? "stake" : "work");
+
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
 
     // Make this thread recognisable as the mining thread
@@ -6721,10 +6713,25 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
     CReserveKey reservekey(pwallet);
     unsigned int nExtraNonce = 0;
 
+    int nSetMinerSleep = 0;
+    int nSetMinerSleepTrue = 25 * 1000;
+    int nSetMinerSleepFalse = 15 * 1000;
+    bool fSetMinerSleep = false;
+
     while (fProofOfStake)
     {
+        nSetMinerSleep++;
+
+        if (nSetMinerSleep > nSetMinerSleepTrue + nSetMinerSleepFalse)
+            nSetMinerSleep = 0;
+        if (nSetMinerSleep >= 0 && nSetMinerSleep < nSetMinerSleepTrue)
+            fSetMinerSleep = true;
+        if (nSetMinerSleep >= nSetMinerSleepTrue)
+            fSetMinerSleep = false;
+
         if (fShutdown)
             return;
+
         while (vNodes.empty() || IsInitialBlockDownload())
         {
             Sleep(1000);
@@ -6746,51 +6753,51 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
         //
 
         CBlockIndex* pindexPrev = pindexBest;
-        auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake));
+        auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake, fSetMinerSleep));
 
         if (!pblock.get())
             return;
 
         IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
 
-        Sleep(1000);
         if (pblock->IsProofOfStake() && pblock->GetBlockTime() <= nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
         {
-            printf("      Control : hash outsides the controls interval\n");
+            printf("      'BitcoinMinerPos()' - Hash outsides the controls interval\n");
         }
-        if (pblock->IsProofOfStake() && pblock->GetBlockTime() > nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
+        if (fSetMinerSleep && pblock->IsProofOfStake() && pblock->GetBlockTime() > nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
         {
             // ppcoin: if proof-of-stake block found then process block
-            if (pblock->IsProofOfStake())
+            if (!pblock->SignBlock(*pwalletMain))
             {
-                if (!pblock->SignBlock(*pwalletMain))
-                {
-                    strMintWarning = strMintMessage;
-                    continue;
-                }
-                strMintWarning = "";
-                printf("      Control : proof-of-stake block candidate - analysis\n");
-                Sleep(15000);
-                printf("CPUMiner : proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
-                if (fGenerateSingleBlock)
-                {
-                    SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                    CheckWork(pblock.get(), *pwalletMain, reservekey);
-                    SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                    Sleep(20000);
-                    if (MintStakeThread != NULL)
-                        MintStakeThread->interrupt_all();
-                    delete MintStakeThread;
-                    MintStakeThread = NULL;
-                    break;
-                }
+                strMintWarning = strMintMessage;
+                continue;
+            }
+            strMintWarning = "";
+
+            printf("      'BitcoinMinerPos()' - proof-of-stake block candidate - analysis\n");
+
+            Sleep(nSetMinerSleepTrue);
+
+            printf("      'BitcoinMinerPos()' - proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
+
+            if (fGenerateSingleBlock)
+            {
                 SetThreadPriority(THREAD_PRIORITY_NORMAL);
                 CheckWork(pblock.get(), *pwalletMain, reservekey);
                 SetThreadPriority(THREAD_PRIORITY_LOWEST);
+                Sleep(nSetMinerSleepFalse);
+                if (MintStakeThread != NULL)
+                    MintStakeThread->interrupt_all();
+                delete MintStakeThread;
+                MintStakeThread = NULL;
+                break;
             }
-            Sleep(20000);
-            continue;
+            SetThreadPriority(THREAD_PRIORITY_NORMAL);
+            CheckWork(pblock.get(), *pwalletMain, reservekey);
+            SetThreadPriority(THREAD_PRIORITY_LOWEST);
         }
+        Sleep(nSetMinerSleepFalse);
+        continue;
     }
 }
 

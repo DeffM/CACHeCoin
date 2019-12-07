@@ -171,7 +171,7 @@ void ThreadScriptCheckQuit();
 
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
 void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
-CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake=false, bool fProofOfWork=false);
+CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake = false, bool fProofOfWork = false, bool fSetMinerSleep = false);
 bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
