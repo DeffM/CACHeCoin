@@ -88,6 +88,7 @@ const CBlockIndex* pindexPrevPos = NULL;
 const CBlockIndex* pindexPrevPrevPos = NULL;
 int64 nTimeBestReceived = 0;
 int nScriptCheckThreads = 0;
+bool fCreateCoinStakeSleep = false;
 bool fImporting = false;
 bool fConnected = false;
 bool fReindex = false;
@@ -1598,9 +1599,14 @@ int64 GetProofOfStakeReward(int64 nCoinAge)
 //
 unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
 {
-    CBigNum bnTargetLimit = bnProofOfWorkLimit;
-    if(fHardForkOne)
+   CBigNum bnTargetLimit;
+   if (nBestHeight > 2019)
+   if (pindexBest->nHeight < nFixHardForkOne)
+       bnTargetLimit = bnProofOfWorkLimit;
+   if (nBestHeight > 2019)
+   if (pindexBest->nHeight >= nFixHardForkOne)
        bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
+
     CBigNum bnResult;
     bnResult.SetCompact(nBase);
     bnResult *= 2;
@@ -2859,9 +2865,9 @@ bool CBlock::CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256
             nForkChainHeight = xindexForkChain->nHeight;
             //printf("          hash(==)=%s, hash(==)=%s\n", xindexMainChain->GetBlockHash().ToString().substr(0,8).c_str(), xindexForkChain->GetBlockHash().ToString().substr(0,8).c_str());
             //printf("          height(==)=%d, height(==)=%d\n", xindexMainChain->nHeight, xindexForkChain->nHeight);
-            return false;
+            return true;
         }
-        else
+        else if (xindexMainChain != xindexForkChain)
         {
             pMainChainHash = xindexMainChain->GetBlockHash();
             pForkChainHash = xindexForkChain->GetBlockHash();
@@ -2869,14 +2875,15 @@ bool CBlock::CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256
             nForkChainHeight = xindexForkChain->nHeight;
             //printf("          hash(!=)=%s, hash(!=)=%s\n", xindexMainChain->GetBlockHash().ToString().substr(0,8).c_str(), xindexForkChain->GetBlockHash().ToString().substr(0,8).c_str());
             //printf("          height(!=)=%d, height(!=)=%d\n", xindexMainChain->nHeight, xindexForkChain->nHeight);
-            return true;
+            return false;
         }
     }
     return true;
 }
 
-int nMinDepthReplacement = 3;
-int nMaxDepthReplacement = 0;
+int nMinDepthReplacement = 1;
+int nMaxDepthReplacement = 3;
+int nZoneLimit = 30;
 bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos)
 {
     // Check for duplicate
@@ -2948,7 +2955,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         nFixPindexBestnHeight = pindexBest->nHeight;
     }
     CBlockIndex* newblockindex = pindexNew;
-    nMaxDepthReplacement = GetArg("-maxdepthreplacement", 30);
     bool fIgnoreLaterFoundBlocks = GetArg("-ignorelaterfoundblocks", 1);
     //bool fSetVirtualDecentralizedCheckPoint = GetArg("-setvirtualdecentralizedcheckpoint", 1);
     if (!fHardForkOne && nPossibleHeight > 0)
@@ -2969,7 +2975,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             }
         }
         // Parallel search
-        for (int k = nFixPindexBestnHeight; k > nFixPindexBestnHeight - nMaxDepthReplacement * 2; k--)
+        for (int k = nFixPindexBestnHeight; k > nFixPindexBestnHeight - nMaxDepthReplacement * 100; k--)
         {
              if (k == k && k > 0)
              {
@@ -3028,13 +3034,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                  {
                      pindexMainChain = bestblockindex;
                      pindexForkChain = newblockindex;
-                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nMaxDepthReplacement &&
+                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nZoneLimit &&
                          newblockindex->GetBlockTime() != bestblockindex->GetBlockTime())
                      {
                          pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
                          if (fDebug)
                              printf(" 'CBlock->AddToBlockIndex()' - The new block pretends to a height %d, the chain starts at a height of %d, minimum allowed block height %d, NewChainTrust=%s down\n", nPossibleHeight,
-                             newblockindex->nHeight, pindexBest->nHeight - nMaxDepthReplacement, pindexNew->bnChainTrust.ToString().c_str());
+                             newblockindex->nHeight, pindexBest->nHeight - nZoneLimit, pindexNew->bnChainTrust.ToString().c_str());
                      }
 
                      if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
@@ -3043,7 +3049,9 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          std::string ResultOfChecking;
                          bool fGoIgnoreLaterFoundBlocks = true;
                          ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
-                         if (nPossibleHeight >= pindexBest->nHeight + nMinDepthReplacement && ResultOfChecking == "already have block")
+                         if (nPossibleHeight >= pindexBest->nHeight + nMinDepthReplacement && ResultOfChecking == "already have block" &&
+                             pindexBest->nHeight >= bestblockindex->pprev->nHeight + nMinDepthReplacement &&
+                             pindexBest->nHeight < bestblockindex->nHeight + nZoneLimit)
                          {
                              if (fResetSyncCheckpoint)
                              {
@@ -3077,7 +3085,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                      {
                               bool fOOPS = false;
                               bool fGoCheckPoint = true;
-                              if (pindexBest->nHeight >= bestblockindex->nHeight + nMaxDepthReplacement)
+                              if (pindexBest->nHeight >= bestblockindex->nHeight + nZoneLimit)
                               {
                                   fOOPS = true;
                                   pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
@@ -3085,7 +3093,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                   if (fDebug)
                                       printf(" 'OOPS! SORRY()' - So much to reorganize will not work\n");
                               }
-                              if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nMinDepthReplacement)
+                              if (newblockindex->nHeight <= pindexBest->nHeight - nMinDepthReplacement)
                               {
                                   bool fTrustDown = false;
                                   fGoCheckPoint = false;
@@ -3738,23 +3746,15 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     int64 deltaTime = 0;
     bnNewBlock.SetCompact(pblock->nBits);
     CBigNum bnRequired;
-    int nMainChainHeight;
-    int nForkChainHeight;
-    uint256 pMainChainHash;
-    uint256 pForkChainHash;
     CBlockIndex* pcheckpoint = Checkpoints::GetLastSyncCheckpoint();
-    if (!pblock->CheckFork(state, pMainChainHash, pForkChainHash, nMainChainHeight, nForkChainHeight))
+    if (pcheckpoint && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
     {
-        //printf("          hash(1)=%s, hash(2)=%s\n", pMainChainHash.ToString().substr(0,8).c_str(), pForkChainHash.ToString().substr(0,8).c_str());
-        if (pcheckpoint && pblock->hashPrevBlock != hashBestChain && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
+        // Extra checks to prevent "fill up memory by spamming with bogus blocks"
+        deltaTime = pblock->GetBlockTime() - pcheckpoint->nTime;
+        bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndex(pcheckpoint, pblock->IsProofOfStake())->nBits, deltaTime));
+        if (bnNewBlock > bnRequired)
         {
-            // Extra checks to prevent "fill up memory by spamming with bogus blocks"
-            deltaTime = pblock->GetBlockTime() - pcheckpoint->nTime;
-            bnRequired.SetCompact(ComputeMinWork(GetLastBlockIndex(pcheckpoint, pblock->IsProofOfStake())->nBits, deltaTime));
-            if (bnNewBlock > bnRequired)
-            {
-                return state.DoS(100, error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
-            }
+            return state.DoS(100, error("ProcessBlock() : block with too little %s", pblock->IsProofOfStake()? "proof-of-stake" : "proof-of-work"));
         }
     }
 
@@ -6062,7 +6062,7 @@ public:
 
 // CreateNewBlock:
 //   fProofOfStake: try (best effort) to make a proof-of-stake block
-CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, bool fSetMinerSleep)
+CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, bool fCreateCoinStakeSleep)
 {
     CReserveKey reservekey(pwallet);
 
@@ -6269,7 +6269,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
         CValidationState state;
         bool fMissingInputs  = false;
 
-        while (!vecPriority.empty() && fSetMinerSleep)
+        while (!vecPriority.empty() && !fCreateCoinStakeSleep)
         {
             // Take highest priority transaction off the priority queue:
             double dPriority = vecPriority.front().get<0>();
@@ -6454,10 +6454,10 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
     uint256 hashTarget = CBigNum().SetCompact(pblock->nBits).getuint256();
 
     if (hash > hashTarget && pblock->IsProofOfWork())
-        return error("BitcoinMiner : proof-of-work not meeting target");
+        return error("'CheckWork()' : proof-of-work not meeting target");
 
     //// debug print
-    printf("BitcoinMiner:\n");
+    printf("'CheckWork()':\n");
     printf("new block found  \n  hash: %s  \ntarget: %s\n", hash.GetHex().c_str(), hashTarget.GetHex().c_str());
     pblock->print();
     printf("generated %s\n", FormatMoney(pblock->vtx[0].vout[0].nValue).c_str());
@@ -6466,15 +6466,14 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
     {
         LOCK(cs_main);
         if (pblock->hashPrevBlock != hashBestChain && pblock->IsProofOfWork())
-            return error("BitcoinMiner : generated block is stale");
+            return error("'CheckWork()' : generated block is stale");
 
         if (pblock->hashPrevBlock != hashBestChain && pblock->IsProofOfStake())
         {
             if (pindexBest->IsProofOfStake())
-                return error("      Control : generated block POS accepted by the network with first thread, ignored thread two");
-                else if (pindexBest->IsProofOfWork())
-                         return error("      Control : in the network a block POW with an earlier timestamp was found");
-                         else return error("      Control : forse majeure");
+                return error("'CheckWork()' : generated block POS accepted by the network with first thread, ignored thread two");
+            else if (pindexBest->IsProofOfWork())
+                     return error("'CheckWork()' : in the network a block POW with an earlier timestamp was found");
         }
 
         // Remove key from key pool
@@ -6489,7 +6488,7 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
         // Process this block the same as if we had received it from another node
         CValidationState state;
         if (!ProcessBlock(state, NULL, pblock))
-            return error("      Control : ProcessBlock, block not accepted");
+            return error("'CheckWork()' : ProcessBlock, block not accepted");
     }
 
     return true;
@@ -6713,91 +6712,81 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
     CReserveKey reservekey(pwallet);
     unsigned int nExtraNonce = 0;
 
-    int nSetMinerSleep = 0;
     int nSetMinerSleepTrue = 25 * 1000;
-    int nSetMinerSleepFalse = 15 * 1000;
-    bool fSetMinerSleep = false;
 
     while (fProofOfStake)
     {
-        nSetMinerSleep++;
-
-        if (nSetMinerSleep > nSetMinerSleepTrue + nSetMinerSleepFalse)
-            nSetMinerSleep = 0;
-        if (nSetMinerSleep >= 0 && nSetMinerSleep < nSetMinerSleepTrue)
-            fSetMinerSleep = true;
-        if (nSetMinerSleep >= nSetMinerSleepTrue)
-            fSetMinerSleep = false;
-
-        if (fShutdown)
-            return;
-
-        while (vNodes.empty() || IsInitialBlockDownload())
+        while (fProofOfStake)
         {
-            Sleep(1000);
             if (fShutdown)
                 return;
-            if (!fProofOfStake)
-                return;
-        }
 
-        while (pwallet->IsLocked())
-        {
-            strMintWarning = strMintMessage;
-            Sleep(1000);
-        }
-        strMintWarning = "";
+            while (vNodes.empty() || IsInitialBlockDownload())
+            {
+                Sleep(1000);
+                if (fShutdown)
+                    return;
+                if (!fProofOfStake)
+                    return;
+            }
 
-        //
-        // Create new block
-        //
-
-        CBlockIndex* pindexPrev = pindexBest;
-        auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake, fSetMinerSleep));
-
-        if (!pblock.get())
-            return;
-
-        IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
-
-        if (pblock->IsProofOfStake() && pblock->GetBlockTime() <= nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
-        {
-            printf("      'BitcoinMinerPos()' - Hash outsides the controls interval\n");
-        }
-        if (fSetMinerSleep && pblock->IsProofOfStake() && pblock->GetBlockTime() > nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
-        {
-            // ppcoin: if proof-of-stake block found then process block
-            if (!pblock->SignBlock(*pwalletMain))
+            while (pwallet->IsLocked())
             {
                 strMintWarning = strMintMessage;
-                continue;
+                Sleep(1000);
             }
             strMintWarning = "";
 
-            printf("      'BitcoinMinerPos()' - proof-of-stake block candidate - analysis\n");
+            //
+            // Create new block
+            //
 
-            Sleep(nSetMinerSleepTrue);
+            CBlockIndex* pindexPrev = pindexBest;
+            auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake, fCreateCoinStakeSleep));
 
-            printf("      'BitcoinMinerPos()' - proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
+            if (!pblock.get())
+                return;
 
-            if (fGenerateSingleBlock)
+            IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
+
+            if (pblock->IsProofOfStake() && pblock->GetBlockTime() <= nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
             {
+                printf("      'BitcoinMinerPos()' - Hash outsides the controls interval\n");
+            }
+            if (pblock->IsProofOfStake() && pblock->GetBlockTime() > nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
+            {
+                // ppcoin: if proof-of-stake block found then process block
+                if (!pblock->SignBlock(*pwalletMain))
+                {
+                    strMintWarning = strMintMessage;
+                    continue;
+                }
+                strMintWarning = "";
+
+                printf("      'BitcoinMinerPos()' - proof-of-stake block candidate - analysis\n");
+
+                Sleep(nSetMinerSleepTrue);
+
+                printf("      'BitcoinMinerPos()' - proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
+
+                if (fGenerateSingleBlock)
+                {
+                    SetThreadPriority(THREAD_PRIORITY_NORMAL);
+                    CheckWork(pblock.get(), *pwalletMain, reservekey);
+                    SetThreadPriority(THREAD_PRIORITY_LOWEST);
+                    if (MintStakeThread != NULL)
+                        MintStakeThread->interrupt_all();
+                    delete MintStakeThread;
+                    MintStakeThread = NULL;
+                    break;
+                }
                 SetThreadPriority(THREAD_PRIORITY_NORMAL);
                 CheckWork(pblock.get(), *pwalletMain, reservekey);
                 SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                Sleep(nSetMinerSleepFalse);
-                if (MintStakeThread != NULL)
-                    MintStakeThread->interrupt_all();
-                delete MintStakeThread;
-                MintStakeThread = NULL;
-                break;
             }
-            SetThreadPriority(THREAD_PRIORITY_NORMAL);
-            CheckWork(pblock.get(), *pwalletMain, reservekey);
-            SetThreadPriority(THREAD_PRIORITY_LOWEST);
+            Sleep(nSetMinerSleepTrue);
+            continue;
         }
-        Sleep(nSetMinerSleepFalse);
-        continue;
     }
 }
 
