@@ -348,7 +348,7 @@ void CWallet::WalletUpdateSpent(const CTransaction &tx, bool fBlock)
                     printf("WalletUpdateSpent: bad wtx %s\n", wtx.GetHash().ToString().c_str());
                 else if (!wtx.IsSpent(txin.prevout.n) && IsMine(wtx.vout[txin.prevout.n]))
                 {
-                    printf("WalletUpdateSpent found spent coin %scach %s\n", FormatMoney(wtx.GetCredit()).c_str(), wtx.GetHash().ToString().c_str());
+                    printf("WalletUpdateSpent found spent coin %s CACHE %s\n", FormatMoney(wtx.GetCredit()).c_str(), wtx.GetHash().ToString().c_str());
                     wtx.MarkSpent(txin.prevout.n);
                     wtx.WriteToDisk();
                     NotifyTransactionChanged(this, txin.prevout.hash, CT_UPDATED);
@@ -969,7 +969,7 @@ void CWallet::ReacceptWalletTransactions()
                 }
                 if (fUpdated)
                 {
-                    printf("ReacceptWalletTransactions found spent coin %scach %s\n", FormatMoney(wtx.GetCredit()).c_str(), wtx.GetHash().ToString().c_str());
+                    printf("ReacceptWalletTransactions found spent coin %s CACHE %s\n", FormatMoney(wtx.GetCredit()).c_str(), wtx.GetHash().ToString().c_str());
                     wtx.MarkDirty();
                     wtx.WriteToDisk();
                 }
@@ -1524,9 +1524,9 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         return false;
 
     int64 nCredit = 0;
-    int nCreateCoinStakeSleep = 0;
-    int nCreateCoinStakeTrue = 75 * 1000;
-    int nCreateCoinStakeFalse = 25 * 1000;
+    int nCreateCoinStakeTrue = 30;
+    int nCreateCoinStakeFalse = 20;
+    int64 nSleepGetTime = GetTime();
     CScript scriptPubKeyKernel;
     BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
     {
@@ -1582,14 +1582,12 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         bool fKernelFound = false;
         for (unsigned int n=0; n<min(nSearchInterval,(int64)nMaxStakeSearchInterval) && !fKernelFound && !fShutdown; n++)
         {
-            if (nCreateCoinStakeSleep > nCreateCoinStakeTrue + nCreateCoinStakeFalse)
-                nCreateCoinStakeSleep = 0;
-            if (nCreateCoinStakeSleep >= 0 && nCreateCoinStakeSleep < nCreateCoinStakeTrue)
+            if (GetTime() > nSleepGetTime + nCreateCoinStakeTrue + nCreateCoinStakeFalse)
+                nSleepGetTime = GetTime();
+            if (GetTime() >= nSleepGetTime && GetTime() < nSleepGetTime + nCreateCoinStakeTrue)
                 fCreateCoinStakeSleep = false;
-            if (nCreateCoinStakeSleep >= nCreateCoinStakeTrue)
+            if (GetTime() >= nSleepGetTime + nCreateCoinStakeTrue)
                 fCreateCoinStakeSleep = true;
-
-            nCreateCoinStakeSleep++;
 
             // Search backward in time from the given txNew timestamp
             // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
@@ -1811,14 +1809,14 @@ string CWallet::SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew,
     if (IsLocked())
     {
         string strError = _("Error: Wallet locked, unable to create transaction  ");
-        printf("'CBlock->CheckFork()' : %s", strError.c_str());
+        printf("'CWallet->SendMoney()' : %s", strError.c_str());
         return strError;
     }
 
     if (fWalletUnlockMintOnly)
     {
         string strError = _("Error: Wallet unlocked for block minting only, unable to create transaction.");
-        printf("'CBlock->CheckFork()' : %s", strError.c_str());
+        printf("'CWallet->SendMoney()' : %s", strError.c_str());
         return strError;
     }
 
@@ -1829,7 +1827,7 @@ string CWallet::SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew,
             strError = strprintf(_("Error: This transaction requires a transaction fee of at least %s because of its amount, complexity, or use of recently received funds  "), FormatMoney(nFeeRequired).c_str());
         else
             strError = _("Error: Transaction creation failed  ");
-        printf("'CBlock->CheckFork()' : %s", strError.c_str());
+        printf("'CWallet->SendMoney()' : %s", strError.c_str());
         return strError;
     }
 
@@ -1839,10 +1837,10 @@ string CWallet::SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew,
     CValidationState state;
     uint256 pMainChainHash;
     uint256 pForkChainHash;
-    bool fIgnoreForkWhenSending = GetArg("-ignoreforkwhensending", 1);
-    if (!block.CheckFork(state, pMainChainHash, pForkChainHash, nMainChainHeight, nForkChainHeight) && fIgnoreForkWhenSending)
+    bool fIgnoreForkWhenSending = GetArg("-ignoreforkwhensending", 0);
+    if (!block.CheckFork(state, pMainChainHash, pForkChainHash, nMainChainHeight, nForkChainHeight))
     {
-        string strError = _("WARNING - In order to avoid loss of coins, sending is suspended, a fork is fixed in the network, to ignore it, set the parameter -ignoreforkwhensending=0");
+        string strError = _("WARNING - In order to avoid loss of coins, sending is suspended, a fork is fixed in the network, to ignore it, set the parameter -ignoreforkwhensending=1");
         printf("'CBlock->CheckFork()' %s", strError.c_str());
         return strError;
     }

@@ -118,7 +118,7 @@ int64 nTransactionFee = MIN_TX_FEE;
 bool fStakeUsePooledKeys = false;
 
 // HardForkControlFunction
-int nFixHardForkOne = 356665999;
+int nFixHardForkOne = 357830;
 std::string WatchOnlyAddress = "";
 std::string HardForkControlAddress = "";
 std::string ScriptPubKeyHardForkOP_CHECKSIG = "";
@@ -2881,7 +2881,7 @@ bool CBlock::CheckFork(CValidationState &state, uint256 &pMainChainHash, uint256
     return true;
 }
 
-int nMinDepthReplacement = 1;
+int nMinDepthReplacement = 2;
 int nMaxDepthReplacement = 3;
 int nZoneLimit = 30;
 bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos)
@@ -3049,7 +3049,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          std::string ResultOfChecking;
                          bool fGoIgnoreLaterFoundBlocks = true;
                          ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
-                         if (nPossibleHeight >= pindexBest->nHeight + nMinDepthReplacement && ResultOfChecking == "already have block" &&
+                         if (nPossibleHeight >= pindexBest->nHeight + 1 && ResultOfChecking == "already have block" &&
                              pindexBest->nHeight >= bestblockindex->pprev->nHeight + nMinDepthReplacement &&
                              pindexBest->nHeight < bestblockindex->nHeight + nZoneLimit)
                          {
@@ -6712,7 +6712,7 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
     CReserveKey reservekey(pwallet);
     unsigned int nExtraNonce = 0;
 
-    int nSetMinerSleepTrue = 25 * 1000;
+    int nSetMinerSleepTrue = 20 * 1000;
 
     while (fProofOfStake)
     {
