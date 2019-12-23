@@ -797,14 +797,14 @@ public:
         @return Returns true if all checks succeed
      */
 
-    bool CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb,  MapPrevTx& inputsRet, const std::map<uint256,
-                             CTxIndex>& mapTestPool, const CBlockIndex* pindexBlock, bool fBlock,
-                             bool fMiner, bool fScriptChecks=true, bool fReserve=true,
+    bool CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb,  MapPrevTx& inputsRet, std::map<uint256,
+                             CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx, const CBlockIndex* pindexBlock,
+                             bool fBlock, bool fMiner, bool fScriptChecks=true, bool fReserve=true,
                              std::vector<CScriptCheck> *pvChecks = NULL, unsigned int flags=STRICT_FLAGS |
                              SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE) const;
     bool ClientConnectInputs();
-    bool GoTxToMemoryPool(CValidationState &state, CTxDB& txdb, bool fCheckInputs=true,
-                          bool fLimitFree=true, bool* pfMissingInputs=NULL);
+    bool GoTxToMemoryPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, std::map<uint256,
+                          CTxIndex> &mapMemPool, bool fCheckInputs=true, bool fLimitFree=true, bool* pfMissingInputs=NULL);
     bool GetCoinAge(CTxDB& txdb, uint64& nCoinAge) const;  // ppcoin: get transaction coin age
 
 protected:
@@ -884,7 +884,7 @@ public:
     int GetDepthInMainChain() const { CBlockIndex *pindexRet; return GetDepthInMainChain(pindexRet); }
     bool IsInMainChain() const { return GetDepthInMainChain() > 0; }
     int GetBlocksToMaturity() const;
-    bool GoMerkleTxToMemoryPool(CTxDB& txdb, bool fCheckInputs=true, bool fLimitFree=true);
+    bool GoMerkleTxToMemoryPool(CTxDB& txdb, bool fCheckInputs=true, bool fLimitFree=true, bool* pfMissingInputs=NULL);
 };
 
 
@@ -1900,12 +1900,12 @@ public:
 
     bool removeConflicts(const CTransaction &tx);
     bool CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, std::map<uint256,
-                        CTxIndex>& mapMemPool, CTransaction &tx, bool fCheckInputs,
+                        CTxIndex>& mapMemPool, const CDiskTxPos& posThisTx, CTransaction &tx, bool fCheckInputs,
                         bool fLimitFree, bool* pfMissingInputs, bool fBlock, bool fMiner, bool fScriptChecks,
                         bool fGoTxToMemoryPool, bool fGoCheckInputsLevelTwo);
-    bool CheckTxMemPool(CValidationState &state, CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
-                        bool fLimitFree, bool* pfMissingInputs, bool fBlock, bool fMiner, bool fScriptChecks,
-                        bool fGoTxToMemoryPool, bool fGoCheckInputsLevelTwo);
+    bool CheckTxMemPoolForwarding(CValidationState &state, CTxDB& txdb, CTransaction &tx, bool fCheckInputs,
+                                  bool fLimitFree, bool* pfMissingInputs, bool fBlock, bool fMiner, bool fScriptChecks,
+                                  bool fGoTxToMemoryPool, bool fGoCheckInputsLevelTwo);
     bool addUnchecked(const uint256& hash, CTransaction &tx);
     bool remove(const CTransaction &tx, bool fRecursive = false);
     bool inremove(const CTransaction tx, uint256 badhash, bool fExternHash);

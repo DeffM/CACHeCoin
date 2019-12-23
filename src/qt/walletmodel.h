@@ -48,6 +48,7 @@ public:
         DuplicateAddress,
         TransactionCreationFailed, // Error returned when wallet is still locked
         TransactionCommitFailed,
+        ForkIsExistingInTheNetwork,
         Aborted
     };
 

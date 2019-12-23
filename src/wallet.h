@@ -169,7 +169,7 @@ public:
     bool AddToWalletWatchOnlyAddress(CValidationState &state, const CTransaction& tx,
                                      const CBlock* pblock, bool fUpdate);
     bool EraseFromWallet(uint256 hash);
-    void WalletUpdateSpent(const CTransaction& prevout, bool fBlock = false);
+    void WalletUpdateSpent(const CTransaction& prevout);
     int ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate = false);
     int ScanForWalletWatchAddress(CBlockIndex* pindexStart, bool fUpdate = false);
     void ReacceptWalletTransactions();
@@ -184,7 +184,7 @@ public:
     int64 GetNewMint() const;
     bool CreateTransaction(const std::vector<std::pair<CScript, int64> >& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet, const CCoinControl *coinControl=NULL);
     bool CreateTransaction(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew, CReserveKey& reservekey, int64& nFeeRet, const CCoinControl *coinControl=NULL);
-    bool CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey);
+    bool CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey, int &nNumberOfThisError, std::string &strError);
     bool CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int64 nSearchInterval, CTransaction& txNew);
     std::string SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew, bool fAskFee=false);
     std::string SendMoneyToDestination(const CTxDestination &address, int64 nValue, CWalletTx& wtxNew, bool fAskFee=false);

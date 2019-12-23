@@ -910,7 +910,9 @@ Value sendmany(const Array& params, bool fHelp)
             throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds");
         throw JSONRPCError(RPC_WALLET_ERROR, "Transaction creation failed");
     }
-    if (!pwalletMain->CommitTransaction(wtx, keyChange))
+    std::string strError = "";
+    int nNumberOfThisError = 0;
+    if (!pwalletMain->CommitTransaction(wtx, keyChange, nNumberOfThisError, strError))
         throw JSONRPCError(RPC_WALLET_ERROR, "Transaction commit failed");
 
     return wtx.GetHash().GetHex();

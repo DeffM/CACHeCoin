@@ -317,12 +317,14 @@ Value signrawtransaction(const Array& params, bool fHelp)
     vector<CTransaction> txVariants;
     while (!ssData.empty())
     {
-        try {
+        try
+        {
             CTransaction tx;
             ssData >> tx;
             txVariants.push_back(tx);
         }
-        catch (std::exception &e) {
+        catch (std::exception &e)
+        {
             throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
         }
     }
@@ -339,16 +341,19 @@ Value signrawtransaction(const Array& params, bool fHelp)
     map<COutPoint, CScript> mapPrevOut;
     for (unsigned int i = 0; i < mergedTx.vin.size(); i++)
     {
+        CTxDB txdb("r");
         CTransaction tempTx;
         MapPrevTx mapPrevTx;
-        CTxDB txdb("r");
+        CDiskTxPos posThisTx;
         CValidationState state;
         map<uint256, CTxIndex> unused;
-        bool fMissingInputs = false;
+        std::vector<CScriptCheck> vChecks;
 
         // FetchInputs aborts on failure, so we go one at a time.
         tempTx.vin.push_back(mergedTx.vin[i]);
-        mempool.CheckTxMemPool(state, txdb, mapPrevTx, unused, mergedTx, true, false, &fMissingInputs, false, false, false, false, false);
+        tempTx.CheckInputsLevelTwo(state, txdb, mapPrevTx, unused, posThisTx, pindexBest, false, false, true,
+                                   false, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
+                                   SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE);
 
         // Copy results into mapPrevOut:
         BOOST_FOREACH(const CTxIn& txin, tempTx.vin)
@@ -522,8 +527,10 @@ Value sendrawtransaction(const Array& params, bool fHelp)
     {
         // push to local node
         CTxDB txdb("r");
+        MapPrevTx mapInputs;
         CValidationState state;
-        if (!tx.GoTxToMemoryPool(state, txdb, true, false))
+        map<uint256, CTxIndex> mapUnused;
+        if (!tx.GoTxToMemoryPool(state, txdb, mapInputs, mapUnused, true, false))
             throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX rejected");
 
         SyncWithWallets(tx, NULL, true);

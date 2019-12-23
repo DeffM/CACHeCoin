@@ -331,7 +331,7 @@ CWallet::TxItems CWallet::OrderedTxItems(std::list<CAccountingEntry>& acentries,
     return txOrdered;
 }
 
-void CWallet::WalletUpdateSpent(const CTransaction &tx, bool fBlock)
+void CWallet::WalletUpdateSpent(const CTransaction &tx)
 {
     // Anytime a signature is successfully verified, it's proof the outpoint is spent.
     // Update the wallet spent flag if it doesn't know due to wallet.dat being
@@ -352,23 +352,6 @@ void CWallet::WalletUpdateSpent(const CTransaction &tx, bool fBlock)
                     wtx.MarkSpent(txin.prevout.n);
                     wtx.WriteToDisk();
                     NotifyTransactionChanged(this, txin.prevout.hash, CT_UPDATED);
-                }
-            }
-        }
-
-        if (fBlock)
-        {
-            uint256 hash = tx.GetHash();
-            map<uint256, CWalletTx>::iterator mi = mapWallet.find(hash);
-            CWalletTx& wtx = (*mi).second;
-
-            BOOST_FOREACH(const CTxOut& txout, tx.vout)
-            {
-                if (IsMine(txout))
-                {
-                    wtx.MarkUnspent(&txout - &tx.vout[0]);
-                    wtx.WriteToDisk();
-                    NotifyTransactionChanged(this, hash, CT_UPDATED);
                 }
             }
         }
@@ -496,7 +479,7 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn)
         }
 #endif
         // since AddToWallet is called directly for self-originating transactions, check for consumption of own coins
-        WalletUpdateSpent(wtx, (wtxIn.hashBlock != 0));
+        WalletUpdateSpent(wtx);
 
         // Notify UI of new or updated transaction
         NotifyTransactionChanged(this, hash, fInsertedNew ? CT_NEW : CT_UPDATED);
@@ -1747,13 +1730,32 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
 }
 
 // Call after CreateTransaction unless you want to abort
-bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey)
+bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey, int &nNumberOfThisError, std::string &strError)
 {
     CTxDB txdb;
+    strError = "";
+    nNumberOfThisError = 0;
     CValidationState state;
     bool fMissingInputs = false;
-    if (!mempool.CheckTxMemPool(state, txdb, wtxNew, true, false, &fMissingInputs, false, false, false, false, false))
+    if (!mempool.CheckTxMemPoolForwarding(state, txdb, wtxNew, true, false, &fMissingInputs, false, false, false, false, false))
+    {
+        nNumberOfThisError = 1;
         return false;
+    }
+
+    CBlock block;
+    int nMainChainHeight;
+    int nForkChainHeight;
+    uint256 pMainChainHash;
+    uint256 pForkChainHash;
+    bool fIgnoreForkWhenSending = GetArg("-ignoreforkwhensending", 0);
+    if (!block.CheckFork(state, pMainChainHash, pForkChainHash, nMainChainHeight, nForkChainHeight) && !fIgnoreForkWhenSending)
+    {
+        nNumberOfThisError = 2;
+        strError = _("WARNING - In order to avoid loss of coins, sending is suspended, a fork is existing in the network, to ignore it, set the parameter -ignoreforkwhensending=1");
+        printf("'CBlock->CheckFork()' %s", strError.c_str());
+        return false;
+    }
 
     {
         LOCK2(cs_main, cs_wallet);
@@ -1831,25 +1833,13 @@ string CWallet::SendMoney(CScript scriptPubKey, int64 nValue, CWalletTx& wtxNew,
         return strError;
     }
 
-    CBlock block;
-    int nMainChainHeight;
-    int nForkChainHeight;
-    CValidationState state;
-    uint256 pMainChainHash;
-    uint256 pForkChainHash;
-    bool fIgnoreForkWhenSending = GetArg("-ignoreforkwhensending", 0);
-    if (!block.CheckFork(state, pMainChainHash, pForkChainHash, nMainChainHeight, nForkChainHeight))
-    {
-        string strError = _("WARNING - In order to avoid loss of coins, sending is suspended, a fork is fixed in the network, to ignore it, set the parameter -ignoreforkwhensending=1");
-        printf("'CBlock->CheckFork()' %s", strError.c_str());
-        return strError;
-    }
-
     if (fAskFee && !uiInterface.ThreadSafeAskFee(nFeeRequired, _("Sending...")))
         return "ABORTED";
 
-    if (!CommitTransaction(wtxNew, reservekey))
-        return _("Error: The transaction was rejected.  This might happen if some of the coins in your wallet were already spent, such as if you used a copy of wallet.dat and coins were spent in the copy but not marked as spent here.");
+    std::string strError = "";
+    int nNumberOfThisError = 0;
+    if (!CommitTransaction(wtxNew, reservekey, nNumberOfThisError, strError))
+        return _("Error: The transaction was rejected. This might happen if some of the coins in your wallet were already spent, such as if you used a copy of wallet.dat and coins were spent in the copy but not marked as spent here.");
 
     return "";
 }

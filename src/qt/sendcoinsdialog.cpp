@@ -209,6 +209,11 @@ void SendCoinsDialog::on_sendButton_clicked()
             tr("Error: The transaction was rejected. This might happen if some of the coins in your wallet were already spent, such as if you used a copy of wallet.dat and coins were spent in the copy but not marked as spent here."),
             QMessageBox::Ok, QMessageBox::Ok);
         break;
+    case WalletModel::ForkIsExistingInTheNetwork:
+        QMessageBox::warning(this, tr("Send Coins"),
+            tr("WARNING: In order to avoid loss of coins, sending is suspended, a fork is existing in the network, to ignore it, set the parameter -ignoreforkwhensending=1."),
+            QMessageBox::Ok, QMessageBox::Ok);
+        break;
     case WalletModel::Aborted: // User aborted, nothing to do
         break;
     case WalletModel::OK:

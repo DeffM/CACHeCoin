@@ -768,7 +768,7 @@ bool CTxDB::LoadBlockIndex()
                                         printf("LoadBlockIndex(): *** cannot read spending transaction of %s:%i from disk\n", hashTx.ToString().c_str(), nOutput);
                                         pindexFork = pindex->pprev;
                                     }
-                                    else if (!mempool.CheckTxMemPool(state, txdb, txSpend, true, false, &fMissingInputs, false, false, false, false, false))
+                                    else if (!mempool.CheckTxMemPoolForwarding(state, txdb, txSpend, true, false, &fMissingInputs, false, false, false, false, false))
                                     {
                                         printf("LoadBlockIndex(): *** spending transaction of %s:%i is invalid\n", hashTx.ToString().c_str(), nOutput);
                                         pindexFork = pindex->pprev;

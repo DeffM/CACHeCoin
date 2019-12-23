@@ -206,9 +206,14 @@ WalletModel::SendCoinsReturn WalletModel::sendCoins(const QList<SendCoinsRecipie
         {
             return Aborted;
         }
-        if(!wallet->CommitTransaction(wtx, keyChange))
+        std::string strError = "";
+        int nNumberOfThisError = 0;
+        if(!wallet->CommitTransaction(wtx, keyChange, nNumberOfThisError, strError))
         {
-            return TransactionCommitFailed;
+            if (nNumberOfThisError == 0)
+                return TransactionCommitFailed;
+            if (nNumberOfThisError == 2)
+                return ForkIsExistingInTheNetwork;
         }
         hex = QString::fromStdString(wtx.GetHash().GetHex());
     }
