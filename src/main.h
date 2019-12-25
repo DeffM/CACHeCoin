@@ -92,6 +92,7 @@ extern std::string ScriptPubKeyAddressOP_HASH160;
 extern bool IsWatchOnlyAddressVtx;
 extern bool fCreateCoinStakeSleep;
 extern bool IsWatchOnlyAddressTx;
+extern bool fCheckFork;
 extern bool fImporting;
 extern bool fReindex;
 extern unsigned int nTransactionsUpdated;
