@@ -79,8 +79,6 @@ extern int64 nBestHeightTime;
 extern int64 nWatchOnlyAddressCalc;
 extern CBigNum bnBestChainTrust;
 extern CBigNum bnBestInvalidTrust;
-extern uint256 nBestChainTrust;
-extern uint256 nBestInvalidTrust;
 extern uint256 hashBestChain;
 extern CBlockIndex* pindexBest;
 extern std::string WatchOnlyAddress;
@@ -800,9 +798,9 @@ public:
 
     bool CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb,  MapPrevTx& inputsRet, std::map<uint256,
                              CTxIndex>& mapTestPool, const CDiskTxPos& posThisTx, const CBlockIndex* pindexBlock,
-                             bool fBlock, bool fMiner, bool fScriptChecks=true, bool fReserve=true,
-                             std::vector<CScriptCheck> *pvChecks = NULL, unsigned int flags=STRICT_FLAGS |
-                             SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE) const;
+                             bool &fSkippingChecks, bool fBlock, bool fMiner, bool fScriptChecks=true,
+                             bool fReserve=false, std::vector<CScriptCheck> *pvChecks = NULL, unsigned int
+                             flags=STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE) const;
     bool ClientConnectInputs();
     bool GoTxToMemoryPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, std::map<uint256,
                           CTxIndex> &mapMemPool, bool fCheckInputs=true, bool fLimitFree=true, bool* pfMissingInputs=NULL);
@@ -1423,7 +1421,6 @@ public:
     CBlockIndex* pnext;
     unsigned int nFile;
     unsigned int nBlockPos;
-    uint256 nChainTrust;  // cacheproject
     CBigNum bnChainTrust; // ppcoin: trust score of block chain
     int nHeight;
 
@@ -1457,7 +1454,6 @@ public:
         nFile = 0;
         nBlockPos = 0;
         nHeight = 0;
-        nChainTrust = 0;
         bnChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
@@ -1479,7 +1475,6 @@ public:
         nFile = nFileIn;
         nBlockPos = nBlockPosIn;
         nHeight = 0;
-        nChainTrust = 0;
         bnChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;

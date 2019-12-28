@@ -346,13 +346,14 @@ Value signrawtransaction(const Array& params, bool fHelp)
         MapPrevTx mapPrevTx;
         CDiskTxPos posThisTx;
         CValidationState state;
+        bool fSkippingChecks = false;
         map<uint256, CTxIndex> unused;
         std::vector<CScriptCheck> vChecks;
 
         // FetchInputs aborts on failure, so we go one at a time.
         tempTx.vin.push_back(mergedTx.vin[i]);
-        tempTx.CheckInputsLevelTwo(state, txdb, mapPrevTx, unused, posThisTx, pindexBest, false, false, true,
-                                   false, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
+        tempTx.CheckInputsLevelTwo(state, txdb, mapPrevTx, unused, posThisTx, pindexBest, fSkippingChecks, false,
+                                   false, true, false, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
                                    SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE);
 
         // Copy results into mapPrevOut:
