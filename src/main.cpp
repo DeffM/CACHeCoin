@@ -3069,7 +3069,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          if (fDebug)
                              printf(" 'CBlock->AddToBlockIndex()' - The new block pretends to a height %d, the chain starts at a height of %d, minimum allowed block height %d, NewChainTrust=%s down\n", nPossibleHeight,
                              newblockindex->nHeight, pindexBest->nHeight - nZoneLimit, pindexNew->bnChainTrust.ToString().c_str());
-                         return true;
+                         //return true;
                      }
 
                      pindexMainChain = bestblockindex;
@@ -3082,8 +3082,8 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          std::string ResultOfChecking;
                          bool fGoIgnoreLaterFoundBlocks = true;
                          ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
-                         if (nPossibleHeight >= pindexBest->nHeight + 1 && ResultOfChecking == "already have block" &&
-                             pindexBest->nHeight >= bestblockindex->pprev->nHeight + nMinDepthReplacement &&
+                         if (nPossibleHeight >= pindexBest->nHeight + nMinDepthReplacement && ResultOfChecking == "already have block" &&
+                             pindexBest->nHeight > bestblockindex->pprev->nHeight + nMinDepthReplacement &&
                              pindexBest->nHeight < bestblockindex->nHeight + nZoneLimit)
                          {
                              if (fResetSyncCheckpoint)
