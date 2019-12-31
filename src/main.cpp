@@ -3059,9 +3059,8 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
              {
                  if (newblockindex->pprev->GetBlockHash() == bestblockindex->pprev->GetBlockHash())
                  {
-                     //return true;
                      bool fShowLog = true;
-                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nZoneLimit &&
+                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nZoneLimit + 1 &&
                          newblockindex->GetBlockTime() != bestblockindex->GetBlockTime())
                      {
                          fShowLog = false;
@@ -3107,6 +3106,8 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                   pindexBest->nHeight > bestblockindex->pprev->nHeight + nMinDepthReplacement &&
                                   pindexBest->nHeight >= bestblockindex->nHeight + nZoneLimit)
                          {
+                                  pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
+                                  Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
                                   if (fDebug)
                                       printf(" 'OOPS! SORRY()' - So much to reorganize will not work\n");
                          }
@@ -3146,6 +3147,11 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                   fGoCheckPoint = false;
                                   if (nPossibleHeight > pindexBest->nHeight && !fOOPS)
                                   {
+                                      if (fResetSyncCheckpoint)
+                                      {
+                                          Checkpoints::hashSyncCheckpoint = checkpointhash;
+                                      }
+
                                       fTrustDown = true;
                                       {
                                           bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
