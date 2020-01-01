@@ -1744,12 +1744,12 @@ bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey, int 
     }
 
     CBlock block;
-    int nMainChainHeight;
-    int nForkChainHeight;
-    uint256 pMainChainHash;
-    uint256 pForkChainHash;
+    int nForkBlockHeight;
+    int nForkParentHeight;
+    uint256 pLastCheckpointHash;
+    uint256 pSyncCheckpointHash;
     bool fIgnoreForkWhenSending = GetArg("-ignoreforkwhensending", 0);
-    if ((fCheckFork || !block.CheckFork(state, pMainChainHash, pForkChainHash, nMainChainHeight, nForkChainHeight)) && !fIgnoreForkWhenSending)
+    if ((!block.CheckFork(state, pSyncCheckpointHash, pLastCheckpointHash, nForkParentHeight, nForkBlockHeight) || fCheckFork) && !fIgnoreForkWhenSending)
     {
         nNumberOfThisError = 2;
         strError = _("WARNING - In order to avoid loss of coins, sending is suspended, a fork is existing in the network, to ignore it, set the parameter -ignoreforkwhensending=1");
