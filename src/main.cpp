@@ -2876,7 +2876,7 @@ bool CBlock::CheckFork(CValidationState &state, uint256 &pSyncCheckpointHash, ui
 {
     uint256 checkpointhash;
     bool fIsHashSyncCheckpoint = false;
-    nZoneLimit = GetArg("-zonelimit", 8);
+    nZoneLimit = GetArg("-zonelimit", 70);
     for (int m = 0; m <= pindexBest->nHeight; m++)
     {
        Checkpoints::CheckMapCheckpointsHash(m, checkpointhash);
@@ -2887,25 +2887,28 @@ bool CBlock::CheckFork(CValidationState &state, uint256 &pSyncCheckpointHash, ui
        }
     }
 
-    CBlockIndex* pindexForkParent = NULL;
-    map<uint256, CBlockIndex*>::iterator miPrev = mapBlockIndex.find(Checkpoints::hashSyncCheckpoint);
-    if (miPrev != mapBlockIndex.end() && !fIsHashSyncCheckpoint)
+    if (!fIsHashSyncCheckpoint)
     {
         fIsHashSyncCheckpoint = true;
-        pindexForkParent->pprev = (*miPrev).second;
-        pindexForkParent->nHeight = pindexForkParent->pprev->nHeight + 1;
+        uint256 hash = Checkpoints::hashSyncCheckpoint;
+        if (mapBlockIndex.count(hash) == 0)
+            if (fDebug)
+                printf(" 'CBlock->CheckFork()' - Virtual checkpoint hash = %s\n",
+                hash.ToString().substr(0,20).c_str());
+        CBlockIndex* pindexForkParent = mapBlockIndex[hash];
         nForkParentHeight = pindexForkParent->pprev->nHeight;
-        pSyncCheckpointHash = Checkpoints::hashSyncCheckpoint;
-        if (pindexForkParent->nHeight >= pindexBest->nHeight - nZoneLimit)
+        pSyncCheckpointHash = hash;
+        if (nForkParentHeight >= pindexBest->nHeight - nZoneLimit)
         {
             fIsHashSyncCheckpoint = false;
             if (fDebug)
                 printf(" 'CBlock->CheckFork()' - ForkParentHeight=%d, SyncCheckpointHash=%s\n", nForkParentHeight, pSyncCheckpointHash.ToString().substr(0,20).c_str());
         }
     }
+
     pLastCheckPointHash = checkpointhash;
     if (fDebug)
-        printf(" 'CBlock->CheckFork()' - Last checkpoint hash=%s\n", pLastCheckPointHash.ToString().substr(0,20).c_str());
+        printf(" 'CBlock->CheckFork()' - Last checkpoint hash = %s\n", pLastCheckPointHash.ToString().c_str());
     return fIsHashSyncCheckpoint;
 }
 
@@ -2983,7 +2986,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         nFixPindexBestnHeight = pindexBest->nHeight;
     }
     CBlockIndex* newblockindex = pindexNew;
-    nZoneLimit = GetArg("-zonelimit", 8);
+    nZoneLimit = GetArg("-zonelimit", 70);
     //bool fIgnoreLaterFoundBlocks = GetArg("-ignorelaterfoundblocks", 0);
     //bool fSetVirtualDecentralizedCheckPoint = GetArg("-setvirtualdecentralizedcheckpoint", 1);
     if (!fHardForkOne && nPossibleHeight > 0)
@@ -3066,7 +3069,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                  if (newblockindex->pprev->GetBlockHash() == bestblockindex->pprev->GetBlockHash())
                  {
                      bool fShowLog = true;
-                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - nZoneLimit + 1 &&
+                     if (newblockindex->pprev->nHeight <= pindexBest->nHeight - (nZoneLimit + 1) &&
                          newblockindex->GetBlockTime() != bestblockindex->GetBlockTime())
                      {
                          fShowLog = false;
@@ -3074,7 +3077,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
                          if (fDebug)
                              printf(" 'CBlock->AddToBlockIndex()' - The new block pretends to a height %d, the chain starts at a height of %d, minimum allowed block height %d, NewChainTrust=%s down\n", nPossibleHeight,
-                             newblockindex->nHeight, pindexBest->nHeight - nZoneLimit, pindexNew->bnChainTrust.ToString().c_str());
+                             newblockindex->nHeight, pindexBest->nHeight - (nZoneLimit + 1), pindexNew->bnChainTrust.ToString().c_str());
                      }
 
                      if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
@@ -3426,19 +3429,19 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
         if (fHardForkOne)
-        if (pindexPrev->nHeight <= pindexBest->pprev->nHeight)
-        {
-            fGoFalse = false;
-            if (fDebug && fCheckDebug)
-                printf(" 'CBlock->ValidationCheckBlock()' - Entry at block height=%d, accepted\n", pindexPrev->nHeight + 1);
-            if (pindexPrev->nHeight + 1 <= pindexBest->nHeight - nMaximumDepthInBlocksForEntry)
+            if (pindexPrev->nHeight <= pindexBest->pprev->nHeight)
             {
-               ResultOfChecking = "too deep";
-               if (fDebug && fCheckDebug)
-                   printf(" 'CBlock->ValidationCheckBlock()' - Too deep, max depth %d block\n", nMaximumDepthInBlocksForEntry);
-               return true;
+                fGoFalse = false;
+                if (fDebug && fCheckDebug)
+                    printf(" 'CBlock->ValidationCheckBlock()' - Entry at block height=%d, accepted\n", pindexPrev->nHeight + 1);
+                if (pindexPrev->nHeight + 1 <= pindexBest->nHeight - nMaximumDepthInBlocksForEntry)
+                {
+                    ResultOfChecking = "too deep";
+                    if (fDebug && fCheckDebug)
+                        printf(" 'CBlock->ValidationCheckBlock()' - Too deep, max depth %d block\n", nMaximumDepthInBlocksForEntry);
+                    return true;
+                }
             }
-        }
     }
 
     uint256 hash = GetHash();
