@@ -1780,15 +1780,15 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
 {
      CBigNum bnTargetLimit = bnProofOfWorkLimit;
 
-     if(fProofOfStake)
+     if (fProofOfStake)
      {
         // Proof-of-Stake blocks has own target limit since nVersion=3 supermajority on mainNet and always on testNet
-        if(fTestNet)
+        if (fTestNet)
             bnTargetLimit = bnProofOfStakeHardLimit;
-            else
-             {
-                bnTargetLimit = bnProofOfStakeHardLimit;
-             }
+        else
+        {
+            bnTargetLimit = bnProofOfStakeHardLimit;
+        }
     }
     if (pindexLast == NULL)
         return bnTargetLimit.GetCompact(); // genesis block
@@ -1806,33 +1806,33 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
     CBigNum bnNew;
     bnNew.SetCompact(pindexPrev->nBits);
     int64 nTargetSpacing;
-    if(pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() <= nPowForceTimestamp)
+    if (pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() <= nPowForceTimestamp)
     {
-       if(pindexPrev->GetBlockTime() < 1391046000)
-          nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
-          else if(pindexPrev->GetBlockTime() < POWFIX_DATE)
-                  nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min((int64) nStakeTargetSpacing * 2, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
-                  else if(nActualSpacing > nStakeTargetSpacing * 6)
-                  {
-                          int factor = (nActualSpacing / nStakeTargetSpacing);
+        if (pindexPrev->GetBlockTime() < 1391046000)
+            nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
+            else if (pindexPrev->GetBlockTime() < POWFIX_DATE)
+                     nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min((int64) nStakeTargetSpacing * 2, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
+                     else if (nActualSpacing > nStakeTargetSpacing * 6)
+                     {
+                              int factor = (nActualSpacing / nStakeTargetSpacing);
                               factor /= 3;
                               factor--;
                               bnNew *= factor;
-                           if(bnNew > bnTargetLimit)
-                              bnNew = bnTargetLimit;
-                           return bnNew.GetCompact();
-                  }
-                  else
-                  {
-                       nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
-                  }
+                              if (bnNew > bnTargetLimit)
+                                  bnNew = bnTargetLimit;
+                              return bnNew.GetCompact();
+                     }
+                     else
+                     {
+                              nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
+                     }
 
-           int64 nInterval = nTargetTimespan / nTargetSpacing;
-           bnNew *= ((nInterval - 1) * nTargetSpacing + nActualSpacing + nActualSpacing);
-           bnNew /= ((nInterval + 1) * nTargetSpacing);
+                     int64 nInterval = nTargetTimespan / nTargetSpacing;
+                     bnNew *= ((nInterval - 1) * nTargetSpacing + nActualSpacing + nActualSpacing);
+                     bnNew /= ((nInterval + 1) * nTargetSpacing);
 
-         if (bnNew > bnTargetLimit)
-             bnNew = bnTargetLimit;
+                     if (bnNew > bnTargetLimit)
+                         bnNew = bnTargetLimit;
     }
     return bnNew.GetCompact();
 }
@@ -1847,8 +1847,8 @@ int64 GetProofOfWorkReward(unsigned int nBits)
     CBigNum bnTarget;
     bnTarget.SetCompact(nBits);
     CBigNum bnTargetLimit = bnProofOfWorkLimit;
-    if(fHardForkOne)
-       bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
+    if (fHardForkOne)
+        bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
     bnTargetLimit.SetCompact(bnTargetLimit.GetCompact());
 
     // cacheproject subsidy
@@ -1864,11 +1864,13 @@ int64 GetProofOfWorkReward(unsigned int nBits)
         else
             bnLowerBound = bnMidValue;
     }
-    if(nPowPindexPrevTime > nPowForceTimestamp + NTest)
+
+    if (nPowPindexPrevTime > nPowForceTimestamp + NTest)
     {
-       bnUpperBound = bnMaxSubsidyLimit - bnUpperBound;
-       bnLowerBound = bnMaxSubsidyLimit - bnLowerBound;
+        bnUpperBound = bnMaxSubsidyLimit - bnUpperBound;
+        bnLowerBound = bnMaxSubsidyLimit - bnLowerBound;
     }
+
     int64 nSubsidy = bnUpperBound.getuint64();
     nSubsidy = (nSubsidy / CENT) * CENT;
     if (fDebug && GetBoolArg("-printcreation"))
@@ -1911,15 +1913,16 @@ int64 GetProofOfStakeReward(int64 nCoinAge)
 {
     int64 nSubsidy;
     static int64 nRewardCoinYear = 5 * CENT;  // creation amount per coin-year
-    if(fTestNet)
-       nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
+    if (fTestNet)
+        nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
     else if(pindexBest->GetBlockTime() >= 1393140000)
             nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
     else
-           nSubsidy = nCoinAge * 33 / (365 * 33 + 8) * nRewardCoinYear;
+            nSubsidy = nCoinAge * 33 / (365 * 33 + 8) * nRewardCoinYear;
 
     if (fDebug && GetBoolArg("-printcreation"))
         printf("GetProofOfStakeReward(): create=%s nCoinAge=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nCoinAge);
+
     return nSubsidy;
 }
 
@@ -1931,11 +1934,11 @@ unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
 {
    CBigNum bnTargetLimit;
    if (nBestHeight > 2019)
-   if (pindexBest->nHeight < nFixHardForkOne)
-       bnTargetLimit = bnProofOfWorkLimit;
+       if (pindexBest->nHeight < nFixHardForkOne)
+           bnTargetLimit = bnProofOfWorkLimit;
    if (nBestHeight > 2019)
-   if (pindexBest->nHeight >= nFixHardForkOne)
-       bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
+       if (pindexBest->nHeight >= nFixHardForkOne)
+           bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
 
     CBigNum bnResult;
     bnResult.SetCompact(nBase);
@@ -1960,11 +1963,11 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits)
     if (bnTarget <= 0)
         return error("CheckProofOfWork() : nBits below minimum work");
     if (nBestHeight > 2019)
-    if (pindexBest->nHeight < nFixHardForkOne && bnTarget > bnProofOfWorkLimit)
-        return error("CheckProofOfWork() : nBits below minimum work");
+        if (pindexBest->nHeight < nFixHardForkOne && bnTarget > bnProofOfWorkLimit)
+            return error("CheckProofOfWork() : nBits below minimum work");
     if (nBestHeight > 2019)
-    if (pindexBest->nHeight >= nFixHardForkOne && bnTarget > bnProofOfWorkAdaptedJaneLimit)
-        return error("CheckProofOfWork() : nBits below minimum work");
+        if (pindexBest->nHeight >= nFixHardForkOne && bnTarget > bnProofOfWorkAdaptedJaneLimit)
+            return error("CheckProofOfWork() : nBits below minimum work");
 
     // Check proof of work matches claimed amount
     if (hash > bnTarget.getuint256())
@@ -2206,14 +2209,14 @@ bool IsInitialBlockDownload()
         return true;
     static int64 nLastUpdate;
     static CBlockIndex* pindexLastBest;
-    int64 nCurrentTime = GetTime();
+    int64 nCurrentTime = GetAdjustedTime();
     if (pindexBest != pindexLastBest)
     {
         pindexLastBest = pindexBest;
         nLastUpdate = nCurrentTime;
     }
     return (nCurrentTime - nLastUpdate < 10 &&
-            pindexBest->GetBlockTime() < nCurrentTime - 24 * 60 * 60);
+            pindexBest->GetBlockTime() < nCurrentTime - 12 * 60 * 60);
 }
 
 void static InvalidChainFound(CBlockIndex* pindexNew)
@@ -3897,7 +3900,6 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
             mapOrphanBlocksByPrev.insert(make_pair(pblock2->hashPrevBlock, pblock2));
 
             // Ask this guy to fill in what we're missing
-            if (!pblock2->IsProofOfStake() || !IsUntilFullCompleteOneHundredFortyFourBlocks())
                 pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(pblock2));
 
             // ppcoin: getblocks may not obtain the ancestor block rejected
