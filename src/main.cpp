@@ -117,7 +117,7 @@ int64 nTransactionFee = MIN_TX_FEE;
 bool fStakeUsePooledKeys = false;
 
 // HardForkControlFunction
-int nFixHardForkOne = 361385;
+int nFixHardForkOne = 364000;
 std::string WatchOnlyAddress = "";
 std::string HardForkControlAddress = "";
 std::string ScriptPubKeyHardForkOP_CHECKSIG = "";
@@ -360,40 +360,40 @@ int nSetTimeBeforeSwitching = 0;
 int nControlTimeBeforeSwitching = 0;
 bool SetReload()
 {
-     bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 0);
-     if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
-     {
-            nControlTimeStartCync++;
-            nControlTimeRestartCync++;
+    bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
+    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+    {
+        nControlTimeStartCync++;
+        nControlTimeRestartCync++;
 
-            if (nControlTimeStartCync > 60)
-            {
-                fStartCync = true;
-                nControlTimeStartCync = 0;
-                if (fDebug)
-                    printf("     SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
-            }
-            if (nControlTimeRestartCync > 120)
-            {
-                fRestartCync = true;
-                nControlTimeRestartCync = 0;
-                if (fDebug)
-                    printf("     The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
-            }
-     }
-     nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
-     bool fTimeBeforeSwitching = GetArg("-timebeforeswitching", 1);
-     if (fTimeBeforeSwitching && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
-     {
-            nControlTimeBeforeSwitching++;
-            if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
-            {
-                fRestartCync = true;
-                nControlTimeBeforeSwitching = 0;
-                printf("     For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
-            }
-     }
-     return true;
+        if (nControlTimeStartCync > 60)
+        {
+            fStartCync = true;
+            nControlTimeStartCync = 0;
+            if (fDebug && false)
+                printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
+        }
+        if (nControlTimeRestartCync > 120)
+        {
+            fRestartCync = true;
+            nControlTimeRestartCync = 0;
+            if (fDebug)
+                printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
+        }
+    }
+    nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
+    bool fTimeBeforeSwitching = GetArg("-timebeforeswitching", 1);
+    if (fTimeBeforeSwitching && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+    {
+        nControlTimeBeforeSwitching++;
+        if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
+        {
+            fRestartCync = true;
+            nControlTimeBeforeSwitching = 0;
+            printf(" 'SetReload()' - For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
+        }
+    }
+    return true;
 }
 
 void ThreadAnalyzerHandler()
@@ -4816,7 +4816,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoInv = true;
     bool fGoBlock = true;
     bool fGoGetblocks = true;
-    bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 0);
+    bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     std::string wait2(strCommand.c_str()), stCommand2("getdata");
@@ -4944,11 +4944,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             return true;
         }
 
-        if (pfrom->nVersion < 91003 && fHardForkOne)
+        if (pfrom->nVersion < 91004 && fHardForkOne)
         {
-            //printf("partner %s using a buggy client %d, disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
-            //pfrom->fDisconnect = true;
-            //return true;
+            printf("partner %s using a buggy client %d, disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
+            pfrom->fDisconnect = true;
+            return true;
         }
 
         // record my external IP reported by peer
