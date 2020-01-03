@@ -2901,7 +2901,7 @@ bool CBlock::CheckFork(CValidationState &state, uint256 &pSyncCheckpointHash, ui
         CBlockIndex* pindexForkParent = mapBlockIndex[hash];
         nForkParentHeight = pindexForkParent->pprev->nHeight;
         pSyncCheckpointHash = hash;
-        if (nForkParentHeight >= pindexBest->nHeight - nZoneLimit)
+        if (nForkParentHeight >= pindexBest->nHeight - (nZoneLimit + 1))
         {
             fIsHashSyncCheckpoint = false;
             if (fDebug)
@@ -3094,16 +3094,15 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                              pindexBest->nHeight > bestblockindex->pprev->nHeight + nMinDepthReplacement &&
                              pindexBest->nHeight < bestblockindex->nHeight + nZoneLimit)
                          {
+                             fGoIgnoreLaterFoundBlocks = false;
                              if (fResetSyncCheckpoint)
                                  Checkpoints::hashSyncCheckpoint = checkpointhash;
 
-                             fGoIgnoreLaterFoundBlocks = false;
                              {
                                  bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
                                  pindexNew->bnChainTrust = pindexNew->pprev->bnChainTrust + pindexNew->GetBlockTrust();
                              }
-
-                             Checkpoints::hashSyncCheckpoint = newblockindex->GetBlockHash();
+                                 Checkpoints::hashSyncCheckpoint = newblockindex->GetBlockHash();
 
                              if (fDebug)
                                  printf(" 'CBlock->AddToBlockIndex()' - This fork has an earlyer timestamp, but the information was spread late - switching to longer branch, the height of the blocks is %d, the maximum height of the blocks is %d\n",
@@ -3115,8 +3114,10 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          {
                                   if (fResetSyncCheckpoint)
                                       Checkpoints::hashSyncCheckpoint = checkpointhash;
+
                                   pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
                                   Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
+
                                   if (fDebug)
                                       printf(" 'OOPS! SORRY()' - So much to reorganize will not work\n");
                          }
@@ -3147,6 +3148,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                   fOOPS = true;
                                   pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
                                   Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
+
                                   if (fDebug)
                                       printf(" 'OOPS! SORRY()' - So much to reorganize will not work\n");
                               }
@@ -3162,14 +3164,15 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                   fGoCheckPoint = false;
                                   if (nPossibleHeight > pindexBest->nHeight && !fOOPS)
                                   {
+                                      fTrustDown = true;
                                       if (fResetSyncCheckpoint)
                                           Checkpoints::hashSyncCheckpoint = checkpointhash;
 
-                                      fTrustDown = true;
                                       {
                                           bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
                                           pindexNew->bnChainTrust = pindexNew->pprev->bnChainTrust + pindexNew->GetBlockTrust();
                                       }
+
                                       if (fDebug)
                                           printf(" 'CBlock->AddToBlockIndex()' - A new block with a propagation delay of height %d, is adopted by the protocol\n",
                                           nPossibleHeight);
@@ -3179,7 +3182,9 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                   {
                                       if (fResetSyncCheckpoint)
                                           Checkpoints::hashSyncCheckpoint = checkpointhash;
+
                                       pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
+
                                       if (fDebug)
                                           printf(" 'CBlock->AddToBlockIndex()' - The protocol registered a new block with a height %d, with an earlyer timestamp, but the information delayed, the height of the blockchain %d, height comparison mode is enabled\n",
                                           nPossibleHeight, pindexBest->nHeight);
@@ -3212,40 +3217,32 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() >=
              pindexPrevPrevPos->GetBlockHash())
     {
-             printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
-             printf(" 'CBlock->AddToBlockIndex()' - NewChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
+             printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust = %s, NewChainTrust = %s\n", bnBestChainTrust.ToString().c_str(), pindexNew->bnChainTrust.ToString().c_str());
              if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() >
                  pindexBest->GetBlockHash()) : (hash > pindexBest->GetBlockHash())))
              {
-                 printf(" 'CBlock->AddToBlockIndex()' : bnChainTrust = bnBestChainTrust - Block accepted\n");
+                 printf(" 'CBlock->AddToBlockIndex()' - Block accepted\n");
                  if (!SetBestChain(state, txdb, pindexNew))
                  {
                      return false;
                  }
              }
-             else
-             {
-                  printf(" 'CBlock->AddToBlockIndex()' : bnChainTrust = bnBestChainTrust - Block not accepted\n");
-             }
+             else    printf(" 'CBlock->AddToBlockIndex()' - Block not accepted\n");
     }
     else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() <
              pindexPrevPrevPos->GetBlockHash())
     {
-             printf(" 'CBlock->AddToBlockIndex()_' - BestChainTrust %s\n", bnBestChainTrust.ToString().c_str());
-             printf(" 'CBlock->AddToBlockIndex()_' - NewChainTrust %s\n", pindexNew->bnChainTrust.ToString().c_str());
+             printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust = %s, NewChainTrust = %s\n", bnBestChainTrust.ToString().c_str(), pindexNew->bnChainTrust.ToString().c_str());
              if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() <
                  pindexBest->GetBlockHash()) : (hash < pindexBest->GetBlockHash())))
              {
-                 printf(" 'CBlock->AddToBlockIndex()_' : bnChainTrust = bnBestChainTrust - Block accepted\n");
+                 printf(" 'CBlock->AddToBlockIndex()' - Block accepted\n");
                  if (!SetBestChain(state, txdb, pindexNew))
                  {
                      return false;
                  }
              }
-             else
-             {
-                  printf(" 'CBlock->AddToBlockIndex()_' : bnChainTrust = bnBestChainTrust - Block not accepted\n");
-             }
+             else    printf(" 'CBlock->AddToBlockIndex()' - Block not accepted\n");
     }
     txdb.Close();
 
