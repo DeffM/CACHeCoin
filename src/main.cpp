@@ -3081,7 +3081,8 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                              newblockindex->nHeight, pindexBest->nHeight - (nDepthOfTheDisputesZone + 1), pindexNew->bnChainTrust.ToString().c_str());
                      }
 
-                     if (newblockindex->GetBlockTime() == bestblockindex->GetBlockTime())
+                     if (newblockindex->GetBlockTime() == bestblockindex->GetBlockTime() &&
+                         newblockindex->GetBlockHash() != bestblockindex->GetBlockHash())
                      {
                          if  (newblockindex->GetBlockHash() > bestblockindex->GetBlockHash())
                               bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
