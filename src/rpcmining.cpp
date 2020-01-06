@@ -567,10 +567,12 @@ Value submitblock(const Array& params, bool fHelp)
     vector<unsigned char> blockData(ParseHex(params[0].get_str()));
     CDataStream ssBlock(blockData, SER_NETWORK, PROTOCOL_VERSION);
     CBlock block;
-    try {
+    try
+    {
         ssBlock >> block;
     }
-    catch (std::exception &e) {
+    catch (std::exception &e)
+    {
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Block decode failed");
     }
 
@@ -578,7 +580,7 @@ Value submitblock(const Array& params, bool fHelp)
         throw JSONRPCError(-100, "Unable to sign block, wallet locked?");
 
     CValidationState state;
-    bool fAccepted = ProcessBlock(state, NULL, &block);
+    bool fAccepted = ProcessBlock(state, false, NULL, &block);
     if (!fAccepted)
         return "rejected";
 
