@@ -366,7 +366,7 @@ bool SetReload()
         nControlTimeStartCync++;
         nControlTimeRestartCync++;
 
-        if (nControlTimeStartCync > 60)
+        if (nControlTimeStartCync > 30)
         {
             fStartCync = true;
             nControlTimeStartCync = 0;
@@ -3430,43 +3430,62 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
 {
     bool fGoFalse = false;
     ResultOfChecking = "";
+    int nMaximumDepthInBlocksForEntry = GetArg("-maximumdepthinblocksforentry", 750);
+    if (IsUntilFullCompleteOneHundredFortyFourBlocks()) nMaximumDepthInBlocksForEntry = 140;
+
+    if ((GetBlockTime() > pindexBest->GetBlockTime() + 3 * 24 * 60 * 60 ||
+         GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && IsUntilFullCompleteOneHundredFortyFourBlocks())
+    {
+        ResultOfChecking = "at the wrong time short";
+        if (fDebug)
+            printf(" 'CBlock->ValidationCheckBlock()' - The block is not at the reight height and at the wrong time(short), BestBlock creation date = %s, MalaproposBlock creation date = %s\n",
+            DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str());
+        return true;
+    }
+
+    if ((GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && !IsUntilFullCompleteOneHundredFortyFourBlocks())
+    {
+        ResultOfChecking = "at the wrong time long";
+        if (fDebug && fCheckDebug)
+            printf(" 'CBlock->ValidationCheckBlock()' - The block is not at the reight height and at the wrong time(long), BestBlock creation date = %s, MalaproposBlock creation date = %s\n",
+            DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str());
+        return true;
+    }
+
     // Get prev block index - malapropos block proof-of-work or proof-of-stake
     map<uint256, CBlockIndex*>::iterator miPrev = mapBlockIndex.find(hashPrevBlock);
-    if (miPrev == mapBlockIndex.end() && fHardForkOne && (IsProofOfStake() || IsProofOfWork()))
+    if (miPrev == mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         fGoFalse = true;
     }
 
-    int nMaximumDepthInBlocksForEntry = GetArg("-maximumdepthinblocksforentry", 750);
-    if (IsUntilFullCompleteOneHundredFortyFourBlocks())
-        nMaximumDepthInBlocksForEntry = nDepthOfTheDisputesZone * 2;
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
-        if (fHardForkOne)
-            if (pindexPrev->nHeight <= pindexBest->pprev->nHeight)
+        if (pindexPrev->nHeight && pindexPrev->nHeight <= pindexBest->pprev->nHeight)
+        {
+            fGoFalse = false;
+            if (fDebug && fCheckDebug)
+                printf(" 'CBlock->ValidationCheckBlock()' - Entry at block height=%d, accepted\n", pindexPrev->nHeight + 1);
+            if (pindexPrev->nHeight + 1 <= pindexBest->nHeight - nMaximumDepthInBlocksForEntry)
             {
-                fGoFalse = false;
+                ResultOfChecking = "too deep";
                 if (fDebug && fCheckDebug)
-                    printf(" 'CBlock->ValidationCheckBlock()' - Entry at block height=%d, accepted\n", pindexPrev->nHeight + 1);
-                if (pindexPrev->nHeight + 1 <= pindexBest->nHeight - nMaximumDepthInBlocksForEntry)
-                {
-                    ResultOfChecking = "too deep";
-                    if (fDebug && fCheckDebug)
-                        printf(" 'CBlock->ValidationCheckBlock()' - Too deep, max depth %d block\n", nMaximumDepthInBlocksForEntry);
-                    return true;
-                }
+                    printf(" 'CBlock->ValidationCheckBlock()' - Too deep, max depth %d block\n", nMaximumDepthInBlocksForEntry);
+                return true;
             }
+        }
     }
 
     uint256 hash = GetHash();
     if (mapBlockIndex.count(hash) || mapOrphanBlocks.count(hash))
     {
         ResultOfChecking = "already have block";
-        if (mapBlockIndex.count(hash) && fDebug && fCheckDebug)
+        if (mapBlockIndex.count(hash) && fDebug)
             printf(" 'CBlock->ValidationCheckBlock()' - Already have block %d %s\n", mapBlockIndex[hash]->nHeight, hash.ToString().c_str());
-        else if (fDebug && fCheckDebug)
-                 printf(" 'CBlock->ValidationCheckBlock()' - Already have block (orphan) %s\n", hash.ToString().c_str());
+        else
+        if (fDebug)
+            printf(" 'CBlock->ValidationCheckBlock()' - Already have block (orphan) %s\n", hash.ToString().c_str());
        return true;
     }
 
@@ -3486,8 +3505,9 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
                     printf(" 'CBlock->ValidationCheckBlock()' - Duplicate proof-of-stake (%s, %d) for block %s\n", proofOfStake.first.ToString().c_str(), proofOfStake.second, hash.ToString().c_str());
                 return true;
             }
-            else if (fDebug && fCheckDebug)
-                     printf(" 'CBlock->ValidationCheckBlock()' - Duplicate stake is has is orphan child block %s, verification continues\n", proofOfStake.first.ToString().c_str());
+            else
+            if (fDebug && fCheckDebug)
+                printf(" 'CBlock->ValidationCheckBlock()' - Duplicate stake is has is orphan child block %s, verification continues\n", proofOfStake.first.ToString().c_str());
 
             if (fGoFalse)
             {
@@ -3498,26 +3518,6 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
             }
             ResultOfChecking = "duplicatestakeofbestblock";
         }
-    }
-
-    if ((GetBlockTime() > pindexBest->GetBlockTime() + 24 * 60 * 60 ||
-         GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && IsUntilFullCompleteOneHundredFortyFourBlocks())
-    {
-        ResultOfChecking = "at the wrong time short";
-        if (fDebug && fCheckDebug)
-            printf(" 'CBlock->ValidationCheckBlock()' - The block is not at the reight height and at the wrong time(short), BestBlock creation date = %s, MalaproposBlock creation date = %s\n",
-            DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str());
-        return true;
-    }
-
-    if ((GetBlockTime() > pindexBest->GetBlockTime() + 24 * 60 * 60 ||
-         GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && !IsUntilFullCompleteOneHundredFortyFourBlocks())
-    {
-        ResultOfChecking = "at the wrong time long";
-        if (fDebug && fCheckDebug)
-            printf(" 'CBlock->ValidationCheckBlock()' - The block is not at the reight height and at the wrong time(long), BestBlock creation date = %s, MalaproposBlock creation date = %s\n",
-            DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str());
-        return true;
     }
 
     if (fGoFalse)
@@ -3812,14 +3812,6 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
     bool fDuplicateStakeOfBestBlock = false;
     pblock->ValidationCheckBlock(state, NotAsk, ResultOfChecking, true);
 
-    if (ResultOfChecking == "at the wrong time short" && fIgnoreInvSizeOne)
-        return false;
-        //return state.Invalid(error("ProcessBlock() : CBlock->ValidationCheckBlock() - FAILED"));
-
-    if (ResultOfChecking == "at the wrong time long")
-        return false;
-        //return state.Invalid(error("ProcessBlock() : CBlock->ValidationCheckBlock() - FAILED"));
-
     if (ResultOfChecking == "already have block")
         return false;
         //return state.Invalid(error("ProcessBlock() : CBlock->ValidationCheckBlock() - FAILED"));
@@ -3913,7 +3905,6 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
     int nSetMaxOrphanBlocks = GetArg("-maxorphanblocks", DEFAULT_MAX_ORPHAN_BLOCKS);
     if (pblock->hashPrevBlock != 0 && !mapBlockIndex.count(pblock->hashPrevBlock))
     {
-
         printf(" 'ProcessBlock()' - ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().c_str());
 
         // Accept orphans as long as there is a node to request its parents from
@@ -3940,7 +3931,7 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
             mapOrphanBlocksByPrev.insert(make_pair(pblock2->hashPrevBlock, pblock2));
 
             // Ask this guy to fill in what we're missing
-                pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(pblock2));
+            pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(pblock2));
 
             // ppcoin: getblocks may not obtain the ancestor block rejected
             // earlier by duplicate-stake check so we ask for it again directly
@@ -4836,7 +4827,7 @@ static bool InvSpamIpTimer()
 }
 
 bool fLimitGetblocks = false;
-bool fIgnoreInvSizeOne = false;
+bool fIgnoreInvSizeOne = true;
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     RandAddSeedPerfmon();
@@ -5169,16 +5160,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         for (unsigned int nInv = 0; nInv < vInv.size(); nInv++)
         {
             const CInv &inv = vInv[nInv];
-            pfrom->AddInventoryKnown(inv);
             bool fAlreadyHave = AlreadyHave(txdb, inv);
             if (IsUntilFullCompleteOneHundredFortyFourBlocks())
             {
-                if (!fAlreadyHave && vInv.size() == 1)
-                {
-                    fIgnoreInvSizeOne = true;
-                    mapAlreadyAskedFor.erase(inv);
-                }
-
+                fIgnoreInvSizeOne = true;
                 if (fAlreadyHave && vInv.size() > 1)
                 {
                     mapAlreadyAskedFor.erase(inv);
@@ -5206,27 +5191,34 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (fGoBlock)
             {
                 if (fDebug)
-                    printf("  got inventory: %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
+                    printf(" 'ProcessMessage()' - %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
 
-                if (!fAlreadyHave)
+                if (inv.type == MSG_BLOCK)
                 {
-                    if (!fImporting && !fReindex)
-                        pfrom->AskFor(inv);
+                    if (!fImporting && !fReindex && IsUntilFullCompleteOneHundredFortyFourBlocks() &&
+                        !mapOrphanBlocks.count(inv.hash))
+                        pfrom->AskFor(CInv(MSG_BLOCK, inv.hash));
+                    else
+                    if (mapOrphanBlocks.count(inv.hash))
+                        pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(mapOrphanBlocks[inv.hash]));
                 }
-                else if (inv.type == MSG_BLOCK && mapOrphanBlocks.count(inv.hash))
+                else
+                if (nInv == nLastBlock)
                 {
-                         pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(mapOrphanBlocks[inv.hash]));
+                   // In case we are on a very long side-chain, it is possible that we already have
+                   // the last block in an inv bundle sent in response to getblocks. Try to detect
+                   // this situation and push another getblocks to continue.
+                   pfrom->PushGetBlocks(mapBlockIndex[inv.hash], uint256(0));
+                   if (fDebug)
+                       printf(" 'ProcessMessage()' - force request: %s\n", inv.ToString().c_str());
                 }
-                else if (nInv == nLastBlock)
+                else
                 {
-                        // In case we are on a very long side-chain, it is possible that we already have
-                        // the last block in an inv bundle sent in response to getblocks. Try to detect
-                        // this situation and push another getblocks to continue.
-                        pfrom->PushGetBlocks(mapBlockIndex[inv.hash], uint256(0));
-                        if (fDebug)
-                            printf("force request: %s\n", inv.ToString().c_str());
+                   pfrom->AddInventoryKnown(inv);
+                   if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && !fAlreadyHave &&
+                       !fImporting && !fReindex)
+                       pfrom->AskFor(inv);
                 }
-                // Track requests for our stuff
                 Inventory(inv.hash);
             }
         }
@@ -5418,21 +5410,22 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             unsigned int nSearched = 0;
             for (; nSearched <= nNumberOfLines; nSearched++)
             {
-               if(strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
+               if (strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
                {
-                  printf("strCommand 'tx-SpamHashList' - The executor of the rules performed the work\n");
-                  printf("  strCommand 'tx-SpamHashList' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                  printf("  strCommand 'tx-SpamHashList' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-                  return false;
+                   printf("strCommand 'tx-SpamHashList' - The executor of the rules performed the work\n");
+                   printf("  strCommand 'tx-SpamHashList' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                   printf("  strCommand 'tx-SpamHashList' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                   return false;
                }
-               else if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapUnused, posThisTx, tx, true, false, &fMissingInputs, false, false, true, false, false))
+               else
+               if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapUnused, posThisTx, tx, true, false, &fMissingInputs, false, false, true, false, false))
                {
-                        waitTxSpam = inv.ToString().substr(3,20).c_str();
-                        SpamHashList();
-                        printf("strCommand 'tx' - The executor of the rules performed the work\n");
-                        printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                        printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-                        return false;
+                   waitTxSpam = inv.ToString().substr(3,20).c_str();
+                   SpamHashList();
+                   printf("strCommand 'tx' - The executor of the rules performed the work\n");
+                   printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                   printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                   return false;
                }
             }
         }
@@ -5472,7 +5465,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                         vWorkQueue.push_back(orphanTxHash);
                         vEraseQueue.push_back(orphanTxHash);
                     }
-                    else if (!fMissingInputs2)
+                    else
+                    if (!fMissingInputs2)
                     {
                         // invalid orphan
                         vEraseQueue.push_back(orphanTxHash);
@@ -5514,35 +5508,44 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
              uint256 hashBlock = block.GetHash();
              CInv inv(MSG_BLOCK, hashBlock);
              block.ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
+             bool fResultOfChecking = ((ResultOfChecking == "at the wrong time short" ||
+                                       ResultOfChecking == "already have block") && fIgnoreInvSizeOne);
              if (true)
              {
-                 printf("received block %s\n", hashBlock.ToString().substr(0,20).c_str());
+                 printf(" 'ProcessMessage()' - received block %s\n", hashBlock.ToString().substr(0,20).c_str());
 
                  pfrom->AddInventoryKnown(inv);
                  bool fSetReconnecting = GetArg("-setreconnecting", 0);
-                 if (ProcessBlock(state, fIgnoreInvSizeOne, pfrom, &block) || state.CorruptionPossible())
+                 if (!fResultOfChecking && (ProcessBlock(state, fIgnoreInvSizeOne, pfrom, &block) || state.CorruptionPossible()))
                  {
                      fBadProcessBlock = false;
                      if (ResultOfChecking == "malapropos block" && fSetReconnecting && IsUntilFullCompleteOneHundredFortyFourBlocks())
                      {
                          pfrom->fDisconnect = true;
-                         printf("'IsInitialBlockDownload()' - reconnecting, canceled hash %s\n", hashBlock.ToString().substr(0,20).c_str());
+                         printf(" 'ProcessMessage()' - reconnecting, canceled hash %s\n", hashBlock.ToString().substr(0,20).c_str());
                      }
                      mapAlreadyAskedFor.erase(inv);
                  }
-                 else if (fBadProcessBlock && pfrom->fSuccessfullyConnected && !pfrom->fClient &&
-                          !pfrom->fOneShot && !pfrom->fDisconnect)
+                 else
+                 if (fResultOfChecking)
                  {
-                          pfrom->fStartSync = true;
+                     mapAlreadyAskedFor.erase(inv);
+                     pfrom->fStartSync = true;
+                 }
+                 else
+                 if (fBadProcessBlock && pfrom->fSuccessfullyConnected && !pfrom->fClient &&
+                     !pfrom->fOneShot && !pfrom->fDisconnect)
+                 {
+                     pfrom->fStartSync = true;
                  }
 
-                 fIgnoreInvSizeOne = false;
                  int nDoS = 0;
                  if (state.IsInvalid(nDoS))
                      if (nDoS > 0)
                          pfrom->Misbehaving(nDoS);
              }
     }
+
 
     // This asymmetric behavior for inbound and outbound connections was introduced
     // to prevent a fingerprinting attack: an attacker can send specific fake addresses
