@@ -3121,18 +3121,19 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                  printf(" 'CBlock->AddToBlockIndex()' - This fork has an earlyer timestamp, but the information was spread late - switching to longer branch, the height of the blocks is %d, the maximum height of the blocks is %d\n",
                                  pindexBest->nHeight, nFullCompleteBlocks);
                          }
-                         else if (ResultOfChecking == "already have block" &&
-                                  pindexBest->nHeight > bestblockindex->pprev->nHeight + nMinDepthReplacement &&
-                                  pindexBest->nHeight >= bestblockindex->nHeight + nDepthOfTheDisputesZone)
+                         else
+                         if (ResultOfChecking == "already have block" &&
+                             pindexBest->nHeight > bestblockindex->pprev->nHeight + nMinDepthReplacement &&
+                             pindexBest->nHeight >= bestblockindex->nHeight + nDepthOfTheDisputesZone)
                          {
-                                  if (fResetSyncCheckpoint)
-                                      Checkpoints::hashSyncCheckpoint = checkpointhash;
+                             if (fResetSyncCheckpoint)
+                                 Checkpoints::hashSyncCheckpoint = checkpointhash;
 
-                                  pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
-                                  Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
+                             pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
+                             Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
 
-                                  if (fDebug)
-                                      printf(" 'OOPS! SORRY()' - So much to reorganize will not work\n");
+                             if (fDebug)
+                                 printf(" 'OOPS! SORRY()' - So much to reorganize will not work\n");
                          }
                          else
                          {
@@ -3150,70 +3151,72 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          }
                          break;
                      }
-                     else if (newblockindex->GetBlockTime() < bestblockindex->GetBlockTime())
+                     else
+                     if (newblockindex->GetBlockTime() < bestblockindex->GetBlockTime())
                      {
-                              fCheckFork = true;
-                              bool fOOPS = false;
-                              bool fGoCheckPoint = true;
-                              if (pindexBest->nHeight >= bestblockindex->nHeight + nDepthOfTheDisputesZone ||
-                                  nPossibleHeight >= bestblockindex->nHeight + nDepthOfTheDisputesZone)
-                              {
-                                  fOOPS = true;
-                                  pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
-                                  Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
+                         fCheckFork = true;
+                         bool fOOPS = false;
+                         bool fGoCheckPoint = true;
+                         if (pindexBest->nHeight >= bestblockindex->nHeight + nDepthOfTheDisputesZone ||
+                             nPossibleHeight >= bestblockindex->nHeight + nDepthOfTheDisputesZone)
+                         {
+                             fOOPS = true;
+                             pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
+                             Checkpoints::hashSyncCheckpoint = bestblockindex->GetBlockHash();
 
-                                  if (fDebug)
-                                      printf(" 'OOPS! SORRY()' - So much to reorganize will not work\n");
-                              }
+                             if (fDebug)
+                                 printf(" 'OOPS! SORRY()' - So much to reorganize will not work\n");
+                         }
 
-                              if (newblockindex->pprev->nHeight >= pindexBest->nHeight - nMinDepthReplacement &&
-                                  nPossibleHeight > newblockindex->pprev->nHeight)
-                              {
-                                  bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
-                              }
-                              else if (newblockindex->pprev->nHeight < pindexBest->nHeight - nMinDepthReplacement)
-                              {
-                                  bool fTrustDown = false;
-                                  fGoCheckPoint = false;
-                                  if (nPossibleHeight > pindexBest->nHeight && !fOOPS)
-                                  {
-                                      fTrustDown = true;
-                                      if (fResetSyncCheckpoint)
-                                          Checkpoints::hashSyncCheckpoint = checkpointhash;
+                         if (newblockindex->pprev->nHeight >= pindexBest->nHeight - nMinDepthReplacement &&
+                             nPossibleHeight > newblockindex->pprev->nHeight)
+                         {
+                             bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
+                         }
+                         else
+                         if (newblockindex->pprev->nHeight < pindexBest->nHeight - nMinDepthReplacement)
+                         {
+                             bool fTrustDown = false;
+                             fGoCheckPoint = false;
+                             if (nPossibleHeight > pindexBest->nHeight && !fOOPS)
+                             {
+                                 fTrustDown = true;
+                                 if (fResetSyncCheckpoint)
+                                     Checkpoints::hashSyncCheckpoint = checkpointhash;
 
-                                      {
-                                          bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
-                                          pindexNew->bnChainTrust = pindexNew->pprev->bnChainTrust + pindexNew->GetBlockTrust();
-                                      }
+                                 {
+                                     bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
+                                     pindexNew->bnChainTrust = pindexNew->pprev->bnChainTrust + pindexNew->GetBlockTrust();
+                                 }
 
-                                      if (fDebug)
-                                          printf(" 'CBlock->AddToBlockIndex()' - A new block with a propagation delay of height %d, is adopted by the protocol\n",
-                                          nPossibleHeight);
-                                  }
+                                 if (fDebug)
+                                     printf(" 'CBlock->AddToBlockIndex()' - A new block with a propagation delay of height %d, is adopted by the protocol\n",
+                                     nPossibleHeight);
+                             }
 
-                                  if (!fTrustDown  && !fOOPS)
-                                  {
-                                      if (fResetSyncCheckpoint)
-                                          Checkpoints::hashSyncCheckpoint = checkpointhash;
+                             if (!fTrustDown  && !fOOPS)
+                             {
+                                 if (fResetSyncCheckpoint)
+                                     Checkpoints::hashSyncCheckpoint = checkpointhash;
 
-                                      pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
+                                 pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
 
-                                      if (fDebug)
-                                          printf(" 'CBlock->AddToBlockIndex()' - The protocol registered a new block with a height %d, with an earlyer timestamp, but the information delayed, the height of the blockchain %d, height comparison mode is enabled\n",
-                                          nPossibleHeight, pindexBest->nHeight);
-                                  }
-                              }
+                                 if (fDebug)
+                                     printf(" 'CBlock->AddToBlockIndex()' - The protocol registered a new block with a height %d, with an earlyer timestamp, but the information delayed, the height of the blockchain %d, height comparison mode is enabled\n",
+                                     nPossibleHeight, pindexBest->nHeight);
+                             }
+                         }
 
-                              if (fDebug)
-                              {
-                                  printf(" 'CBlock->AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s\n",
-                                  bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
-                                  ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
-                                  bestblockindex->GetBlockTime()).c_str());
-                                  if (fGoCheckPoint && fShowLog)
-                                      printf("  priority has the first block, BestChainTrust=%s down\n", bnBestChainTrust.ToString().c_str());
-                              }
-                              break;
+                         if (fDebug)
+                         {
+                             printf(" 'CBlock->AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s\n",
+                             bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
+                             ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                             bestblockindex->GetBlockTime()).c_str());
+                             if (fGoCheckPoint && fShowLog)
+                                 printf("  priority has the first block, BestChainTrust=%s down\n", bnBestChainTrust.ToString().c_str());
+                         }
+                         break;
                      }
                  }
                  newblockindex =  newblockindex->pprev;
@@ -3227,35 +3230,39 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         if (!SetBestChain(state, txdb, pindexNew))
             return false;
     }
-    else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() >=
-             pindexPrevPrevPos->GetBlockHash())
+    else
+    if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() >=
+        pindexPrevPrevPos->GetBlockHash())
     {
-             printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust = %s, NewChainTrust = %s\n", bnBestChainTrust.ToString().c_str(), pindexNew->bnChainTrust.ToString().c_str());
-             if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() >
-                 pindexBest->GetBlockHash()) : (hash > pindexBest->GetBlockHash())))
-             {
-                 printf(" 'CBlock->AddToBlockIndex()' - Block accepted\n");
-                 if (!SetBestChain(state, txdb, pindexNew))
-                 {
-                     return false;
-                 }
-             }
-             else    printf(" 'CBlock->AddToBlockIndex()' - Block not accepted\n");
+        printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust = %s, NewChainTrust = %s\n", bnBestChainTrust.ToString().c_str(), pindexNew->bnChainTrust.ToString().c_str());
+        if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() >
+            pindexBest->GetBlockHash()) : (hash > pindexBest->GetBlockHash())))
+        {
+            printf(" 'CBlock->AddToBlockIndex()' - Block accepted\n");
+            if (!SetBestChain(state, txdb, pindexNew))
+            {
+                return false;
+            }
+        }
+        else
+            printf(" 'CBlock->AddToBlockIndex()' - Block not accepted\n");
     }
-    else if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() <
-             pindexPrevPrevPos->GetBlockHash())
+    else
+    if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() <
+        pindexPrevPrevPos->GetBlockHash())
     {
-             printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust = %s, NewChainTrust = %s\n", bnBestChainTrust.ToString().c_str(), pindexNew->bnChainTrust.ToString().c_str());
-             if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() <
-                 pindexBest->GetBlockHash()) : (hash < pindexBest->GetBlockHash())))
-             {
-                 printf(" 'CBlock->AddToBlockIndex()' - Block accepted\n");
-                 if (!SetBestChain(state, txdb, pindexNew))
-                 {
-                     return false;
-                 }
-             }
-             else    printf(" 'CBlock->AddToBlockIndex()' - Block not accepted\n");
+        printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust = %s, NewChainTrust = %s\n", bnBestChainTrust.ToString().c_str(), pindexNew->bnChainTrust.ToString().c_str());
+        if (((pindexNew->IsProofOfStake() && pindexBest->IsProofOfStake()) ? (pindexNew->GetBlockHash() <
+            pindexBest->GetBlockHash()) : (hash < pindexBest->GetBlockHash())))
+        {
+            printf(" 'CBlock->AddToBlockIndex()' - Block accepted\n");
+            if (!SetBestChain(state, txdb, pindexNew))
+            {
+                return false;
+            }
+        }
+        else
+            printf(" 'CBlock->AddToBlockIndex()' - Block not accepted\n");
     }
     txdb.Close();
 
@@ -3430,26 +3437,20 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
 {
     bool fGoFalse = false;
     ResultOfChecking = "";
+    bool fWrongTimeLong = false;
+    bool fWrongTimeShort = false;
     int nMaximumDepthInBlocksForEntry = GetArg("-maximumdepthinblocksforentry", 750);
     if (IsUntilFullCompleteOneHundredFortyFourBlocks()) nMaximumDepthInBlocksForEntry = 140;
 
-    if ((GetBlockTime() > pindexBest->GetBlockTime() + 3 * 24 * 60 * 60 ||
+    if ((GetBlockTime() > pindexBest->GetBlockTime() + 2 * 24 * 60 * 60 ||
          GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && IsUntilFullCompleteOneHundredFortyFourBlocks())
     {
-        ResultOfChecking = "at the wrong time short";
-        if (fDebug)
-            printf(" 'CBlock->ValidationCheckBlock()' - The block is not at the reight height and at the wrong time(short), BestBlock creation date = %s, MalaproposBlock creation date = %s\n",
-            DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str());
-        return true;
+        fWrongTimeShort = true;
     }
 
     if ((GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && !IsUntilFullCompleteOneHundredFortyFourBlocks())
     {
-        ResultOfChecking = "at the wrong time long";
-        if (fDebug && fCheckDebug)
-            printf(" 'CBlock->ValidationCheckBlock()' - The block is not at the reight height and at the wrong time(long), BestBlock creation date = %s, MalaproposBlock creation date = %s\n",
-            DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str());
-        return true;
+        fWrongTimeLong = true;
     }
 
     // Get prev block index - malapropos block proof-of-work or proof-of-stake
@@ -3522,6 +3523,24 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
 
     if (fGoFalse)
     {
+        if (fWrongTimeShort)
+        {
+            ResultOfChecking = "at the wrong time short";
+            if (fDebug)
+                printf(" 'CBlock->ValidationCheckBlock()' - The block is not at the reight height and at the wrong time(short), BestBlock creation date = %s, MalaproposBlock creation date = %s\n",
+                DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str());
+            return true;
+        }
+
+        if (fWrongTimeLong)
+        {
+            ResultOfChecking = "at the wrong time long";
+            if (fDebug && fCheckDebug)
+                printf(" 'CBlock->ValidationCheckBlock()' - The block is not at the reight height and at the wrong time(long), BestBlock creation date = %s, MalaproposBlock creation date = %s\n",
+                DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S", GetBlockTime()).c_str());
+            return true;
+        }
+
         ResultOfChecking = "malapropos block";
         if (fDebug && fCheckDebug)
             printf(" 'CBlock->ValidationCheckBlock()' - Malapropos block %s, prev block not found\n", IsProofOfWork() ? "proof-of-work" : "proof-of-stake");
@@ -3938,7 +3957,7 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
             if (!IsInitialBlockDownload())
                 pfrom->AskFor(CInv(MSG_BLOCK, WantedByOrphan(pblock2)));
         }
-        return true;
+        return !fIgnoreInvSizeOne;
     }
 
     // Store to disk
@@ -4633,7 +4652,8 @@ string GetWarnings(string strFor)
 
     if (strFor == "statusbar")
         return strStatusBar;
-    else if (strFor == "rpc")
+    else
+    if (strFor == "rpc")
         return strRPC;
     assert(!"GetWarnings() : invalid parameter");
     return "error";
@@ -4654,15 +4674,15 @@ bool static AlreadyHave(CTxDB& txdb, const CInv& inv)
     switch (inv.type)
     {
     case MSG_TX:
-        {
+    {
         bool txInMap = false;
-            {
-            LOCK(mempool.cs);
-            txInMap = (mempool.exists(inv.hash));
-            }
+        {
+             LOCK(mempool.cs);
+             txInMap = (mempool.exists(inv.hash));
+        }
         return txInMap || mapOrphanTransactions.count(inv.hash) ||
                txdb.ContainsTx(inv.hash);
-        }
+    }
 
     case MSG_BLOCK:
         return mapBlockIndex.count(inv.hash) ||
@@ -4801,7 +4821,7 @@ unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
 int nInvCalculationInterval = 10;
 int64 nInvTimerStart = 0;
-int64 nInvAllowableNumberOferrors = 20;
+int64 nInvAllowableNumberOfErrors = 18;
 unsigned int nInvMakeSureSpam = 0;
 
 static bool InvSpamIpTimer()
@@ -4809,32 +4829,37 @@ static bool InvSpamIpTimer()
     bool fThisSpamIp = false;
     if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
     {
-        nInvCalculationInterval = 10;
-        nInvAllowableNumberOferrors = 50;
+        nInvAllowableNumberOfErrors = 25;
     }
-    if (nInvMakeSureSpam == 1)
+
+    if (nInvMakeSureSpam == 0)
         nInvTimerStart = GetAdjustedTime();
-    if (nInvMakeSureSpam == nInvAllowableNumberOferrors && GetAdjustedTime() - nInvTimerStart <= nInvCalculationInterval)
+
+    if (GetAdjustedTime() - nInvTimerStart > nInvCalculationInterval)
+    {
+        if (fDebug)
+            printf("   'Additional Checks()' - calculated the number of 'inv'... %d in %"PRI64d" seconds\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+        nInvTimerStart = GetAdjustedTime();
+        nInvMakeSureSpam = 0;
+    }
+
+    if (nInvMakeSureSpam >= nInvAllowableNumberOfErrors &&
+        GetAdjustedTime() - nInvTimerStart <= nInvCalculationInterval)
     {
         fThisSpamIp = true;
-    }
-    if (GetAdjustedTime() - nInvTimerStart > nInvCalculationInterval || nInvMakeSureSpam > nInvAllowableNumberOferrors)
-    {
-        nInvTimerStart = 0;
-        nInvMakeSureSpam = 0;
     }
     return fThisSpamIp;
 }
 
 bool fLimitGetblocks = false;
-bool fIgnoreInvSizeOne = true;
+bool fIgnoreInvSizeOne = false;
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     RandAddSeedPerfmon();
 
     if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
     {
-        printf("dropmessagestest DROPPING RECV MESSAGE\n");
+        printf(" 'ProcessMessage()' - dropmessagestest DROPPING RECV MESSAGE\n");
         return true;
     }
 
@@ -4874,14 +4899,15 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv")
     {
-        nInvMakeSureSpam++;
         if (InvSpamIpTimer())
         {
-            nInvTimerStart = 0;
+            if (fDebug)
+                printf("   'Additional Checks()' WARNING - calculated the number of 'inv'... %d in %"PRI64d" seconds\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+            nInvTimerStart = GetAdjustedTime();
             nInvMakeSureSpam = 0;
             pfrom->fDisconnect = true;
-            printf("   'Additional Checks()' - inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
         }
+        else nInvMakeSureSpam++;
     }
 
     if (fSetAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
@@ -4896,19 +4922,20 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     if (fSetAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
     {
-        nInvMakeSureSpam++;
         if (InvSpamIpTimer())
         {
-            nInvTimerStart = 0;
+            if (fDebug)
+                printf("   'Additional Checks()' WARNING - calculated the number of 'inv'... %d in %"PRI64d" seconds\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
+            nInvTimerStart = GetAdjustedTime();
             nInvMakeSureSpam = 0;
             pfrom->fDisconnect = true;
-            printf("   'Additional Checks()' - all inv count: %d - ninvtimer: %"PRI64d"\n", nInvMakeSureSpam, GetAdjustedTime() - nInvTimerStart);
         }
+        else nInvMakeSureSpam++;
     }
 
     if (fGoTx && fGoInv && fGoBlock && fGoGetblocks)
     {
-        if (fDebug)
+        if (fDebug && strCommand != "inv")
         {
             printf("%s ", DateTimeStrFormat(GetTime()).c_str());
             printf("received: %s (%" PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
@@ -4967,14 +4994,14 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         // Disconnect if we connected to ourself
         if (nNonce == nLocalHostNonce && nNonce > 1)
         {
-            printf("connected to self at %s, disconnecting\n", pfrom->addr.ToString().c_str());
+            printf(" 'ProcessMessage()' - connected to self at %s, disconnecting\n", pfrom->addr.ToString().c_str());
             pfrom->fDisconnect = true;
             return true;
         }
 
         if (pfrom->nVersion < 91001)
         {
-            printf("partner %s using a buggy client %d, disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
+            printf(" 'ProcessMessage()' - partner %s using a buggy client %d, disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
             pfrom->fDisconnect = true;
             return true;
         }
@@ -5050,7 +5077,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         cPeerBlockCounts.input(pfrom->nStartingHeight);
 
-        printf("receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
+        printf(" 'ProcessMessage()' - receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
 
         // ppcoin: ask for pending sync-checkpoint if any
         if (!IsInitialBlockDownload())
@@ -5159,17 +5186,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         for (unsigned int nInv = 0; nInv < vInv.size(); nInv++)
         {
+            if (fShutdown) return true;
             const CInv &inv = vInv[nInv];
             bool fAlreadyHave = AlreadyHave(txdb, inv);
             if (IsUntilFullCompleteOneHundredFortyFourBlocks())
             {
                 fIgnoreInvSizeOne = true;
-                if (fAlreadyHave && vInv.size() > 1)
+                if (fAlreadyHave)
                 {
-                    mapAlreadyAskedFor.erase(inv);
+                    continue;
                 }
             }
             else fIgnoreInvSizeOne = false;
+
+            if (fDebug && !fAlreadyHave)
+            {
+                printf("%s ", DateTimeStrFormat(GetTime()).c_str());
+                printf(" 'ProcessMessage()' - received: %s (invSize() = %"PRIszu" lines, string %d)\n", strCommand.c_str(), vInv.size(), nInv);
+            }
 
             bool fSetCheckBeforeEvent = GetArg("-setcheckbeforeevent", 1);
             if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && fSetCheckBeforeEvent)
@@ -5190,17 +5224,28 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
             if (fGoBlock)
             {
-                if (fDebug)
+                if (fDebug && inv.type != MSG_TX)
                     printf(" 'ProcessMessage()' - %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
 
+                pfrom->AddInventoryKnown(inv);
                 if (inv.type == MSG_BLOCK)
                 {
-                    if (!fImporting && !fReindex && IsUntilFullCompleteOneHundredFortyFourBlocks() &&
-                        !mapOrphanBlocks.count(inv.hash))
+                    if (!fAlreadyHave && !fImporting && !fReindex)
                         pfrom->AskFor(CInv(MSG_BLOCK, inv.hash));
                     else
                     if (mapOrphanBlocks.count(inv.hash))
                         pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(mapOrphanBlocks[inv.hash]));
+                }
+                else
+                if (inv.type != MSG_BLOCK)
+                {
+                   if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
+                   {
+                       if (fDebug)
+                           printf(" 'ProcessMessage()' - %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
+                       if (!fAlreadyHave && !fImporting && !fReindex)
+                           pfrom->AskFor(inv);
+                   }
                 }
                 else
                 if (nInv == nLastBlock)
@@ -5211,13 +5256,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                    pfrom->PushGetBlocks(mapBlockIndex[inv.hash], uint256(0));
                    if (fDebug)
                        printf(" 'ProcessMessage()' - force request: %s\n", inv.ToString().c_str());
-                }
-                else
-                {
-                   pfrom->AddInventoryKnown(inv);
-                   if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && !fAlreadyHave &&
-                       !fImporting && !fReindex)
-                       pfrom->AskFor(inv);
                 }
                 Inventory(inv.hash);
             }
@@ -5275,7 +5313,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     }
                 }
             }
-            else if (inv.IsKnownType())
+            else
+            if (inv.IsKnownType())
             {
                 // Send stream from relay memory
                 bool pushed = false;
@@ -5324,6 +5363,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             nLimit = 125;
         if (fLimitGetblocks)
             nLimit = 50;
+
         printf("getblocks %d to %s limit %d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString().substr(0,20).c_str(), nLimit);
 
         for (; pindex; pindex = pindex->pnext)
@@ -5335,7 +5375,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 // without risk being rejected due to stake connection check
                 if (hashStop != hashBestChain && pindex->GetBlockTime() + nStakeMinAge > pindexBest->GetBlockTime())
                     pfrom->PushInventory(CInv(MSG_BLOCK, hashBestChain));
-                    break;
+                break;
             }
             pfrom->PushInventory(CInv(MSG_BLOCK, pindex->GetBlockHash()));
             if (--nLimit <= 0)
@@ -5478,7 +5518,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             BOOST_FOREACH(uint256 hash, vEraseQueue)
                 EraseOrphanTx(hash);
         }
-        else if (fMissingInputs)
+        else
+        if (fMissingInputs)
         {
             AddOrphanTx(tx);
 
@@ -5499,51 +5540,65 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
     else if (strCommand == "block" && !fImporting && !fReindex)
     {
-             CBlock block;
-             vRecv >> block;
-             MapPrevTx NotAsk;
-             CValidationState state;
-             std::string ResultOfChecking;
-             bool fBadProcessBlock = true;
-             uint256 hashBlock = block.GetHash();
-             CInv inv(MSG_BLOCK, hashBlock);
-             block.ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
-             bool fResultOfChecking = ((ResultOfChecking == "at the wrong time short" ||
-                                       ResultOfChecking == "already have block") && fIgnoreInvSizeOne);
-             if (true)
-             {
-                 printf(" 'ProcessMessage()' - received block %s\n", hashBlock.ToString().substr(0,20).c_str());
+        CBlock block;
+        vRecv >> block;
+        MapPrevTx NotAsk;
+        CValidationState state;
+        bool fReturnTrue = false;
+        std::string ResultOfChecking;
+        bool fBadProcessBlock = true;
+        uint256 hashBlock = block.GetHash();
+        CInv inv(MSG_BLOCK, hashBlock);
+        block.ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
+        bool fResultOfChecking = ((ResultOfChecking == "at the wrong time short" ||
+                                   ResultOfChecking == "already have block") && fIgnoreInvSizeOne);
+        if (true)
+        {
+            if (!fResultOfChecking)
+                printf(" 'ProcessMessage()' - received block %s\n", hashBlock.ToString().substr(0,20).c_str());
 
-                 pfrom->AddInventoryKnown(inv);
-                 bool fSetReconnecting = GetArg("-setreconnecting", 0);
-                 if (!fResultOfChecking && (ProcessBlock(state, fIgnoreInvSizeOne, pfrom, &block) || state.CorruptionPossible()))
-                 {
-                     fBadProcessBlock = false;
-                     if (ResultOfChecking == "malapropos block" && fSetReconnecting && IsUntilFullCompleteOneHundredFortyFourBlocks())
-                     {
-                         pfrom->fDisconnect = true;
-                         printf(" 'ProcessMessage()' - reconnecting, canceled hash %s\n", hashBlock.ToString().substr(0,20).c_str());
-                     }
-                     mapAlreadyAskedFor.erase(inv);
-                 }
-                 else
-                 if (fResultOfChecking)
-                 {
-                     mapAlreadyAskedFor.erase(inv);
-                     pfrom->fStartSync = true;
-                 }
-                 else
-                 if (fBadProcessBlock && pfrom->fSuccessfullyConnected && !pfrom->fClient &&
-                     !pfrom->fOneShot && !pfrom->fDisconnect)
-                 {
-                     pfrom->fStartSync = true;
-                 }
+            pfrom->AddInventoryKnown(inv);
+            bool fSetReconnecting = GetArg("-setreconnecting", 0);
+            if (!fResultOfChecking && (ProcessBlock(state, fIgnoreInvSizeOne, pfrom, &block) || state.CorruptionPossible()))
+            {
+                fBadProcessBlock = false;
+                if (ResultOfChecking == "malapropos block" && fSetReconnecting && IsUntilFullCompleteOneHundredFortyFourBlocks())
+                {
+                    pfrom->fDisconnect = true;
+                    printf(" 'ProcessMessage()' - reconnecting, canceled hash %s\n", hashBlock.ToString().substr(0,20).c_str());
+                }
+                mapAlreadyAskedFor.erase(inv);
+            }
+            else
+            if (fResultOfChecking)
+            {
+                mapAlreadyAskedFor.erase(inv);
+                fReturnTrue = true;
+            }
+            else
+            if (ResultOfChecking == "malapropos block")
+            {
+                mapAlreadyAskedFor.erase(inv);
+                fReturnTrue = true;
+            }
+            else
+            if (fBadProcessBlock && pfrom->fSuccessfullyConnected && !pfrom->fClient &&
+                !pfrom->fOneShot && !pfrom->fDisconnect)
+            {
+                pfrom->fStartSync = true;
+            }
 
-                 int nDoS = 0;
-                 if (state.IsInvalid(nDoS))
-                     if (nDoS > 0)
-                         pfrom->Misbehaving(nDoS);
-             }
+            int nDoS = 0;
+            if (state.IsInvalid(nDoS))
+                if (nDoS > 0)
+                    pfrom->Misbehaving(nDoS);
+
+            if (fReturnTrue)
+            {
+                pfrom->fStartSync = true;
+                return true;
+            }
+        }
     }
 
 
@@ -5939,7 +5994,7 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         // Start block sync
         if (pto->fStartSync && !fImporting && !fReindex)
         {
-            printf("     Start block sync\n");
+            printf("    - - - - - - - - - -\n");
             pto->fStartSync = false;
             pto->PushGetBlocks(pindexBest, uint256(0));
         }
