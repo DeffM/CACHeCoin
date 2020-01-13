@@ -3856,7 +3856,7 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
     if (pblock->IsProofOfStake())
     {
         uint256 hashProofOfStake = 0;
-        if (!CheckProofOfStake(pblock->vtx[1], pblock->nBits, hashProofOfStake))
+        if (!CheckProofOfStake(pblock->vtx[1], pblock->nBits, hashProofOfStake, ResultOfChecking))
         {
             printf(" WARNING: 'ProcessBlock()' - check proof-of-stake failed for block %s\n", hash.ToString().c_str());
             return false; // do not error here as we expect this during initial block download
@@ -5549,6 +5549,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         bool fBadProcessBlock = true;
         uint256 hashBlock = block.GetHash();
         CInv inv(MSG_BLOCK, hashBlock);
+        bool fSetReconnecting = GetArg("-setreconnecting", 0);
         block.ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
         bool fResultOfChecking = ((ResultOfChecking == "at the wrong time short" ||
                                    ResultOfChecking == "already have block") && fIgnoreInvSizeOne);
@@ -5558,15 +5559,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 printf(" 'ProcessMessage()' - received block %s\n", hashBlock.ToString().substr(0,20).c_str());
 
             pfrom->AddInventoryKnown(inv);
-            bool fSetReconnecting = GetArg("-setreconnecting", 0);
             if (!fResultOfChecking && (ProcessBlock(state, fIgnoreInvSizeOne, pfrom, &block) || state.CorruptionPossible()))
             {
                 fBadProcessBlock = false;
-                if (ResultOfChecking == "malapropos block" && fSetReconnecting && IsUntilFullCompleteOneHundredFortyFourBlocks())
-                {
-                    pfrom->fDisconnect = true;
-                    printf(" 'ProcessMessage()' - reconnecting, canceled hash %s\n", hashBlock.ToString().substr(0,20).c_str());
-                }
                 mapAlreadyAskedFor.erase(inv);
             }
             else
@@ -5576,16 +5571,21 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 fReturnTrue = true;
             }
             else
-            if (ResultOfChecking == "malapropos block")
+            if (ResultOfChecking == "malapropos block" && fIgnoreInvSizeOne)
             {
                 mapAlreadyAskedFor.erase(inv);
                 fReturnTrue = true;
+                if (fSetReconnecting)
+                {
+                    pfrom->fDisconnect = true;
+                    printf(" 'ProcessMessage()' - reconnecting, canceled hash %s\n", hashBlock.ToString().substr(0,20).c_str());
+                }
             }
             else
-            if (fBadProcessBlock && pfrom->fSuccessfullyConnected && !pfrom->fClient &&
-                !pfrom->fOneShot && !pfrom->fDisconnect)
+            if (fBadProcessBlock && fIgnoreInvSizeOne)
             {
-                pfrom->fStartSync = true;
+                mapAlreadyAskedFor.erase(inv);
+                fReturnTrue = true;
             }
 
             int nDoS = 0;
@@ -5593,10 +5593,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 if (nDoS > 0)
                     pfrom->Misbehaving(nDoS);
 
-            if (fReturnTrue)
+            if (fReturnTrue && pfrom->fSuccessfullyConnected && !pfrom->fClient &&
+                !pfrom->fOneShot && !pfrom->fDisconnect)
             {
                 pfrom->fStartSync = true;
-                return true;
+                //return true;
             }
         }
     }
