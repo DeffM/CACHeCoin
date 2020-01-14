@@ -179,7 +179,7 @@ bool CWallet::SetMinVersion(enum WalletFeature nVersion, CWalletDB* pwalletdbIn,
 
     // when doing an explicit upgrade, if we pass the max version permitted, upgrade all the way
     if (fExplicit && nVersion > nWalletMaxVersion)
-            nVersion = FEATURE_LATEST;
+        nVersion = FEATURE_LATEST;
 
     nWalletVersion = nVersion;
 
@@ -1465,8 +1465,8 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     // The following split & combine thresholds are important to security
     // Should not be adjusted if you don't understand the consequences
     static unsigned int nStakeSplitAge;
-    if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
-       nStakeSplitAge = (60 * 60 * 24 * 90);
+    if (pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
+        nStakeSplitAge = (60 * 60 * 24 * 90);
     else
         nStakeSplitAge = (60 * 60 * 24 * 30);
 
@@ -1511,6 +1511,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     int nCreateCoinStakeFalse = 20;
     int64 nSleepGetTime = GetTime();
     CScript scriptPubKeyKernel;
+    std::string ResultOfChecking = "signal from createcoinstake";
     BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
     {
         CTxDB txdb("r");
@@ -1548,7 +1549,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             hashBlockFrom = block.GetHash();
 
             // Calculate the kernel stake modifiers
-            if (GetKernelStakeModifier(hashBlockFrom, nStakeModifier, nStakeModifierHeight, nStakeModifierTime))
+            if (GetKernelStakeModifier(hashBlockFrom, nStakeModifier, nStakeModifierHeight, nStakeModifierTime, ResultOfChecking))
             {
                 miningStuff = (PosMiningStuff *)malloc(sizeof(PosMiningStuff));
     
@@ -1576,7 +1577,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
             uint256 hashProofOfStake = 0;
             COutPoint prevoutStake = COutPoint(pcoin.first->GetHash(), pcoin.second);
-            if (CheckStakeKernelHash(nBits, block, txindex.pos.nTxPos - txindex.pos.nBlockPos, *pcoin.first, prevoutStake, txNew.nTime - n, hashProofOfStake, false, miningStuff))
+            if (CheckStakeKernelHash(nBits, block, ResultOfChecking, txindex.pos.nTxPos - txindex.pos.nBlockPos, *pcoin.first, prevoutStake, txNew.nTime - n, hashProofOfStake, false, miningStuff))
             {
                 // Found a kernel
                 if (fDebug && GetBoolArg("-printcoinstake"))

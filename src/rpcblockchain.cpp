@@ -83,12 +83,13 @@ double GetDifficulty(const CBlockIndex* blockindex, const CBlockIndex* blockinde
         nShiftpos--;
     }
 
-    if(pindexBest->GetBlockTime() > nPowForceTimestamp + nPowForceTimestamp && blockindex->IsProofOfWork())          //  fulldiffbits /disabled/
-       return dDiffpow;
-       else if(pindexBest->GetBlockTime() > nPowForceTimestamp + nPowForceTimestamp && blockindex->IsProofOfStake()) //  fulldiffbits /disabled/
-               return dDiffpos;
-               else
-                   return dDiff;
+    if (pindexBest->GetBlockTime() > nPowForceTimestamp + nPowForceTimestamp && blockindex->IsProofOfWork())  //  fulldiffbits /disabled/
+        return dDiffpow;
+    else
+    if (pindexBest->GetBlockTime() > nPowForceTimestamp + nPowForceTimestamp && blockindex->IsProofOfStake()) //  fulldiffbits /disabled/
+        return dDiffpos;
+    else
+        return dDiff;
 }
 
 Object blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool fPrintTransactionDetail)

@@ -325,17 +325,18 @@ bool CheckStakeKernelHash(unsigned int nBits, const CBlock& blockFrom, std::stri
             hashProofOfStake.ToString().c_str());
     }
 
-    if (fHardForkOne && nBestHeight >= nFixHardForkOne && nBlockTime == nCorrectedTimestamp)
+    if (fHardForkOne && nBestHeight > nFixHardForkOne && nBlockTime == nCorrectedTimestamp)
     {
         CBlockIndex* hardforkoneindex = FindBlockByHeight(nFixHardForkOne);
         nBlockTime = hardforkoneindex->GetBlockTime();
     }
 
     // Now check if proof-of-stake hash meets target protocol
-    if (CBigNum(hashProofOfStake) > bnCoinDayWeight * bnTargetPerCoinDay && (int64)nTimeTx >= nBlockTime)
+    if ((CBigNum(hashProofOfStake) > bnCoinDayWeight * bnTargetPerCoinDay &&
+        ResultOfChecking == "signal from createcoinstake") || (CBigNum(hashProofOfStake) >
+        bnCoinDayWeight * bnTargetPerCoinDay && ResultOfChecking != "signal from createcoinstake" &&
+        nTimeBlockFrom > nBlockTime))
     {
-        if (ResultOfChecking == "malapropos block")
-            return true;
         return false;
     }
 
