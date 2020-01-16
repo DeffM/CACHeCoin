@@ -369,16 +369,16 @@ bool SetReload()
         if (nControlTimeStartCync > 30)
         {
             fStartCync = true;
-            nControlTimeStartCync = 0;
             if (fDebug && false)
                 printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
+            nControlTimeStartCync = 0;
         }
         if (nControlTimeRestartCync > 120)
         {
             fRestartCync = true;
-            nControlTimeRestartCync = 0;
             if (fDebug)
                 printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
+            nControlTimeRestartCync = 0;
         }
     }
     nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
@@ -389,8 +389,8 @@ bool SetReload()
         if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
         {
             fRestartCync = true;
-            nControlTimeBeforeSwitching = 0;
             printf(" 'SetReload()' - For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
+            nControlTimeBeforeSwitching = 0;
         }
     }
     return true;
@@ -3463,6 +3463,16 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
+        if (pindexPrev->nHeight && fHardForkOne)
+        {
+            CBlockIndex* fixhardforkoneindex = FindBlockByHeight(nFixHardForkOne);
+            if (pindexPrev->GetBlockHash() == fixhardforkoneindex->GetBlockHash())
+            {
+                ResultOfChecking = "block skipping at hardfork";
+                return true;
+            }
+        }
+
         if (pindexPrev->nHeight && pindexPrev->nHeight <= pindexBest->pprev->nHeight)
         {
             fGoFalse = false;
@@ -3849,7 +3859,7 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
         fDuplicateStakeOfBestBlock = true;
 
     // Preliminary checks
-    if (!pblock->CheckBlock(state))
+    if (ResultOfChecking != "block skipping at hardfork" && !pblock->CheckBlock(state))
         return state.Invalid(error("ProcessBlock() : CheckBlock - FAILED"));
 
     // ppcoin: verify hash target and signature of coinstake tx
