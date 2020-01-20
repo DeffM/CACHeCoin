@@ -3095,11 +3095,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          else pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
 
                          if  (fDebug)
+                         {
                               printf(" 'CBlock->AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s\n",
                               bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
                               ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
                               bestblockindex->GetBlockTime()).c_str());
                               printf("  timestamps are the same, a block with a lower hash value is ignored\n");
+                         }
                      }
 
                      if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
@@ -3109,9 +3111,10 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          std::string ResultOfChecking;
                          bool fGoIgnoreLaterFoundBlocks = true;
                          ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
-                         if (nPossibleHeight > pindexBest->nHeight + nMinDepthReplacement && ResultOfChecking == "already have block" &&
-                             pindexBest->nHeight > bestblockindex->pprev->nHeight + nMinDepthReplacement &&
-                             pindexBest->nHeight < bestblockindex->nHeight + nDepthOfTheDisputesZone)
+                         if ((nPossibleHeight > pindexBest->nHeight + nMinDepthReplacement && ResultOfChecking == "already have block" &&
+                             pindexBest->nHeight < bestblockindex->nHeight + nDepthOfTheDisputesZone) &&
+                             (pindexBest->nHeight > bestblockindex->pprev->nHeight + nMinDepthReplacement ||
+                             nPossibleHeight > pindexBest->nHeight + (nMinDepthReplacement * 2)))
                          {
                              fGoIgnoreLaterFoundBlocks = false;
                              if (fResetSyncCheckpoint)
@@ -3449,7 +3452,8 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
     if (IsUntilFullCompleteOneHundredFortyFourBlocks()) nMaximumDepthInBlocksForEntry = 140;
 
     if ((GetBlockTime() > pindexBest->GetBlockTime() + 2 * 24 * 60 * 60 ||
-         GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && IsUntilFullCompleteOneHundredFortyFourBlocks())
+         GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && !fHardForkOne &&
+         IsUntilFullCompleteOneHundredFortyFourBlocks())
     {
         fWrongTimeShort = true;
     }
@@ -3940,6 +3944,7 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
     int nSetMaxOrphanBlocks = GetArg("-maxorphanblocks", DEFAULT_MAX_ORPHAN_BLOCKS);
     if (pblock->hashPrevBlock != 0 && !mapBlockIndex.count(pblock->hashPrevBlock))
     {
+        nControlTimeRestartCync = 0;
         printf(" 'ProcessBlock()' - ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().c_str());
 
         // Accept orphans as long as there is a node to request its parents from
