@@ -10,7 +10,7 @@ using namespace json_spirit;
 using namespace std;
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, json_spirit::Object& entry);
-double GetDifficulty(const CBlockIndex* blockindex, const CBlockIndex* blockindexpow, const CBlockIndex* blockindexpos)
+double GetDifficulty(const CBlockIndex* blockindex)
 {
     // Floating point number that is a multiple of the minimum difficulty,
     // minimum difficulty = 1.0.
@@ -19,38 +19,18 @@ double GetDifficulty(const CBlockIndex* blockindex, const CBlockIndex* blockinde
         if (pindexBest == NULL)
             return 1.0;
         else
+        if (pindexBest->GetBlockTime() <= nPowForceTimestamp)
             blockindex = GetLastBlockIndex(pindexBest, false);
-    }
-    if (blockindexpow == NULL)
-    {
-        if (pindexBest == NULL)
-            return 1.0;
         else
-            blockindexpow = GetLastBlockIndexPow(pindexBest, false);
+        if (pindexBest->GetBlockTime() > nPowForceTimestamp)
+            blockindex = GetLastBlockIndexPow(pindexBest, false);
     }
-    if (blockindexpos == NULL)
-    {
-        if (pindexBest == NULL)
-            return 1.0;
-        else
-            blockindexpos = GetLastBlockIndexPos(pindexBest, false);
-    }
+
     unsigned int nBlockBits = blockindex->nBits;
-    unsigned int nBlockBitspow = blockindexpow->nBits;
-    unsigned int nBlockBitspos = blockindexpos->nBits;
-    nBlockBits = GetNextTargetRequired(blockindex,blockindex->IsProofOfStake());
-    nBlockBitspow = GetNextTargetRequiredPow(blockindexpow,blockindexpow->IsProofOfStake());
-    nBlockBitspos = GetNextTargetRequiredPos(blockindexpos,blockindexpos->IsProofOfStake());
     int nShift = (nBlockBits >> 24) & 0xff;
-    int nShiftpow = (nBlockBitspow >> 24) & 0xff;
-    int nShiftpos = (nBlockBitspos >> 24) & 0xff;
 
     double dDiff =
         (double)0x0000ffff / (double)(nBlockBits & 0x00ffffff);
-    double dDiffpow =
-        (double)0x0000ffff / (double)(nBlockBitspow & 0x00ffffff);
-    double dDiffpos =
-        (double)0x0000ffff / (double)(nBlockBitspos & 0x00ffffff);
 
     while (nShift < 29)
     {
@@ -62,34 +42,7 @@ double GetDifficulty(const CBlockIndex* blockindex, const CBlockIndex* blockinde
         dDiff /= 256.0;
         nShift--;
     }
-    while (nShiftpow < 29)
-    {
-        dDiffpow *= 256.0;
-        nShiftpow++;
-    }
-    while (nShiftpow > 29)
-    {
-        dDiffpow /= 256.0;
-        nShiftpow--;
-    }
-    while (nShiftpos < 29)
-    {
-        dDiffpos *= 256.0;
-        nShiftpos++;
-    }
-    while (nShiftpos > 29)
-    {
-        dDiffpos /= 256.0;
-        nShiftpos--;
-    }
-
-    if (pindexBest->GetBlockTime() > nPowForceTimestamp + nPowForceTimestamp && blockindex->IsProofOfWork())  //  fulldiffbits /disabled/
-        return dDiffpow;
-    else
-    if (pindexBest->GetBlockTime() > nPowForceTimestamp + nPowForceTimestamp && blockindex->IsProofOfStake()) //  fulldiffbits /disabled/
-        return dDiffpos;
-    else
-        return dDiff;
+    return dDiff;
 }
 
 Object blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool fPrintTransactionDetail)
@@ -163,35 +116,35 @@ Value getdifficulty(const Array& params, bool fHelp)
     Object obj;
     if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
     {
-    obj.push_back(Pair("proof-of-work",                             GetDifficulty()));
-    obj.push_back(Pair("proof-of-stake",                            GetDifficulty(GetLastBlockIndex(pindexBest, true))));
-    obj.push_back(Pair("search-interval",                          (int)nLastCoinStakeSearchInterval));
-    obj.push_back(Pair("study",                                    (double)study));
-    obj.push_back(Pair("studys",                                   (double)studys));
+       obj.push_back(Pair("proof-of-work",                             GetDifficulty()));
+       obj.push_back(Pair("proof-of-stake",                            GetDifficulty(GetLastBlockIndex(pindexBest, true))));
+       obj.push_back(Pair("search-interval",                          (int)nLastCoinStakeSearchInterval));
+       obj.push_back(Pair("study",                                    (double)study));
+       obj.push_back(Pair("studys",                                   (double)studys));
     }
     else
     {
-    obj.push_back(Pair("proof-of-work",                             GetDifficulty()));
-    obj.push_back(Pair("search-interval-powblock",                 (int)nLastCoinPowSearchInterval));
-    obj.push_back(Pair("search-twointerval-powblock",              (int)nLastCoinPowFiveInterval));
-    obj.push_back(Pair("search-full-result-powblock",              (int)nActualTimeIntervalXUXLpow));
-    obj.push_back(Pair("pow-target-spacing-variable",              (int)nPowTargetSpacingVar));
-    obj.push_back(Pair("UpperLower-pow",                           (int)powUpperLower));
-    obj.push_back(Pair("XUpper-pow",                               (int)XUpperPow));
-    obj.push_back(Pair("XLower-pow",                               (int)XLowerPow));
-    obj.push_back(Pair("proof-of-stake",                            GetDifficulty(GetLastBlockIndexPos(pindexBest, true))));
-    obj.push_back(Pair("search-interval-posblock",                 (int)nLastCoinPosSearchInterval));
-    obj.push_back(Pair("search-twointerval-posblock",              (int)nLastCoinPosTwoInterval));
-    obj.push_back(Pair("search-full-result-posblock",              (int)nActualTimeIntervalXUXLpos));
-    obj.push_back(Pair("pos-target-spacing-variable",              (int)nPosTargetSpacingVar));
-    obj.push_back(Pair("UpperLower-pos",                           (int)posUpperLower));
-    obj.push_back(Pair("XUpper-pos",                               (int)XUpperPos));
-    obj.push_back(Pair("XLower-pos",                               (int)XLowerPos));
-    obj.push_back(Pair("search-interval-without pow block",        (int)nLastCoinWithoutPowSearchInterval));
-    obj.push_back(Pair("search-interval-without pos block",        (int)nLastCoinWithoutPosSearchInterval));
-    obj.push_back(Pair("UnixCachChainTime",                        (int)nUnixCachChainTime));
-    obj.push_back(Pair("study",                                    (double)study));
-    obj.push_back(Pair("studys",                                   (double)studys));
+       obj.push_back(Pair("proof-of-work",                             GetDifficulty(GetLastBlockIndexPow(pindexBest, false))));
+       obj.push_back(Pair("search-interval-powblock",                 (int)nLastCoinPowSearchInterval));
+       obj.push_back(Pair("search-twointerval-powblock",              (int)nLastCoinPowFiveInterval));
+       obj.push_back(Pair("search-full-result-powblock",              (int)nActualTimeIntervalXUXLpow));
+       obj.push_back(Pair("pow-target-spacing-variable",              (int)nPowTargetSpacingVar));
+       obj.push_back(Pair("UpperLower-pow",                           (int)powUpperLower));
+       obj.push_back(Pair("XUpper-pow",                               (int)XUpperPow));
+       obj.push_back(Pair("XLower-pow",                               (int)XLowerPow));
+       obj.push_back(Pair("proof-of-stake",                            GetDifficulty(GetLastBlockIndexPos(pindexBest, true))));
+       obj.push_back(Pair("search-interval-posblock",                 (int)nsLastCoinPosSearchInterval));
+       obj.push_back(Pair("search-twointerval-posblock",              (int)nsLastCoinPosTwoInterval));
+       obj.push_back(Pair("search-full-result-posblock",              (int)nsActualTimeIntervalXUXLpos));
+       obj.push_back(Pair("pos-target-spacing-variable",              (int)nsPosTargetSpacingVar));
+       obj.push_back(Pair("UpperLower-pos",                           (int)nsposUpperLower));
+       obj.push_back(Pair("XUpper-pos",                               (int)nsXUpperPos));
+       obj.push_back(Pair("XLower-pos",                               (int)nsXLowerPos));
+       obj.push_back(Pair("search-interval-without pow block",        (int)nLastCoinWithoutPowSearchInterval));
+       obj.push_back(Pair("search-interval-without pos block",        (int)nLastCoinWithoutPosSearchInterval));
+       obj.push_back(Pair("UnixCachChainTime",                        (int)nUnixCachChainTime));
+       obj.push_back(Pair("study",                                    (double)study));
+       obj.push_back(Pair("studys",                                   (double)studys));
     }
     return obj;
 }

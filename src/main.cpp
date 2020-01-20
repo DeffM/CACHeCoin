@@ -53,23 +53,23 @@ int64 nChainStartTime = 1388949883;
 int64 nNewTimeBlock = 0;
 int64 nUnixCachChainTime = 0;
 int64 nPowPindexPrevTime = 0;
-int64 nPosPindexPrevTime = 0;
 int64 nLastCoinPowSearchInterval = 0;
 int64 nLastCoinPowFiveInterval = 0;
 int64 nLastCoinWithoutPowSearchInterval = 0;
-int64 nLastCoinPosSearchInterval = 0;
-int64 nLastCoinPosTwoInterval = 0;
+int64 nPosPindexPrevTime = 0;
+int64 nsLastCoinPosSearchInterval = 0;
+int64 nsLastCoinPosTwoInterval = 0;
 int64 nLastCoinWithoutPosSearchInterval = 0;
 double nActualTimeIntervalXUXLpow = 0;
-double nActualTimeIntervalXUXLpos = 0;
+double nsActualTimeIntervalXUXLpos = 0;
 double nPowTargetSpacingVar = 0;
-double nPosTargetSpacingVar = 0;
+double nsPosTargetSpacingVar = 0;
 double powUpperLower = 0;
-double posUpperLower = 0;
+double nsposUpperLower = 0;
 double XUpperPow = 0;
 double XLowerPow = 0;
-double XUpperPos = 0;
-double XLowerPos = 0;
+double nsXUpperPos = 0;
+double nsXLowerPos = 0;
 double study = 0;
 double studys = 0;
 int nCoinbaseMaturity = 500;
@@ -396,23 +396,25 @@ bool SetReload()
     return true;
 }
 
+bool fSetLocalTime = GetArg("-setlocaltime", 1);
 void ThreadAnalyzerHandler()
 {
     int64 nPrevTimeCount = 0;
     int64 nPrevTimeCount2 = 0;
-    int64 nThresholdPow = 0;
-    int64 nThresholdPos = 0;
+    int64 nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
+    int64 nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
 
     while (!fShutdown)
     {
        SetReload();
-       int64 nTimeCount = GetAdjustedTime() + nNewTimeBlock;
-       int64 nTimeCount2 = GetAdjustedTime() + nNewTimeBlock;
-             nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
-             nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
+       int64 nLocalTime = GetAdjustedTime();
+       if (fSetLocalTime)
+           nLocalTime = nLocalTime + nNewTimeBlock;
+       int64 nTimeCount = nLocalTime;
+       int64 nTimeCount2 = nLocalTime;
        int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
-       int64 nPosPrevTime = pindexBest->GetBlockTime();
-       if (pindexBest->nHeight > 2018)
+       int64 nPosPrevTime = (GetLastBlockIndexPos(pindexBest, true)->GetBlockTime());
+       if (pindexBest->nHeight)
        {
            if (nTimeCount != nPrevTimeCount)
            {
@@ -422,18 +424,9 @@ void ThreadAnalyzerHandler()
            }
            if (nTimeCount2 != nPrevTimeCount2)
            {
-               if (pindexBest->IsProofOfStake())
-               {
-                   nPrevTimeCount2 = nTimeCount2;
-                   uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - nPosPrevTime, nThresholdPos);
-                   nLastCoinWithoutPosSearchInterval = nTimeCount2 - nPosPrevTime;
-               }
-               if (pindexBest->IsProofOfWork())
-               {
-                   nPrevTimeCount2 = nTimeCount2;
-                   uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - pindexBest->pprev->GetBlockTime(), nThresholdPos);
-                   nLastCoinWithoutPosSearchInterval = nTimeCount2 - pindexBest->pprev->GetBlockTime();
-               }
+               nPrevTimeCount2 = nTimeCount2;
+               uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - nPosPrevTime, nThresholdPos);
+               nLastCoinWithoutPosSearchInterval = nTimeCount2 - nPosPrevTime;
            }
        }
        Sleep(1000);
@@ -1619,7 +1612,7 @@ unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fPr
      return bnNewPow.GetCompact();
 }
 
-unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fProofOfStake)
+unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fProofOfStake, bool fOnlyProofOfStakeBlock)
 {
     CBigNum bnTargetLimitPos = bnProofOfStakeHardLimit;
     if(fHardForkOne)
@@ -1674,16 +1667,13 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
     // cacheproject retarget
     // VALM-Cache /logical analysis - mathematically variable/
     int64 nActualSpacingPos = 0;
+    double nPosTargetSpacingVar = 0;
     double nVar = nPosTargetSpacingTest / 3;
     int64 nNonAccelerating = 0; // sec +0-
           nPosPindexPrevTime = pospindexPrev->GetBlockTime();
     int64 nPosPindexPrevPrevTime = pospindexPrevPrev->GetBlockTime();
-    //int64 PosPindexPrevPrevPrevTime = pospindexPrevPrevPrev->GetBlockTime();
-    //int64 PosPindexPrevPrevPrevPrevTime = pospindexPrevPrevPrevPrev->GetBlockTime();
-          nLastCoinPosSearchInterval = (nLastCoinSearchTime - nPosPindexPrevPrevTime) - (nLastCoinSearchTime - nPosPindexPrevTime);
-    //int64 nLastCoinPosSearchIntervalPrev = (nLastCoinSearchTime - nPosPindexPrevPrevPrevTime) - (nLastCoinSearchTime - PosPindexPrevPrevTime);
-    //int64 nLastCoinPosSearchIntervalPrevPrev = (nLastCoinSearchTime - nPosPindexPrevPrevPrevPrevTime) - (nLastCoinSearchTime - nPosPindexPrevPrevPrevTime);
-          nLastCoinPosTwoInterval = nActualSpacingTotalsPos;
+    int64 nLastCoinPosSearchInterval = (nLastCoinSearchTime - nPosPindexPrevPrevTime) - (nLastCoinSearchTime - nPosPindexPrevTime);
+    int64 nLastCoinPosTwoInterval = nActualSpacingTotalsPos;
           nActualSpacingPos = (nActualSpacingTotalsPos + nActualTimeIntervalLongPosSecond) / 2;
     if(nActualTimeIntervalNvar >= nNonAccelerating && nActualTimeIntervalNvar < nPosTargetSpacingTest - nNonAccelerating)
        nPosTargetSpacingVar = ((nPosTargetSpacingTest - 1 + nVar) - (nActualTimeIntervalNvar * nVar / nPosTargetSpacingTest));
@@ -1695,8 +1685,10 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
                        nPosTargetSpacingVar = nPosTargetSpacingTest - nVar + 1;
                        else
                            nPosTargetSpacingVar = nPosTargetSpacingTest;
-    double nSTSp = nPosTargetSpacingTest; // 1200 sec
+
     int64 posUppermin = 0;
+    double nSTSp = nPosTargetSpacingTest; // 1200 sec
+    double nActualTimeIntervalXUXLpos = 0;
     double posUppermax = nSTSp - nNonAccelerating; // 1199 sec
     double posLowermin = nSTSp + nNonAccelerating; // 1201 sec
     int64 posLowermax = nTargetSpacingWorkMaxPos;  // 2400 sec
@@ -1722,7 +1714,7 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
                nReverseEffectPos = ((nSTSp + (nSTSp - nNix)) / nActualTimeIntervalXUXLpos) / 2;
                else
                    nReverseEffectPos = 1;
-       posUpperLower = (nSTSp / 2) * nReverseEffectPos; // interval sampling 2:1 variable
+    double posUpperLower = (nSTSp / 2) * nReverseEffectPos; // interval sampling 2:1 variable
     if(nActualSpacingTotalsPos < nNix / 1.30 && nActualTimeIntervalLongPosVeryFirst < posUppermax)
        posUpperLower = posUpperLower * ((nNix / 1.30) / nActualSpacingTotalsPos);
     double XUXL = nPosTargetSpacingTest / 100 * 4;
@@ -1743,6 +1735,8 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
        else if(nActualTimeIntervalXL >= posLowermax)
                L = XL / 2;
                else L = 1;
+    double XUpperPos = 0;
+    double XLowerPos = 0;
     int64 nTargetTimespanControlu = nTargetTimespanPos / U; // min
     int64 nTargetTimespanControll = nTargetTimespanPos / L; // min
     if(nTargetTimespanControlu >= nTargetTimespanMin)
@@ -1757,6 +1751,18 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
                XLowerPos = XL;
                else
                    XLowerPos = 1;
+
+    if (fOnlyProofOfStakeBlock)
+    {
+        nsXUpperPos = XUpperPos;
+        nsXLowerPos = XLowerPos;
+        nsposUpperLower = posUpperLower;
+        nsLastCoinPosSearchInterval = nLastCoinPosSearchInterval;
+        nsLastCoinPosTwoInterval = nLastCoinPosTwoInterval;
+        nsActualTimeIntervalXUXLpos = nActualTimeIntervalXUXLpos;
+        nsPosTargetSpacingVar = nPosTargetSpacingVar;
+    }
+
     CBigNum bnNewPos;
     bnNewPos.SetCompact(pospindexPrev->nBits);
     double nTargetTimespanBn = nTargetTimespanPos / max(XUpperPos, XLowerPos);
@@ -3463,7 +3469,7 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
-        if (pindexPrev->nHeight && fHardForkOne)
+        if (pindexPrev->nHeight && nFixHardForkOne == nBestHeight && fHardForkOne)
         {
             CBlockIndex* fixhardforkoneindex = FindBlockByHeight(nFixHardForkOne);
             if (pindexPrev->GetBlockHash() == fixhardforkoneindex->GetBlockHash())
@@ -3675,7 +3681,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 
         int64 nNewTimeBlockA = 0;
         int64 nNewTimeBlockB = 0;
-        int64 nLastCoinWithoutInterval = GetTime() - GetBlockTime();
+        int64 nLastCoinWithoutInterval = GetAdjustedTime() - GetBlockTime();
         if (nLastCoinWithoutInterval < 0)
         {
             nNewTimeBlockA = nLastCoinWithoutInterval * (-1);
@@ -3698,7 +3704,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 
         if(pindexPrev->GetBlockTime() > nPowForceTimestamp && IsProofOfStake() && !fHardForkOne)
         {
-           if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()) && false)
+           if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake(), false) && false)
            {
                return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
            }
@@ -3706,7 +3712,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 
         if(IsProofOfStake() && fHardForkOne)
         {
-           if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake()))
+           if (nBits != GetNextTargetRequiredPos(pindexPrev, true, true))
            {
               return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
            }
@@ -3719,10 +3725,6 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
                return state.DoS(5, error("CBlock->AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
            }
         }
-
-        // Check timestamp against prev
-        if (GetBlockTime() <= pindexPrev->GetMedianTimePast() || GetBlockTime() + nMaxClockDrift < pindexPrev->GetBlockTime())
-            return state.Invalid(error("CBlock->AcceptBlock() : block's timestamp is too early"));
 
         // Hash spam control
         if(pindexPrev->GetBlockTime() > nPowForceTimestamp + NTest)
@@ -3738,6 +3740,10 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
                return false;
            }
         }
+
+        // Check timestamp against prev
+        if (GetBlockTime() <= pindexPrev->GetMedianTimePast() || GetBlockTime() + nMaxClockDrift < pindexPrev->GetBlockTime())
+            return state.Invalid(error("CBlock->AcceptBlock() : block's timestamp is too early"));
 
         // Check that all transactions are finalized
         BOOST_FOREACH(const CTransaction& tx, vtx)
@@ -4863,6 +4869,7 @@ static bool InvSpamIpTimer()
 
 bool fLimitGetblocks = false;
 bool fIgnoreInvSizeOne = false;
+bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     RandAddSeedPerfmon();
@@ -4886,7 +4893,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     bool fGoInv = true;
     bool fGoBlock = true;
     bool fGoGetblocks = true;
-    bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     std::string wait2(strCommand.c_str()), stCommand2("getdata");
@@ -5779,21 +5785,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
 int nCalculationInterval = 1 * 60;
 int64 nTimerStart = 0;
-int64 nAllowableNumberOferrors = 100;
+int64 nAllowableNumberOferrors = 150;
 unsigned int nMakeSureSpam = 0;
-
+bool fGlobalIpBanned = GetArg("-globalipbanned", 0);
 static bool SpamIpTimer(CNode* pfrom, unsigned int nMakeSureSpam)
 {
     bool fThisSpamIp = false;
     if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
-        nAllowableNumberOferrors = 80;
+        nAllowableNumberOferrors = 120;
     if (nMakeSureSpam == 1)
         nTimerStart = GetAdjustedTime();
     if (nMakeSureSpam == nAllowableNumberOferrors && GetAdjustedTime() - nTimerStart <= nCalculationInterval)
     {
         fThisSpamIp = true;
-        pfrom->fDisconnect = true;
+        if (fSetAdditionalChecks)
+            pfrom->fDisconnect = true;
     }
+    if (!fGlobalIpBanned)
+        return false;
     return fThisSpamIp;
 }
 
@@ -6312,7 +6321,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
         static int64 nLastCoinPosSearchTime = GetAdjustedTime();
         CBlockIndex* pospindexPrev = pindexBest;
 
-        pblock->nBits = GetNextTargetRequiredPos(pospindexPrev, true);
+        pblock->nBits = GetNextTargetRequiredPos(pospindexPrev, true, true);
         CTransaction txCoinPos;
         int64 nSearchTime = txCoinPos.nTime; // search to current time
         if (nSearchTime > nLastCoinPosSearchTime)
@@ -6329,7 +6338,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
             }
             nLastCoinPosSearchTime = nSearchTime;
         }
-        pblock->nBits = GetNextTargetRequiredPos(pospindexPrev, pblock->IsProofOfStake());
+        pblock->nBits = GetNextTargetRequiredPos(pospindexPrev, pblock->IsProofOfStake(), false);
     }
 
     // ppcoin: if coinstake available add coinstake tx
@@ -6398,7 +6407,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
                     // or other transactions in the memory pool.
                     if (!mempool.mapTx.count(txin.prevout.hash))
                     {
-                        printf("ERROR: mempool transaction missing input\n");
+                        printf(" ERROR: 'CreateNewBlock()' - mempool transaction missing input\n");
                         if (fDebug) assert("mempool transaction missing input" == 0);
                         fMissingInputs = true;
                         if (porphan)
@@ -6532,7 +6541,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
 
             if (fDebug && GetBoolArg("-printpriority"))
             {
-                printf("priority %.1f feeperkb %.1f txid %s\n",
+                printf(" 'CreateNewBlock()' - priority %.1f feeperkb %.1f txid %s\n",
                        dPriority, dFeePerKb, tx.GetHash().ToString().c_str());
             }
 
@@ -6559,7 +6568,7 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
         nLastBlockSize = nBlockSize;
 
         if (fDebug && GetBoolArg("-printpriority"))
-            printf("CreateNewBlock(): total size %"PRI64u"\n", nBlockSize);
+            printf(" 'CreateNewBlock()' - total size %"PRI64u"\n", nBlockSize);
 
         if (pblock->IsProofOfWork())
             pblock->vtx[0].vout[0].nValue = GetProofOfWorkReward(pblock->nBits);
@@ -6692,14 +6701,14 @@ static bool fGenerateBitcoins = false;
 static bool fLimitProcessors = false;
 static int nLimitProcessors = -1;
 
-void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock)
+void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
 {
     void *scratchbuf = scrypt_buffer_alloc();
 
     if (fProofOfStake)
         return;
 
-    printf("CPUMiner started for proof-of-%s\n", fProofOfStake? "stake" : "work");
+    printf("      CPUMiner started for proof-of-%s\n", fProofOfStake? "stake" : "work");
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
 
     // Make this thread recognisable as the mining thread
@@ -6715,7 +6724,6 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBloc
             return;
         while (vNodes.empty() || IsInitialBlockDownload())
         {
-            //printf("vNodes.size() == %d, IsInitialBlockDownload() == %d\n", vNodes.size(), IsInitialBlockDownload());
             Sleep(1000);
             if (fShutdown)
                 return;
@@ -6730,47 +6738,21 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBloc
         }
         strMintWarning = "";
 
-        //
         // Create new block
-        //
         unsigned int nTransactionsUpdatedLast = nTransactionsUpdated;
         CBlockIndex* pindexPrev = pindexBest;
 
         auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake));
+
         if (!pblock.get())
             return;
-        IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
 
-        if (fProofOfStake)
-        {
-            // ppcoin: if proof-of-stake block found then process block
-            if (pblock->IsProofOfStake())
-            {
-                if (!pblock->SignBlock(*pwalletMain))
-                {
-                    strMintWarning = strMintMessage;
-                    continue;
-                }
-                strMintWarning = "";
-                printf("CPUMiner : proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
-                SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                CheckWork(pblock.get(), *pwalletMain, reservekey);
-                SetThreadPriority(THREAD_PRIORITY_LOWEST);
-            }
-            // sairon: Fast and Furious Proof of Stake Miner
-            bool fFastPOS = GetArg("-fastpos", 0);
-            if (!fFastPOS) Sleep(500);
-            continue;
-        }
+        IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
 
         printf("Running BitcoinMiner with %"PRIszu" transactions in block (%u bytes)\n", pblock->vtx.size(),
                ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
 
-        //
         // Pre-build hash buffers
-        //
         char pmidstatebuf[32+16]; char* pmidstate = alignup<16>(pmidstatebuf);
         char pdatabuf[128+16];    char* pdata     = alignup<16>(pdatabuf);
         char phash1buf[64+16];    char* phash1    = alignup<16>(phash1buf);
@@ -6780,10 +6762,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBloc
         unsigned int& nBlockTime = *(unsigned int*)(pdata + 64 + 4);
         unsigned int& nBlockNonce = *(unsigned int*)(pdata + 64 + 12);
 
-
-        //
         // Search
-        //
         int64 nStart = GetTime();
         uint256 hashTarget = CBigNum().SetCompact(pblock->nBits).getuint256();
 
@@ -6791,7 +6770,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBloc
         block_header res_header;
         uint256 result;
 
-        loop
+        while (!fShutdown)
         {
             unsigned int nHashesDone = 0;
             unsigned int nNonceFound;
@@ -6884,7 +6863,6 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBloc
                 break;  // need to update coinbase timestamp
         }
     }
-
     scrypt_buffer_free(scratchbuf);
 }
 
@@ -6986,7 +6964,7 @@ void static StakeMintThread(void* parg, bool fGenerateSingleBlock)
 {
     CWallet* pwallet = (CWallet*)parg;
 
-    std::string s = strprintf("'CACHE'PROJECT_%s", "THREAD_MINTER");
+    std::string s = strprintf(" 'CACHE'PROJECT_%s", "THREAD_MINTER");
     RenameThread(s.c_str());
     try
     {
@@ -7013,7 +6991,7 @@ void MintStake(CWallet* pwallet, bool fGenerateSingleBlock)
 {
      if (MintStakeThread != NULL)
      {
-         printf("THREAD_MINTER already loaded\n");
+         printf(" 'THREAD_MINTER' - already loaded\n");
      }
      else if (MintStakeThread == NULL)
      {
@@ -7046,7 +7024,7 @@ void static ThreadBitcoinMiner(void* parg)
     nHPSTimerStart = 0;
     if (vnThreadsRunning[THREAD_MINER] == 0)
         dHashesPerSec = 0;
-    printf("ThreadBitcoinMiner exiting, %d threads remaining\n", vnThreadsRunning[THREAD_MINER]);
+    printf(" 'ThreadBitcoinMiner()' - exiting, %d threads remaining\n", vnThreadsRunning[THREAD_MINER]);
 }
 
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet)
@@ -7060,17 +7038,17 @@ void GenerateBitcoins(bool fGenerate, CWallet* pwallet)
     if (fGenerate)
     {
         int nProcessors = boost::thread::hardware_concurrency();
-        printf("%d processors\n", nProcessors);
+        printf(" 'GenerateBitcoins()' - %d processors\n", nProcessors);
         if (nProcessors < 1)
             nProcessors = 1;
         if (fLimitProcessors && nProcessors > nLimitProcessors)
             nProcessors = nLimitProcessors;
         int nAddThreads = nProcessors - vnThreadsRunning[THREAD_MINER];
-        printf("Starting %d BitcoinMiner threads\n", nAddThreads);
+        printf(" 'GenerateBitcoins()' - Starting %d BitcoinMiner threads\n", nAddThreads);
         for (int i = 0; i < nAddThreads; i++)
         {
             if (!NewThread(ThreadBitcoinMiner, pwallet))
-                printf("Error: NewThread(ThreadBitcoinMiner) failed\n");
+                printf(" 'GenerateBitcoins()' - Error: NewThread(ThreadBitcoinMiner) failed\n");
             Sleep(10);
         }
     }
