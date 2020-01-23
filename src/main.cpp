@@ -89,7 +89,6 @@ int nScriptCheckThreads = 0;
 bool fCreateCoinStakeSleep = false;
 bool fCheckFork = false;
 bool fImporting = false;
-bool fConnected = false;
 bool fReindex = false;
 
 CMedianFilter<int> cPeerBlockCounts(5, 0); // Amount of blocks that other nodes claim to have
@@ -351,8 +350,6 @@ unsigned char SpamHashList()
     return false;
 }
 
-bool fStartCync = false;
-bool fRestartCync = false;
 int nControlTimeStartCync = 0;
 int nControlTimeRestartCync = 0;
 
@@ -361,37 +358,47 @@ int nControlTimeBeforeSwitching = 0;
 bool SetReload()
 {
     bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
-    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
-    {
-        nControlTimeStartCync++;
-        nControlTimeRestartCync++;
-
-        if (nControlTimeStartCync > 30)
-        {
-            fStartCync = true;
-            if (fDebug && false)
-                printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
-            nControlTimeStartCync = 0;
-        }
-        if (nControlTimeRestartCync > 120)
-        {
-            fRestartCync = true;
-            if (fDebug)
-                printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
-            nControlTimeRestartCync = 0;
-        }
-    }
-    nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
     bool fTimeBeforeSwitching = GetArg("-timebeforeswitching", 1);
-    if (fTimeBeforeSwitching && !IsUntilFullCompleteOneHundredFortyFourBlocks() && !fShutdown && fConnected)
+    nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
+
+    vector<CNode*> vNodesCopy = vNodes;
+    BOOST_FOREACH(CNode* pnode, vNodesCopy)
     {
-        nControlTimeBeforeSwitching++;
-        if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
-        {
-            fRestartCync = true;
-            printf(" 'SetReload()' - For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
-            nControlTimeBeforeSwitching = 0;
-        }
+       if (true)
+       {
+           if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks())
+           {
+               nControlTimeStartCync++;
+               nControlTimeRestartCync++;
+
+               if (nControlTimeStartCync > 30)
+               {
+                   pnode->fStartSync = true;
+                   if (fDebug && false)
+                       printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
+                   nControlTimeStartCync = 0;
+               }
+               if (nControlTimeRestartCync > 120)
+               {
+                   pnode->fDisconnect = true;
+                   if (fDebug)
+                       printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
+                   nControlTimeRestartCync = 0;
+               }
+           }
+
+           if (fTimeBeforeSwitching && !IsUntilFullCompleteOneHundredFortyFourBlocks())
+           {
+               nControlTimeBeforeSwitching++;
+               if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
+               {
+                   pnode->fDisconnect = true;
+                   if (fDebug)
+                       printf(" 'SetReload()' - For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
+                   nControlTimeBeforeSwitching = 0;
+               }
+           }
+       }
     }
     return true;
 }
@@ -4874,10 +4881,11 @@ static bool InvSpamIpTimer()
 
 bool fLimitGetblocks = false;
 bool fIgnoreInvSizeOne = false;
-bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 {
     RandAddSeedPerfmon();
+
+    bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
 
     if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
     {
@@ -5256,9 +5264,19 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     else
                     if (mapOrphanBlocks.count(inv.hash))
                         pfrom->PushGetBlocks(pindexBest, GetOrphanRoot(mapOrphanBlocks[inv.hash]));
+                    else
+                    if (nInv == nLastBlock)
+                    {
+                       // In case we are on a very long side-chain, it is possible that we already have
+                       // the last block in an inv bundle sent in response to getblocks. Try to detect
+                       // this situation and push another getblocks to continue.
+                       pfrom->PushGetBlocks(mapBlockIndex[inv.hash], uint256(0));
+                       if (fDebug)
+                           printf(" 'ProcessMessage()' - force request: %s\n", inv.ToString().c_str());
+                     }
                 }
                 else
-                if (inv.type != MSG_BLOCK)
+                if (inv.type == MSG_TX)
                 {
                    if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
                    {
@@ -5267,16 +5285,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                        if (!fAlreadyHave && !fImporting && !fReindex)
                            pfrom->AskFor(inv);
                    }
-                }
-                else
-                if (nInv == nLastBlock)
-                {
-                   // In case we are on a very long side-chain, it is possible that we already have
-                   // the last block in an inv bundle sent in response to getblocks. Try to detect
-                   // this situation and push another getblocks to continue.
-                   pfrom->PushGetBlocks(mapBlockIndex[inv.hash], uint256(0));
-                   if (fDebug)
-                       printf(" 'ProcessMessage()' - force request: %s\n", inv.ToString().c_str());
                 }
                 Inventory(inv.hash);
             }
@@ -5595,7 +5603,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (ResultOfChecking == "malapropos block" && fIgnoreInvSizeOne)
             {
                 mapAlreadyAskedFor.erase(inv);
-                fReturnTrue = true;
+                fReturnTrue = false;
                 if (fSetReconnecting)
                 {
                     pfrom->fDisconnect = true;
@@ -5792,10 +5800,11 @@ int nCalculationInterval = 1 * 60;
 int64 nTimerStart = 0;
 int64 nAllowableNumberOferrors = 150;
 unsigned int nMakeSureSpam = 0;
-bool fGlobalIpBanned = GetArg("-globalipbanned", 0);
 static bool SpamIpTimer(CNode* pfrom, unsigned int nMakeSureSpam)
 {
     bool fThisSpamIp = false;
+    bool fGlobalIpBanned = GetArg("-globalipbanned", 0);
+    //bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
     if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
         nAllowableNumberOferrors = 120;
     if (nMakeSureSpam == 1)
@@ -5803,7 +5812,7 @@ static bool SpamIpTimer(CNode* pfrom, unsigned int nMakeSureSpam)
     if (nMakeSureSpam == nAllowableNumberOferrors && GetAdjustedTime() - nTimerStart <= nCalculationInterval)
     {
         fThisSpamIp = true;
-        if (fSetAdditionalChecks)
+        if (fGlobalIpBanned)
             pfrom->fDisconnect = true;
     }
     if (!fGlobalIpBanned)
@@ -5849,9 +5858,13 @@ bool ProcessMessages(CNode* pfrom)
                break;
            }
 
-           CNetMessage& msg = *it;
+           bool fGoBreak = false;
+           CNetMessage& msgtest = *it;
 
-           if (!msg.complete())
+           if (!msgtest.complete())
+               fGoBreak = true;
+
+           if (fGoBreak)
            {
                if (nMakeSureSpam > nAllowableNumberOferrors)
                {
@@ -5867,7 +5880,8 @@ bool ProcessMessages(CNode* pfrom)
                waitTxSpam = waitTxSpam.substr(0, waitTxSpam.find_last_of(":") +0);
                if (SpamIpTimer(pfrom, nMakeSureSpam) && wait == sameaddress)
                {
-                   printf("  ProcessMessages - spam ip actual: %s\n", wait.c_str());
+                   if (fDebug)
+                       printf("  ProcessMessages - spam ip actual: %s\n", wait.c_str());
                    SpamHashList();
                }
                else if (wait != sameaddress)
@@ -5875,12 +5889,14 @@ bool ProcessMessages(CNode* pfrom)
                         nTimerStart = 0;
                         nMakeSureSpam = 0;
                }
-               break;
            }
+
+           if (fGoBreak)
+               break;
 
            it++;
 
-           if (memcmp(msg.hdr.pchMessageStart, pchMessageStart, sizeof(pchMessageStart)) != 0)
+           if (memcmp(msgtest.hdr.pchMessageStart, pchMessageStart, sizeof(pchMessageStart)) != 0)
            {
                printf("\n\nPROCESSMESSAGE: INVALID MESSAGESTART - BREAK\n\n");
                fGo = false;
@@ -5888,7 +5904,7 @@ bool ProcessMessages(CNode* pfrom)
            }
 
            // Read header
-           CMessageHeader& hdr = msg.hdr;
+           CMessageHeader& hdr = msgtest.hdr;
            if (!hdr.IsValid())
            {
                printf("\n\nPROCESSMESSAGE: ERRORS IN HEADER - CONTINUE %s\n\n\n", hdr.GetCommand().c_str());
@@ -5901,7 +5917,7 @@ bool ProcessMessages(CNode* pfrom)
 
            // Checksum
            unsigned int nChecksum = 0;
-           CDataStream& vRecv = msg.vRecv;
+           CDataStream& vRecv = msgtest.vRecv;
            uint256 hash = Hash(vRecv.begin(), vRecv.begin() + nMessageSize);
            memcpy(&nChecksum, &hash, sizeof(nChecksum));
            if (nChecksum != hdr.nChecksum)
@@ -5992,34 +6008,9 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
                 pto->PushMessage("ping");
         }
 
-        if (pto->fSuccessfullyConnected)
-            fConnected = true;
-
-        if (pto->fSuccessfullyConnected && fRestartCync && IsUntilFullCompleteOneHundredFortyFourBlocks())
-        {
-            fConnected = false;
-            fRestartCync = false;
-            pto->fDisconnect = true;
-        }
-
-        if (pto->fSuccessfullyConnected && fRestartCync && !IsUntilFullCompleteOneHundredFortyFourBlocks())
-        {
-            fConnected = false;
-            fRestartCync = false;
-            pto->fDisconnect = true;
-        }
-
-        if (pto->fSuccessfullyConnected && !pto->fClient && !pto->fOneShot && !pto->fDisconnect &&
-            fStartCync && !fImporting && !fReindex && IsUntilFullCompleteOneHundredFortyFourBlocks())
-        {
-            fStartCync = false;
-            pto->fStartSync = true;
-        }
-
         // Start block sync
         if (pto->fStartSync && !fImporting && !fReindex)
         {
-            printf("    - - - - - - - - - -\n");
             pto->fStartSync = false;
             pto->PushGetBlocks(pindexBest, uint256(0));
         }
