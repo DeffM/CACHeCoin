@@ -3458,7 +3458,7 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
     int nMaximumDepthInBlocksForEntry = GetArg("-maximumdepthinblocksforentry", 750);
     if (IsUntilFullCompleteOneHundredFortyFourBlocks()) nMaximumDepthInBlocksForEntry = 140;
 
-    if ((GetBlockTime() > pindexBest->GetBlockTime() + 2 * 24 * 60 * 60 ||
+    if ((GetBlockTime() > pindexBest->GetBlockTime() + 3 * 24 * 60 * 60 ||
          GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && !fHardForkOne &&
          IsUntilFullCompleteOneHundredFortyFourBlocks())
     {
@@ -4849,7 +4849,7 @@ unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
 int nInvCalculationInterval = 10;
 int64 nInvTimerStart = 0;
-int64 nInvAllowableNumberOfErrors = 18;
+int64 nInvAllowableNumberOfErrors = 70;
 unsigned int nInvMakeSureSpam = 0;
 
 static bool InvSpamIpTimer()
@@ -4857,7 +4857,7 @@ static bool InvSpamIpTimer()
     bool fThisSpamIp = false;
     if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
     {
-        nInvAllowableNumberOfErrors = 25;
+        nInvAllowableNumberOfErrors = 100;
     }
 
     if (nInvMakeSureSpam == 0)
@@ -5221,6 +5221,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (IsUntilFullCompleteOneHundredFortyFourBlocks())
             {
                 fIgnoreInvSizeOne = true;
+                if (vInv.size() == 1)
+                {
+                    mapAlreadyAskedFor.erase(inv);
+                    if (pfrom->nVersion < 91004)
+                        pfrom->fDisconnect = true;
+                }
                 if (fAlreadyHave)
                 {
                     continue;
