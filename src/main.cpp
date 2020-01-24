@@ -371,19 +371,27 @@ bool SetReload()
                nControlTimeStartCync++;
                nControlTimeRestartCync++;
 
-               if (nControlTimeStartCync > 30)
-               {
-                   pnode->fStartSync = true;
-                   if (fDebug && false)
-                       printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
-                   nControlTimeStartCync = 0;
-               }
-               if (nControlTimeRestartCync > 120)
+               if (nControlTimeRestartCync > 102)
                {
                    pnode->fDisconnect = true;
                    if (fDebug)
                        printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
-                   nControlTimeRestartCync = 0;
+                   Sleep(5000);
+                   nControlTimeStartCync = 0;
+                   if (pnode->fSuccessfullyConnected)
+                   {
+                       nControlTimeRestartCync = 0;
+                       pnode->fStartSync = true;
+                       return true;
+                   }
+                   return true;
+               }
+               if (nControlTimeStartCync > 31)
+               {
+                   pnode->fStartSync = true;
+                   if (fDebug)
+                       printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
+                   nControlTimeStartCync = 0;
                }
            }
 
@@ -406,37 +414,48 @@ bool SetReload()
 bool fSetLocalTime = GetArg("-setlocaltime", 1);
 void ThreadAnalyzerHandler()
 {
+    bool fOneSec = false;
     int64 nPrevTimeCount = 0;
     int64 nPrevTimeCount2 = 0;
     int64 nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
     int64 nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
 
+    int64 nOneSec = GetTimeMillis();
     while (!fShutdown)
     {
-       SetReload();
-       int64 nLocalTime = GetAdjustedTime();
-       if (fSetLocalTime)
-           nLocalTime = nLocalTime + nNewTimeBlock;
-       int64 nTimeCount = nLocalTime;
-       int64 nTimeCount2 = nLocalTime;
-       int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
-       int64 nPosPrevTime = (GetLastBlockIndexPos(pindexBest, true)->GetBlockTime());
-       if (pindexBest->nHeight)
+       if (GetTimeMillis() >= nOneSec + 1000)
        {
-           if (nTimeCount != nPrevTimeCount)
-           {
-               nPrevTimeCount = nTimeCount;
-               uiInterface.NotifySpamHashControlPowChanged(nTimeCount - nPowPrevTime, nThresholdPow);
-               nLastCoinWithoutPowSearchInterval = nTimeCount - nPowPrevTime;
-           }
-           if (nTimeCount2 != nPrevTimeCount2)
-           {
-               nPrevTimeCount2 = nTimeCount2;
-               uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - nPosPrevTime, nThresholdPos);
-               nLastCoinWithoutPosSearchInterval = nTimeCount2 - nPosPrevTime;
-           }
+           fOneSec = true;
        }
-       Sleep(1000);
+
+       while (!fShutdown && fOneSec)
+       {
+          SetReload();
+          int64 nLocalTime = GetAdjustedTime();
+          if (fSetLocalTime)
+              nLocalTime = nLocalTime + nNewTimeBlock;
+          int64 nTimeCount = nLocalTime;
+          int64 nTimeCount2 = nLocalTime;
+          int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
+          int64 nPosPrevTime = (GetLastBlockIndexPos(pindexBest, true)->GetBlockTime());
+          if (pindexBest->nHeight)
+          {
+              if (nTimeCount != nPrevTimeCount)
+              {
+                  nPrevTimeCount = nTimeCount;
+                  uiInterface.NotifySpamHashControlPowChanged(nTimeCount - nPowPrevTime, nThresholdPow);
+                  nLastCoinWithoutPowSearchInterval = nTimeCount - nPowPrevTime;
+              }
+              if (nTimeCount2 != nPrevTimeCount2)
+              {
+                  nPrevTimeCount2 = nTimeCount2;
+                  uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - nPosPrevTime, nThresholdPos);
+                  nLastCoinWithoutPosSearchInterval = nTimeCount2 - nPosPrevTime;
+              }
+          }
+          fOneSec = false;
+          nOneSec = GetTimeMillis();
+       }
     }
 }
 
@@ -2783,6 +2802,9 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     nBestHeightTime = pindexBest->GetBlockTime();   // WM - Record timestamp of new best block.
     bnBestChainTrust = pindexNew->bnChainTrust;
     nTimeBestReceived = GetTime();
+    nControlTimeStartCync = 0;
+    nControlTimeRestartCync = 0;
+    nControlTimeBeforeSwitching = 0;
     nTransactionsUpdated++;
     printf(" 'CBlock->SetBestChain()' - new best=%s  height=%d  trust=%s  date=%s\n",
       hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainTrust.ToString().c_str(),
@@ -3062,6 +3084,8 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             }
         }
 
+        bool fLesserHash = false;
+        bool fLargerHash = false;
         uint256 checkpointhash;
         bool fResetSyncCheckpoint = true;
         for (int m = 0; m <= pindexBest->nHeight; m++)
@@ -3082,9 +3106,26 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
              {
                  if (newblockindex->pprev->GetBlockHash() == bestblockindex->pprev->GetBlockHash())
                  {
+                     if (newblockindex->GetBlockTime() == bestblockindex->GetBlockTime() &&
+                         newblockindex->GetBlockHash() != bestblockindex->GetBlockHash())
+                     {
+                         if  (newblockindex->GetBlockHash() > bestblockindex->GetBlockHash())
+                              fLargerHash = true;
+                         else fLesserHash = true;
+
+                         if  (fDebug)
+                         {
+                              printf(" 'CBlock->AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s\n",
+                              bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
+                              ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
+                              bestblockindex->GetBlockTime()).c_str());
+                              printf("  timestamps are the same, !!!!!!!!!!!!!!!!!\n");
+                         }
+                     }
+
                      bool fShowLog = true;
                      if (newblockindex->pprev->nHeight <= pindexBest->nHeight - (nDepthOfTheDisputesZone + 1) &&
-                         newblockindex->GetBlockTime() != bestblockindex->GetBlockTime())
+                         (newblockindex->GetBlockTime() != bestblockindex->GetBlockTime() || fLargerHash || fLesserHash))
                      {
                          fShowLog = false;
                          pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
@@ -3094,24 +3135,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                              newblockindex->nHeight, pindexBest->nHeight - (nDepthOfTheDisputesZone + 1), pindexNew->bnChainTrust.ToString().c_str());
                      }
 
-                     if (newblockindex->GetBlockTime() == bestblockindex->GetBlockTime() &&
-                         newblockindex->GetBlockHash() != bestblockindex->GetBlockHash())
-                     {
-                         if  (newblockindex->GetBlockHash() > bestblockindex->GetBlockHash())
-                              bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
-                         else pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
-
-                         if  (fDebug)
-                         {
-                              printf(" 'CBlock->AddToBlockIndex()' - A fork is formed, the height of the parent block %d, hash child blocks hash(1)=%s hash(2)=%s, creation date block(1)=%s block(2)=%s\n",
-                              bestblockindex->pprev->nHeight, newblockindex->GetBlockHash().ToString().substr(0,8).c_str(), bestblockindex->GetBlockHash().
-                              ToString().substr(0,8).c_str(), DateTimeStrFormat("%x %H:%M:%S", newblockindex->GetBlockTime()).c_str(), DateTimeStrFormat("%x %H:%M:%S",
-                              bestblockindex->GetBlockTime()).c_str());
-                              printf("  timestamps are the same, a block with a lower hash value is ignored\n");
-                         }
-                     }
-
-                     if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime())
+                     if (newblockindex->GetBlockTime() > bestblockindex->GetBlockTime() || fLesserHash)
                      {
                          MapPrevTx NotAsk;
                          fCheckFork = true;
@@ -3168,7 +3192,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          break;
                      }
                      else
-                     if (newblockindex->GetBlockTime() < bestblockindex->GetBlockTime())
+                     if (newblockindex->GetBlockTime() < bestblockindex->GetBlockTime() || fLargerHash)
                      {
                          fCheckFork = true;
                          bool fOOPS = false;
@@ -3480,7 +3504,8 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
-        if (pindexPrev->nHeight && nFixHardForkOne == nBestHeight && fHardForkOne)
+        if (pindexPrev->nHeight && fHardForkOne && (nBestHeight == nFixHardForkOne ||
+            pindexPrev->nHeight == nFixHardForkOne))
         {
             CBlockIndex* fixhardforkoneindex = FindBlockByHeight(nFixHardForkOne);
             if (pindexPrev->GetBlockHash() == fixhardforkoneindex->GetBlockHash())
@@ -3951,6 +3976,7 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
     int nSetMaxOrphanBlocks = GetArg("-maxorphanblocks", DEFAULT_MAX_ORPHAN_BLOCKS);
     if (pblock->hashPrevBlock != 0 && !mapBlockIndex.count(pblock->hashPrevBlock))
     {
+        nControlTimeStartCync = 0;
         nControlTimeRestartCync = 0;
         printf(" 'ProcessBlock()' - ORPHAN BLOCK, prev=%s\n", pblock->hashPrevBlock.ToString().c_str());
 
@@ -4013,7 +4039,9 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
         mapOrphanBlocksByPrev.erase(hashPrev);
     }
 
-    nControlTimeStartCync = nControlTimeRestartCync = nControlTimeBeforeSwitching = 0;
+    nControlTimeStartCync = 0;
+    nControlTimeRestartCync = 0;
+    nControlTimeBeforeSwitching = 0;
     printf(" 'ProcessBlock()' - ACCEPTED %s BLOCK\n", pblock->IsProofOfStake() ? "POS" : "POW");
 
     // ppcoin: if responsible for sync-checkpoint send it
@@ -5221,11 +5249,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (IsUntilFullCompleteOneHundredFortyFourBlocks())
             {
                 fIgnoreInvSizeOne = true;
+                nControlTimeStartCync = 0;
+                nControlTimeRestartCync = 0;
                 if (vInv.size() == 1)
                 {
                     mapAlreadyAskedFor.erase(inv);
-                    if (pfrom->nVersion < 91004)
-                        pfrom->fDisconnect = true;
                 }
                 if (fAlreadyHave)
                 {
@@ -6018,7 +6046,10 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         if (pto->fStartSync && !fImporting && !fReindex)
         {
             pto->fStartSync = false;
-            pto->PushGetBlocks(pindexBest, uint256(0));
+            if (pindexBest->pprev)
+                pto->PushGetBlocks(pindexBest->pprev, uint256(0));
+            else
+                pto->PushGetBlocks(pindexBest, uint256(0));
         }
 
         // Resend wallet transactions that haven't gotten in a block yet
