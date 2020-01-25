@@ -362,7 +362,6 @@ bool SetReload()
     nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
 
     vector<CNode*> vNodesCopy = vNodes;
-    BOOST_FOREACH(CNode* pnode, vNodesCopy)
     {
        if (true)
        {
@@ -370,28 +369,34 @@ bool SetReload()
            {
                nControlTimeStartCync++;
                nControlTimeRestartCync++;
-
                if (nControlTimeRestartCync > 102)
                {
-                   pnode->fDisconnect = true;
-                   if (fDebug)
-                       printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
-                   Sleep(5000);
-                   nControlTimeStartCync = 0;
-                   if (pnode->fSuccessfullyConnected)
+                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
                    {
-                       nControlTimeRestartCync = 0;
-                       pnode->fStartSync = true;
-                       return true;
+                      pnode->fDisconnect = true;
+                      if (fDebug)
+                          printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
+                      Sleep(5000);
+                      nControlTimeStartCync = 0;
+                      if (pnode->fSuccessfullyConnected)
+                      {
+                          pnode->fStartSync = true;
+                          nControlTimeRestartCync = 0;
+                          return true;
+                      }
                    }
                    return true;
                }
                if (nControlTimeStartCync > 31)
                {
-                   pnode->fStartSync = true;
-                   if (fDebug)
-                       printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
-                   nControlTimeStartCync = 0;
+                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
+                   {
+                      pnode->fStartSync = true;
+                      if (fDebug)
+                          printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
+                      nControlTimeStartCync = 0;
+                      return true;
+                   }
                }
            }
 
@@ -400,15 +405,59 @@ bool SetReload()
                nControlTimeBeforeSwitching++;
                if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
                {
-                   pnode->fDisconnect = true;
-                   if (fDebug)
-                       printf(" 'SetReload()' - For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
-                   nControlTimeBeforeSwitching = 0;
+                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
+                   {
+                      pnode->fDisconnect = true;
+                      if (fDebug)
+                          printf(" 'SetReload()' - For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
+                      nControlTimeBeforeSwitching = 0;
+                      return true;
+                   }
                }
            }
        }
     }
     return true;
+}
+
+bool IsOtherInitialBlockDownload(bool fOneSec)
+{
+    static bool fIsOtherInitialBlockDownload = false;
+    static int64 nCountPindex;
+    static int64 nLastUpdate;
+    static int64 nCurrentUpdate;
+    static CBlockIndex* pindexLastBest;
+    if (!pindexLastBest)
+    {
+        nLastUpdate = 0;
+        nCountPindex = 0;
+        nCurrentUpdate = nLastUpdate;
+    }
+
+    if (fOneSec) nLastUpdate++;
+
+    if (nLastUpdate > nCurrentUpdate + (1 * 60))
+    {
+        nCountPindex = 0;
+        nLastUpdate = 0;
+        nCurrentUpdate = 0;
+        fIsOtherInitialBlockDownload = false;
+    }
+
+    if (pindexBest != pindexLastBest)
+    {
+        nCountPindex++;
+        pindexLastBest = pindexBest;
+        if (nCountPindex > 2 && nLastUpdate <= nCurrentUpdate + (1 * 60))
+        {
+            nCountPindex = 0;
+            nLastUpdate = 0;
+            nCurrentUpdate = 0;
+            fIsOtherInitialBlockDownload = true;
+
+        }
+    }
+    return fIsOtherInitialBlockDownload;
 }
 
 bool fSetLocalTime = GetArg("-setlocaltime", 1);
@@ -431,6 +480,7 @@ void ThreadAnalyzerHandler()
        while (!fShutdown && fOneSec)
        {
           SetReload();
+          IsOtherInitialBlockDownload(fOneSec);
           int64 nLocalTime = GetAdjustedTime();
           if (fSetLocalTime)
               nLocalTime = nLocalTime + nNewTimeBlock;
@@ -2237,6 +2287,8 @@ bool IsInitialBlockDownload()
 {
     if (pindexBest == NULL || nBestHeight < Checkpoints::GetTotalBlocksEstimate())
         return true;
+    if (IsOtherInitialBlockDownload(false))
+        return true;
     static int64 nLastUpdate;
     static CBlockIndex* pindexLastBest;
     int64 nCurrentTime = GetAdjustedTime();
@@ -2809,6 +2861,10 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     printf(" 'CBlock->SetBestChain()' - new best=%s  height=%d  trust=%s  date=%s\n",
       hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainTrust.ToString().c_str(),
       DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str());
+
+    if  (IsOtherInitialBlockDownload(false)){
+         if (fDebug) printf("IsOtherInitialBlockDownload\n");}
+    else if (fDebug) printf("NoOtherInitialBlockDownload\n");
 
     // Check the version of the last 100 blocks to see if we need to upgrade:
     if (!fIsInitialDownload)
@@ -4011,7 +4067,7 @@ bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom,
             if (!IsInitialBlockDownload())
                 pfrom->AskFor(CInv(MSG_BLOCK, WantedByOrphan(pblock2)));
         }
-        return !fIgnoreInvSizeOne;
+        return true;
     }
 
     // Store to disk
@@ -6924,19 +6980,25 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
             if (fShutdown)
                 return;
 
+            while (IsOtherInitialBlockDownload(false))
+            {
+                  if (fShutdown)
+                      return;
+                  printf("      'BitcoinMinerPos()' - Is Other Initial Block Download, CPUMiner sleep\n");
+                  Sleep(40000);
+            }
+
             while (vNodes.empty() || IsInitialBlockDownload())
             {
-                Sleep(1000);
+                Sleep(10000);
                 if (fShutdown)
-                    return;
-                if (!fProofOfStake)
                     return;
             }
 
             while (pwallet->IsLocked())
             {
                 strMintWarning = strMintMessage;
-                Sleep(1000);
+                Sleep(10000);
             }
             strMintWarning = "";
 
