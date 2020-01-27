@@ -2287,8 +2287,8 @@ bool IsInitialBlockDownload()
 {
     if (pindexBest == NULL || nBestHeight < Checkpoints::GetTotalBlocksEstimate())
         return true;
-    if (IsOtherInitialBlockDownload(false))
-        return true;
+    //if (IsOtherInitialBlockDownload(false)) // Testing
+    //    return true;
     static int64 nLastUpdate;
     static CBlockIndex* pindexLastBest;
     int64 nCurrentTime = GetAdjustedTime();
