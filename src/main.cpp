@@ -350,76 +350,6 @@ unsigned char SpamHashList()
     return false;
 }
 
-int nControlTimeStartCync = 0;
-int nControlTimeRestartCync = 0;
-
-int nSetTimeBeforeSwitching = 0;
-int nControlTimeBeforeSwitching = 0;
-bool SetReload()
-{
-    bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
-    bool fTimeBeforeSwitching = GetArg("-timebeforeswitching", 1);
-    nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
-
-    vector<CNode*> vNodesCopy = vNodes;
-    {
-       if (true)
-       {
-           if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks())
-           {
-               nControlTimeStartCync++;
-               nControlTimeRestartCync++;
-               if (nControlTimeRestartCync > 102)
-               {
-                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
-                   {
-                      pnode->fDisconnect = true;
-                      if (fDebug)
-                          printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
-                      Sleep(5000);
-                      nControlTimeStartCync = 0;
-                      if (pnode->fSuccessfullyConnected)
-                      {
-                          pnode->fStartSync = true;
-                          nControlTimeRestartCync = 0;
-                          return true;
-                      }
-                   }
-                   return true;
-               }
-               if (nControlTimeStartCync > 31)
-               {
-                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
-                   {
-                      pnode->fStartSync = true;
-                      if (fDebug)
-                          printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
-                      nControlTimeStartCync = 0;
-                      return true;
-                   }
-               }
-           }
-
-           if (fTimeBeforeSwitching && !IsUntilFullCompleteOneHundredFortyFourBlocks())
-           {
-               nControlTimeBeforeSwitching++;
-               if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
-               {
-                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
-                   {
-                      pnode->fDisconnect = true;
-                      if (fDebug)
-                          printf(" 'SetReload()' - For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
-                      nControlTimeBeforeSwitching = 0;
-                      return true;
-                   }
-               }
-           }
-       }
-    }
-    return true;
-}
-
 bool IsOtherInitialBlockDownload(bool fOneSec)
 {
     static bool fIsOtherInitialBlockDownload = false;
@@ -457,7 +387,79 @@ bool IsOtherInitialBlockDownload(bool fOneSec)
 
         }
     }
+    if (nBestHeightTime < GetAdjustedTime() - (3 * 24 * 60 * 60))
+        fIsOtherInitialBlockDownload = true;
     return fIsOtherInitialBlockDownload;
+}
+
+int nControlTimeStartCync = 0;
+int nControlTimeRestartCync = 0;
+
+int nSetTimeBeforeSwitching = 0;
+int nControlTimeBeforeSwitching = 0;
+bool SetReload()
+{
+    bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
+    bool fTimeBeforeSwitching = GetArg("-timebeforeswitching", 1);
+    nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
+
+    vector<CNode*> vNodesCopy = vNodes;
+    {
+       if (true)
+       {
+           if (fSetAdditionalChecks && IsOtherInitialBlockDownload(false))
+           {
+               nControlTimeStartCync++;
+               nControlTimeRestartCync++;
+               if (nControlTimeRestartCync > 102)
+               {
+                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
+                   {
+                      pnode->fDisconnect = true;
+                      if (fDebug)
+                          printf(" 'SetReload()' - The peer has ceased to give the requested data - queue: %d loops from: max\n", nControlTimeRestartCync);
+                      Sleep(5000);
+                      nControlTimeStartCync = 0;
+                      if (pnode->fSuccessfullyConnected)
+                      {
+                          pnode->fStartSync = true;
+                          nControlTimeRestartCync = 0;
+                          return true;
+                      }
+                   }
+                   return true;
+               }
+               if (nControlTimeStartCync > 31)
+               {
+                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
+                   {
+                      pnode->fStartSync = true;
+                      if (fDebug)
+                          printf(" 'SetReload()' - SetReload pause - queue: %d loops from: max\n", nControlTimeStartCync);
+                      nControlTimeStartCync = 0;
+                      return true;
+                   }
+               }
+           }
+
+           if (fTimeBeforeSwitching && !IsOtherInitialBlockDownload(false))
+           {
+               nControlTimeBeforeSwitching++;
+               if (nControlTimeBeforeSwitching > nSetTimeBeforeSwitching)
+               {
+                   BOOST_FOREACH(CNode* pnode, vNodesCopy)
+                   {
+                      pnode->fDisconnect = true;
+                      if (fDebug)
+                          printf(" 'SetReload()' - For a long time without new blocks - queue: %d loops from: max\n", nControlTimeBeforeSwitching);
+                      nControlTimeBeforeSwitching = 0;
+                      return true;
+                   }
+               }
+           }
+       }
+    }
+    return true;
 }
 
 bool fSetLocalTime = GetArg("-setlocaltime", 1);
@@ -2272,15 +2274,15 @@ int GetNumBlocksOfPeers()
 int nFullCompleteBlocks = 0;
 int GetFullCompleteBlocks()
 {
-    return std::max(nFullCompleteBlocks, Checkpoints::GetTotalBlocksEstimate());
+    return std::max(nFullCompleteBlocks, cPeerBlockCounts.median());
 }
 
 bool IsUntilFullCompleteOneHundredFortyFourBlocks()
 {
     if (nBestHeight < GetFullCompleteBlocks() - 30)
         return true;
-        else
-            return false;
+    else
+        return false;
 }
 
 bool IsInitialBlockDownload()
@@ -3536,16 +3538,16 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
     bool fWrongTimeLong = false;
     bool fWrongTimeShort = false;
     int nMaximumDepthInBlocksForEntry = GetArg("-maximumdepthinblocksforentry", 750);
-    if (IsUntilFullCompleteOneHundredFortyFourBlocks()) nMaximumDepthInBlocksForEntry = 140;
+    if (IsOtherInitialBlockDownload(false)) nMaximumDepthInBlocksForEntry = 140;
 
     if ((GetBlockTime() > pindexBest->GetBlockTime() + 3 * 24 * 60 * 60 ||
          GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && !fHardForkOne &&
-         IsUntilFullCompleteOneHundredFortyFourBlocks())
+         IsOtherInitialBlockDownload(false))
     {
         fWrongTimeShort = true;
     }
 
-    if ((GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && !IsUntilFullCompleteOneHundredFortyFourBlocks())
+    if ((GetBlockTime() < pindexBest->GetBlockTime() - nMaximumDepthInBlocksForEntry * 60 * 8) && !IsOtherInitialBlockDownload(false))
     {
         fWrongTimeLong = true;
     }
@@ -4933,15 +4935,15 @@ unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
 int nInvCalculationInterval = 10;
 int64 nInvTimerStart = 0;
-int64 nInvAllowableNumberOfErrors = 70;
+int64 nInvAllowableNumberOfErrors = 120;
 unsigned int nInvMakeSureSpam = 0;
 
 static bool InvSpamIpTimer()
 {
     bool fThisSpamIp = false;
-    if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
+    if (!IsOtherInitialBlockDownload(false))
     {
-        nInvAllowableNumberOfErrors = 100;
+        nInvAllowableNumberOfErrors = 150;
     }
 
     if (nInvMakeSureSpam == 0)
@@ -5000,17 +5002,17 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         pfrom->nSizeExtern = vRecv.size();
     }
 
-    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getblocks")
+    if (fSetAdditionalChecks && IsOtherInitialBlockDownload(false) && strCommand == "getblocks")
     {
         fGoGetblocks = false;
     }
 
-    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "tx")
+    if (fSetAdditionalChecks && IsOtherInitialBlockDownload(false) && strCommand == "tx")
     {
         fGoTx = false;
     }
 
-    if (fSetAdditionalChecks && IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv")
+    if (fSetAdditionalChecks && IsOtherInitialBlockDownload(false) && strCommand == "inv")
     {
         if (InvSpamIpTimer())
         {
@@ -5023,7 +5025,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         else nInvMakeSureSpam++;
     }
 
-    if (fSetAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "getdata") // testing
+    if (fSetAdditionalChecks && !IsOtherInitialBlockDownload(false) && strCommand == "getdata") // testing
     {
         if (pfrom->nSizeExtern != pfrom->nSizeInv)
         {
@@ -5033,7 +5035,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
     }
 
-    if (fSetAdditionalChecks && !IsUntilFullCompleteOneHundredFortyFourBlocks() && strCommand == "inv") // testing
+    if (fSetAdditionalChecks && !IsOtherInitialBlockDownload(false) && strCommand == "inv") // testing
     {
         if (InvSpamIpTimer())
         {
@@ -5302,7 +5304,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             if (fShutdown) return true;
             const CInv &inv = vInv[nInv];
             bool fAlreadyHave = AlreadyHave(txdb, inv);
-            if (IsUntilFullCompleteOneHundredFortyFourBlocks())
+            if (IsOtherInitialBlockDownload(false))
             {
                 fIgnoreInvSizeOne = true;
                 nControlTimeStartCync = 0;
@@ -5325,7 +5327,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             }
 
             bool fSetCheckBeforeEvent = GetArg("-setcheckbeforeevent", 1);
-            if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && fSetCheckBeforeEvent)
+            if (!IsOtherInitialBlockDownload(false) && fSetCheckBeforeEvent)
             {
                 unsigned int nSearched = 0;
                 for (; nSearched <= nNumberOfLines; nSearched++)
@@ -5368,7 +5370,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 else
                 if (inv.type == MSG_TX)
                 {
-                   if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
+                   if (!IsOtherInitialBlockDownload(false))
                    {
                        if (fDebug)
                            printf(" 'ProcessMessage()' - %s  %s\n", inv.ToString().c_str(), fAlreadyHave ? "have" : "new");
@@ -5564,7 +5566,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         bool fAlreadyHave = AlreadyHave(txdb, inv);
 
         bool fSetCheckBeforeEvent = GetArg("-setcheckbeforeevent", 1);
-        if (!IsUntilFullCompleteOneHundredFortyFourBlocks() && fSetCheckBeforeEvent)
+        if (!IsOtherInitialBlockDownload(false) && fSetCheckBeforeEvent)
         {
             unsigned int nSearched = 0;
             for (; nSearched <= nNumberOfLines; nSearched++)
@@ -5895,7 +5897,7 @@ static bool SpamIpTimer(CNode* pfrom, unsigned int nMakeSureSpam)
     bool fThisSpamIp = false;
     bool fGlobalIpBanned = GetArg("-globalipbanned", 0);
     //bool fSetAdditionalChecks = GetArg("-setadditionalchecks", 1);
-    if (!IsUntilFullCompleteOneHundredFortyFourBlocks())
+    if (!IsOtherInitialBlockDownload(false))
         nAllowableNumberOferrors = 120;
     if (nMakeSureSpam == 1)
         nTimerStart = GetAdjustedTime();

@@ -1511,7 +1511,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     int nCreateCoinStakeFalse = 20;
     int64 nSleepGetTime = GetTime();
     CScript scriptPubKeyKernel;
-    std::string ResultOfChecking = "signal from createcoinstake";
+    std::string ResultOfChecking;
     BOOST_FOREACH(PAIRTYPE(const CWalletTx*, unsigned int) pcoin, setCoins)
     {
         CTxDB txdb("r");
@@ -1549,7 +1549,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             hashBlockFrom = block.GetHash();
 
             // Calculate the kernel stake modifiers
-            if (GetKernelStakeModifier(hashBlockFrom, nStakeModifier, nStakeModifierHeight, nStakeModifierTime, ResultOfChecking))
+            if (GetKernelStakeModifier(hashBlockFrom, nStakeModifier, nStakeModifierHeight, nStakeModifierTime, ResultOfChecking, true))
             {
                 miningStuff = (PosMiningStuff *)malloc(sizeof(PosMiningStuff));
     
@@ -1577,7 +1577,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             // Search nSearchInterval seconds back up to nMaxStakeSearchInterval
             uint256 hashProofOfStake = 0;
             COutPoint prevoutStake = COutPoint(pcoin.first->GetHash(), pcoin.second);
-            if (CheckStakeKernelHash(nBits, block, ResultOfChecking, txindex.pos.nTxPos - txindex.pos.nBlockPos, *pcoin.first, prevoutStake, txNew.nTime - n, hashProofOfStake, false, miningStuff))
+            if (CheckStakeKernelHash(nBits, block, ResultOfChecking, txindex.pos.nTxPos - txindex.pos.nBlockPos, *pcoin.first, prevoutStake, txNew.nTime - n, hashProofOfStake, false, true, miningStuff))
             {
                 // Found a kernel
                 if (fDebug && GetBoolArg("-printcoinstake"))

@@ -28,11 +28,13 @@ bool ComputeNextStakeModifier(const CBlockIndex* pindexPrev, uint64& nStakeModif
 // Sets hashProofOfStake on success return
 bool CheckStakeKernelHash(unsigned int nBits, const CBlock& blockFrom, std::string ResultOfChecking, unsigned int nTxPrevOffset,
                           const CTransaction& txPrev, const COutPoint& prevout, unsigned int nTimeTx, uint256& hashProofOfStake,
-                          bool fPrintProofOfStake=false, PosMiningStuff *miningStuff=NULL);
+                          bool fPrintProofOfStake=false, bool SignalFromCreateCoinStake=false, PosMiningStuff *miningStuff=NULL);
 
 // The stake modifier used to hash for a stake kernel is chosen as the stake
 // modifier about a selection interval later than the coin generating the kernel
-bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& nStakeModifierHeight, int64& nStakeModifierTime, std::string ResultOfChecking, bool fPrintProofOfStake=false);
+bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& nStakeModifierHeight,
+                            int64& nStakeModifierTime, std::string ResultOfChecking,
+                            bool SignalFromCreateCoinStake=false, bool fPrintProofOfStake=false);
   
 // Check kernel hash target and coinstake signature
 // Sets hashProofOfStake on success return

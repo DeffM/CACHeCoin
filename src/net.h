@@ -47,8 +47,6 @@ void StartNode(void* parg);
 bool StopNode();
 void SocketSendData(CNode *pnode);
 extern int nMaxConnections;
-extern int nControlTimeStartCync;
-extern bool IsUntilFullCompleteOneHundredFortyFourBlocks();
 
 enum
 {
