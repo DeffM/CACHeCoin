@@ -174,19 +174,20 @@ void ThreadScriptCheckQuit();
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
 void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
 CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake = false, bool fProofOfWork = false, bool fCreateCoinStakeSleep = false);
-bool ProcessBlock(CValidationState &state, bool fIgnoreInvSizeOne, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
+bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
 bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey);
-bool CheckProofOfWork(uint256 hash, unsigned int nBits);
+bool CheckProofOfWork(uint256 hash, unsigned int nBits, int64 nBlockTime);
 int64 GetProofOfWorkReward(unsigned int nBits);
 int64 GetProofOfStakeReward(int64 nCoinAge);
-unsigned int ComputeMinWork(unsigned int nBase, int64 nTime);
+unsigned int ComputeMinWork(unsigned int nBase, int64 nTime, int64 nBlockTime);
 unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fProofOfWork);
 unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fProofOfStake, bool fOnlyProofOfStakeBlock);
 unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake);
 int GetNumBlocksOfPeers();
 bool IsInitialBlockDownload();
+bool IsOtherInitialBlockDownload(bool fOneSec);
 bool IsUntilFullCompleteOneHundredFortyFourBlocks();
 std::string GetWarnings(std::string strFor);
 bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock);
@@ -1356,7 +1357,7 @@ public:
         }
 
         // Check the header
-        if (fReadTransactions && IsProofOfWork() && !CheckProofOfWork(GetHash(), nBits))
+        if (fReadTransactions && IsProofOfWork() && !CheckProofOfWork(GetHash(), nBits, nTime))
             return error("CBlock::ReadFromDisk() : errors in block header");
 
         return true;
