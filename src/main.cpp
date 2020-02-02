@@ -400,8 +400,8 @@ int nSetTimeBeforeSwitching = 0;
 int nControlTimeBeforeSwitching = 0;
 bool SetReload()
 {
-    bool fSetNodeReload = GetArg("-setnodereload", 1);
-    bool fTimeBeforeSwitching = GetArg("-timebeforeswitching", 1);
+    bool fSetNodeReload = GetArg("-setnodereload", 0);
+    bool fTimeBeforeSwitching = GetArg("-timebeforeswitching", 0);
     nSetTimeBeforeSwitching = (int)GetArg("-settimebeforeswitching", 60 * 20);
 
     vector<CNode*> vNodesCopy = vNodes;
@@ -411,7 +411,7 @@ bool SetReload()
         {
             nControlTimeStartCync++;
             nControlTimeRestartCync++;
-            if (nControlTimeRestartCync > 102)
+            if (nControlTimeRestartCync > 260)
             {
                 nControlTimeStartCync = 0;
                 BOOST_FOREACH(CNode* pnode, vNodesCopy)
@@ -429,7 +429,7 @@ bool SetReload()
                    break;
                 }
             }
-            if (nControlTimeStartCync > 31)
+            if (nControlTimeStartCync > 35)
             {
                 BOOST_FOREACH(CNode* pnode, vNodesCopy)
                 {
@@ -4925,7 +4925,7 @@ unsigned char pchMessageStart[4] = { 0xd9, 0xe6, 0xe7, 0xe5 };
 
 int nInvCalculationInterval = 10;
 int64 nInvTimerStart = 0;
-int64 nInvAllowableNumberOfErrors = 120;
+int64 nInvAllowableNumberOfErrors = 1200;
 unsigned int nInvMakeSureSpam = 0;
 
 static bool InvSpamIpTimer()
@@ -4933,7 +4933,7 @@ static bool InvSpamIpTimer()
     bool fThisSpamIp = false;
     if (!IsOtherInitialBlockDownload(false))
     {
-        nInvAllowableNumberOfErrors = 150;
+        nInvAllowableNumberOfErrors = 1500;
     }
 
     if (nInvMakeSureSpam == 0)
@@ -4978,7 +4978,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
     }
 
     bool fGoTx = true;
-    bool fGoInv = true;
     bool fGoGetblocks = true;
 
     std::string wait1(strCommand.c_str()), stCommand1("inv");
@@ -5020,7 +5019,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         {
             if (fDebug)
                 printf("   'Additional Checks()' - 'getdata' - nSize: %d - %d\n", pfrom->nSizeExtern, pfrom->nSizeInv);
-            fLimitGetblocks = true;
+            if (fSetAdditionalCheck)
+                fLimitGetblocks = true;
         }
     }
 
@@ -5259,7 +5259,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             pfrom->fDisconnect = true;
     }
 
-    else if (strCommand == "inv" && fGoInv)
+    else if (strCommand == "inv")
     {
         vector<CInv> vInv;
         vRecv >> vInv;
@@ -5825,14 +5825,14 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
 int nCalculationInterval = 1 * 60;
 int64 nTimerStart = 0;
-int64 nAllowableNumberOferrors = 150;
+int64 nAllowableNumberOferrors = 1200;
 unsigned int nMakeSureSpam = 0;
 static bool SpamIpTimer(CNode* pfrom, unsigned int nMakeSureSpam)
 {
     bool fThisSpamIp = false;
     bool fGlobalIpBanned = GetArg("-globalipbanned", 0);
     if (!IsOtherInitialBlockDownload(false))
-        nAllowableNumberOferrors = 120;
+        nAllowableNumberOferrors = 1500;
     if (nMakeSureSpam == 1)
         nTimerStart = GetAdjustedTime();
     if (nMakeSureSpam == nAllowableNumberOferrors && GetAdjustedTime() - nTimerStart <= nCalculationInterval)
