@@ -388,7 +388,7 @@ bool IsOtherInitialBlockDownload(bool fOneSec)
 
         }
     }
-    if (nBestHeightTime < GetAdjustedTime() - (12 * 60 * 60))
+    if (nBestHeightTime < GetAdjustedTime() - (15 * 60 * 60))
         fIsOtherInitialBlockDownload = true;
     return fIsOtherInitialBlockDownload;
 }
@@ -461,12 +461,12 @@ bool SetReload()
     return true;
 }
 
-bool fSetLocalTime = GetArg("-setlocaltime", 1);
 void ThreadAnalyzerHandler()
 {
     bool fOneSec = false;
     int64 nPrevTimeCount = 0;
     int64 nPrevTimeCount2 = 0;
+    bool fSetLocalTime = GetArg("-setlocaltime", 1);
     int64 nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
     int64 nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
 
@@ -4977,9 +4977,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             fHardForkOne = true;
     }
 
-    bool fGoTx = true;
-    bool fGoGetblocks = true;
-
     std::string wait1(strCommand.c_str()), stCommand1("inv");
     std::string wait2(strCommand.c_str()), stCommand2("getdata");
     if (wait1 == stCommand1 || wait2 == stCommand2)
@@ -4987,16 +4984,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         nControlTimeStartCync = 0;
         nControlTimeRestartCync = 0;
         pfrom->nSizeExtern = vRecv.size();
-    }
-
-    if (IsOtherInitialBlockDownload(false) && strCommand == "getblocks")
-    {
-        fGoGetblocks = false;
-    }
-
-    if (IsOtherInitialBlockDownload(false) && strCommand == "tx")
-    {
-        fGoTx = false;
     }
 
     if (IsOtherInitialBlockDownload(false) && strCommand == "inv")
@@ -5168,6 +5155,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 Checkpoints::checkpointMessage.RelayTo(pfrom);
         }
 
+        nControlTimeStartCync = 0;
+        nControlTimeRestartCync = 0;
         pfrom->fSuccessfullyConnected = true;
 
         if (pfrom->nStartingHeight > nFullCompleteBlocks)
@@ -5289,6 +5278,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
             if (IsOtherInitialBlockDownload(false))
             {
+                nControlTimeStartCync = 0;
+                nControlTimeRestartCync = 0;
                 mapAlreadyAskedFor.erase(inv);
             }
 
@@ -5357,11 +5348,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (vInv.size() > MAX_INV_SZ)
         {
             pfrom->Misbehaving(20);
-            return error("message getdata size() = %" PRIszu"", vInv.size());
+            return error(" 'ProcessMessage()' - message getdata size() = %" PRIszu"", vInv.size());
         }
 
         if (fDebugNet || (vInv.size() != 1))
-            printf("received getdata (%" PRIszu" invsz)\n", vInv.size());
+            printf(" 'ProcessMessage()' - received getdata (%" PRIszu" invsz)\n", vInv.size());
 
         BOOST_FOREACH(const CInv& inv, vInv)
         {
@@ -5369,7 +5360,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 return true;
 
             if (fDebugNet || (vInv.size() == 1))
-                printf("received getdata for: %s\n", inv.ToString().c_str());
+                printf(" 'ProcessMessage()' - received getdata for: %s\n", inv.ToString().c_str());
 
             if (pfrom->fAbortMessage)
             {
@@ -5380,6 +5371,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
             if (inv.type == MSG_BLOCK)
             {
+                if (IsOtherInitialBlockDownload(false))
+                    if (vInv.size() > 30 && vInv.size() == 1)
+                        break;
+
                 // Send block from disk
                 map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(inv.hash);
                 if (mi != mapBlockIndex.end())
@@ -5433,7 +5428,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
     }
 
-    else if (strCommand == "getblocks" && fGoGetblocks)
+    else if (strCommand == "getblocks")
     {
         CBlockLocator locator;
         uint256 hashStop;
@@ -5451,8 +5446,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             nLimit = 125;
         if (fLimitGetblocks)
             nLimit = 50;
+        if (IsOtherInitialBlockDownload(false))
+            nLimit = 30;
 
-        printf("getblocks %d to %s limit %d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString().substr(0,20).c_str(), nLimit);
+        printf(" 'ProcessMessage()' - getblocks %d to %s limit %d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString().substr(0,20).c_str(), nLimit);
 
         for (; pindex; pindex = pindex->pnext)
         {
@@ -5513,7 +5510,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         pfrom->PushMessage("headers", vHeaders);
     }
 
-    else if (strCommand == "tx" && fGoTx)
+    else if (strCommand == "tx")
     {
         map<uint256, CTxIndex> mapUnused;
         vector<uint256> vEraseQueue;
@@ -6038,7 +6035,10 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         if (pto->fStartSync && !fImporting && !fReindex)
         {
             pto->fStartSync = false;
-            pto->PushGetBlocks(pindexBest, uint256(0));
+            if (pindexBest->pprev)
+                pto->PushGetBlocks(pindexBest->pprev, uint256(0));
+            else
+                pto->PushGetBlocks(pindexBest, uint256(0));
         }
 
         // Resend wallet transactions that haven't gotten in a block yet
