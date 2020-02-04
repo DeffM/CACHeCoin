@@ -5112,7 +5112,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         // Change version
         pfrom->PushMessage("verack");
-        pfrom->vSend.SetVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
+        pfrom->vsSend.SetVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
 
         if (!pfrom->fInbound)
         {
@@ -5875,7 +5875,7 @@ bool ProcessMessages(CNode* pfrom)
     std::deque<CNetMessage>::iterator it = pfrom->vRecvMsg.begin();
     while (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
     {
-           if (pfrom->vSend.size() >= SendBufferSize())
+           if (pfrom->vsSend.size() >= SendBufferSize())
            {
                printf("\n\nSENDSIZE > SENDBUFFERSIZE - BREAK\n\n");
                break;

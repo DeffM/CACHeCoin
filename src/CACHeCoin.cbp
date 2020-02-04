@@ -76,9 +76,10 @@
 		<Unit filename="keystore.h" />
 		<Unit filename="main.cpp" />
 		<Unit filename="main.h" />
-		<Unit filename="mruset.h" />
 		<Unit filename="net.cpp" />
 		<Unit filename="net.h" />
+                <Unit filename="mruset.h" />
+                <Unit filename="limitedmap.h" />
 		<Unit filename="netbase.cpp" />
 		<Unit filename="netbase.h" />
 		<Unit filename="noui.cpp" />

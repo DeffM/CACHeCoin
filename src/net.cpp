@@ -70,7 +70,7 @@ CCriticalSection cs_vNodes;
 map<CInv, CDataStream> mapRelay;
 deque<pair<int64, CInv> > vRelayExpiration;
 CCriticalSection cs_mapRelay;
-map<CInv, int64> mapAlreadyAskedFor;
+limitedmap<CInv, int64> mapAlreadyAskedFor(MAX_INV_SZ);
 
 static deque<string> vOneShots;
 CCriticalSection cs_vOneShots;
@@ -583,7 +583,6 @@ void CNode::CloseSocketDisconnect()
         printf("disconnecting node %s\n", addrName.c_str());
         closesocket(hSocket);
         hSocket = INVALID_SOCKET;
-        vRecv.clear();
     }
 
     // in case this fails, we'll empty the recv buffer when the CNode is deleted
@@ -830,11 +829,13 @@ void SocketSendData(CNode *pnode)
     pnode->vSendMsg.erase(pnode->vSendMsg.begin(), it);
 }
 
-static int64 NodeSyncScore(const CNode *pnode) {
+static int64 NodeSyncScore(const CNode *pnode)
+{
     return pnode->nLastRecv;
 }
 
-void static StartSync(const vector<CNode*> &vNodes) {
+void static StartSync(const vector<CNode*> &vNodes)
+{
     CNode *pnodeNewSync = NULL;
     int64 nBestScore = 0;
 
@@ -844,22 +845,26 @@ void static StartSync(const vector<CNode*> &vNodes) {
         return;
 
     // Iterate over all nodes
-    BOOST_FOREACH(CNode* pnode, vNodes) {
+    BOOST_FOREACH(CNode* pnode, vNodes)
+    {
         // check preconditions for allowing a sync
         if (!pnode->fClient && !pnode->fOneShot &&
             !pnode->fDisconnect && pnode->fSuccessfullyConnected &&
             (pnode->nStartingHeight > (nBestHeight - 144)) &&
-            (pnode->nVersion < NOBLKS_VERSION_START || pnode->nVersion >= NOBLKS_VERSION_END)) {
+            (pnode->nVersion < NOBLKS_VERSION_START || pnode->nVersion >= NOBLKS_VERSION_END))
+        {
             // if ok, compare node's score with the best so far
             int64 nScore = NodeSyncScore(pnode);
-            if (pnodeNewSync == NULL || nScore > nBestScore) {
+            if (pnodeNewSync == NULL || nScore > nBestScore)
+            {
                 pnodeNewSync = pnode;
                 nBestScore = nScore;
             }
         }
     }
     // if a new sync candidate was found, start sync!
-    if (pnodeNewSync) {
+    if (pnodeNewSync)
+    {
         pnodeNewSync->fStartSync = true;
         pnodeSync = pnodeNewSync;
     }
@@ -869,7 +874,6 @@ static list<CNode*> vNodesDisconnected;
 
 void ThreadSocketHandler()
 {
-    list<CNode*> vNodesDisconnected;
     unsigned int nPrevNodeCount = 0;
 
     while (!fShutdown)
@@ -884,7 +888,7 @@ void ThreadSocketHandler()
             BOOST_FOREACH(CNode* pnode, vNodesCopy)
             {
                 if (pnode->fDisconnect ||
-                    (pnode->GetRefCount() <= 0 && pnode->vRecvMsg.empty() && pnode->nSendSize == 0 && pnode->vSend.empty()))
+                    (pnode->GetRefCount() <= 0 && pnode->vRecvMsg.empty() && pnode->nSendSize == 0 && pnode->vsSend.empty()))
                 {
                     // remove from vNodes
                     vNodes.erase(remove(vNodes.begin(), vNodes.end(), pnode), vNodes.end());
@@ -913,7 +917,7 @@ void ThreadSocketHandler()
                 {
                     bool fDelete = false;
                     {
-                        TRY_LOCK(pnode->cs_vSend, lockSend);
+                        TRY_LOCK(pnode->cs_vsSend, lockSend);
                         if (lockSend)
                         {
                             TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
@@ -987,7 +991,7 @@ void ThreadSocketHandler()
                 // * We wait for data to be received (and disconnect after timeout).
                 // * We process a message in the buffer (message handler thread).
                 {
-                    TRY_LOCK(pnode->cs_vSend, lockSend);
+                    TRY_LOCK(pnode->cs_vsSend, lockSend);
                     if (lockSend && !pnode->vSendMsg.empty()) {
                         FD_SET(pnode->hSocket, &fdsetSend);
                         continue;
@@ -1147,7 +1151,7 @@ void ThreadSocketHandler()
                 continue;
             if (FD_ISSET(pnode->hSocket, &fdsetSend))
             {
-                TRY_LOCK(pnode->cs_vSend, lockSend);
+                TRY_LOCK(pnode->cs_vsSend, lockSend);
                 if (lockSend)
                     SocketSendData(pnode);
             }
@@ -1578,7 +1582,7 @@ void ThreadMessageHandler()
 
             // Send messages
             {
-                TRY_LOCK(pnode->cs_vSend, lockSend);
+                TRY_LOCK(pnode->cs_vsSend, lockSend);
                 if (lockSend)
                     SendMessages(pnode, pnode == pnodeTrickle);
             }
@@ -1794,9 +1798,10 @@ bool BindListenPort(const CService &addrBind, string& strError)
 #ifdef USE_IPV6
     // some systems don't have IPV6_V6ONLY but are always v6only; others do have the option
     // and enable it by default or not. Try to enable it, if possible.
-    if (addrBind.IsIPv6()) {
+    if (addrBind.IsIPv6())
+    {
 #ifdef IPV6_V6ONLY
-	#ifdef WIN32
+#ifdef WIN32
         setsockopt(hListenSocket, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&nOne, sizeof(int));
 #else
         setsockopt(hListenSocket, IPPROTO_IPV6, IPV6_V6ONLY, (void*)&nOne, sizeof(int));

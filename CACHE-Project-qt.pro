@@ -155,6 +155,7 @@ HEADERS += src/qt/bitcoingui.h \
     src/checkqueue.h \
     src/threadsafety.h \
     src/mruset.h \
+    src/limitedmap.h \
     src/json/json_spirit_writer_template.h \
     src/json/json_spirit_writer.h \
     src/json/json_spirit_value.h \

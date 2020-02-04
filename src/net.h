@@ -15,6 +15,7 @@
 #endif
 
 #include "mruset.h"
+#include "limitedmap.h"
 #include "netbase.h"
 #include "protocol.h"
 #include "addrman.h"
@@ -126,7 +127,7 @@ extern CCriticalSection cs_vNodes;
 extern std::map<CInv, CDataStream> mapRelay;
 extern std::deque<std::pair<int64, CInv> > vRelayExpiration;
 extern CCriticalSection cs_mapRelay;
-extern std::map<CInv, int64> mapAlreadyAskedFor;
+extern limitedmap<CInv, int64> mapAlreadyAskedFor;
 
 
 
@@ -190,14 +191,12 @@ class CNode
 {
 public:
     // socket
+    SOCKET hSocket;
     uint64 nServices;
     size_t nSendSize; // total size of all vSendMsg entries
     size_t nSendOffset; // offset inside the first vSendMsg already sent
-    SOCKET hSocket;
-    CDataStream vSend;
-    CDataStream vRecv;
-    CCriticalSection cs_vSend;
-    CCriticalSection cs_vRecv;
+    CDataStream vsSend;
+    CCriticalSection cs_vsSend;
     CCriticalSection cs_vRecvMsg;
     std::deque<CSerializeData> vSendMsg;
     uint64 nSendBytes;
@@ -208,28 +207,28 @@ public:
     int64 nTimeConnected;
     int nHeaderStart;
     int nRecvVersion;
-    unsigned int nMessageStart;
     unsigned int nSizeInv;
+    unsigned int nMessageStart;
     unsigned int nSizeGetdata;
     unsigned int nSizeExtern;
     CAddress addr;
+    CService addrLocal;
+    std::string addrName;
     std::deque<CInv> vRecvGetData;
     std::deque<CNetMessage> vRecvMsg;
-    std::string addrName;
-    CService addrLocal;
-    int nVersion;
     std::string strSubVer, cleanSubVer;
+    int nVersion;
     bool fGoInv;
-    bool fOneShot;
     bool fClient;
+    bool fOneShot;
     bool fInbound;
-    bool fAbortMessage;
-    bool fNetworkNode;
-    bool fSuccessfullyConnected;
-    bool fDisconnect;
     bool fRelayTxes;
-    CCriticalSection cs_filter;
+    bool fDisconnect;
+    bool fNetworkNode;
+    bool fAbortMessage;
+    bool fSuccessfullyConnected;
     CBloomFilter* pfilter;
+    CCriticalSection cs_filter;
     CSemaphoreGrant grantOutbound;
 protected:
     int nRefCount;
@@ -263,7 +262,7 @@ public:
     CCriticalSection cs_inventory;
     std::multimap<int64, CInv> mapAskFor;
 
-    CNode(SOCKET hSocketIn, CAddress addrIn, std::string addrNameIn = "", bool fInboundIn=false) : vSend(SER_NETWORK, MIN_PROTO_VERSION), vRecv(SER_NETWORK, MIN_PROTO_VERSION)
+    CNode(SOCKET hSocketIn, CAddress addrIn, std::string addrNameIn = "", bool fInboundIn=false) : vsSend(SER_NETWORK, MIN_PROTO_VERSION)
     {
         nServices = 0;
         hSocket = hSocketIn;
@@ -308,7 +307,7 @@ public:
         pfilter = new CBloomFilter();
 
         // Be shy and don't send version until we hear
-        if (!fInbound)
+        if (!fInbound && hSocket != INVALID_SOCKET)
             PushVersion();
     }
 
@@ -319,6 +318,8 @@ public:
             closesocket(hSocket);
             hSocket = INVALID_SOCKET;
         }
+        if (pfilter)
+            delete pfilter;
     }
 
 private:
@@ -404,9 +405,15 @@ public:
     {
         // We're using mapAskFor as a priority queue,
         // the key is the earliest time the request can be sent
-        int64& nRequestTime = mapAlreadyAskedFor[inv];
+        int64 nRequestTime;
+        limitedmap<CInv, int64>::const_iterator it = mapAlreadyAskedFor.find(inv);
+        if (it != mapAlreadyAskedFor.end())
+            nRequestTime = it->second;
+        else
+            nRequestTime = 0;
+
         if (fDebugNet)
-            printf("askfor %s   %"PRI64d" (%s)\n", inv.ToString().c_str(), nRequestTime, DateTimeStrFormat("%H:%M:%S", nRequestTime/1000000).c_str());
+            printf("askfor %s   %" PRI64d" (%s)\n", inv.ToString().c_str(), nRequestTime, DateTimeStrFormat("%H:%M:%S", nRequestTime/1000000).c_str());
 
         // Make sure not to reuse time indexes to keep things in the same order
         int64 nNow = (GetTime() - 1) * 1000000;
@@ -417,15 +424,19 @@ public:
 
         // Each retry is 2 minutes after the last
         nRequestTime = std::max(nRequestTime + 2 * 60 * 1000000, nNow);
+        if (it != mapAlreadyAskedFor.end())
+            mapAlreadyAskedFor.update(it, nRequestTime);
+        else
+            mapAlreadyAskedFor.insert(std::make_pair(inv, nRequestTime));
         mapAskFor.insert(std::make_pair(nRequestTime, inv));
     }
 
     // TODO: Document the precondition of this function.  Is cs_vSend locked?
     void AbortMessage() UNLOCK_FUNCTION(cs_vSend)
     {
-        vSend.clear();
+        vsSend.clear();
 
-        LEAVE_CRITICAL_SECTION(cs_vSend);
+        LEAVE_CRITICAL_SECTION(cs_vsSend);
 
         if (fDebug)
             printf("(aborted)\n");
@@ -434,9 +445,9 @@ public:
     // TODO: Document the postcondition of this function.  Is cs_vSend locked?
     void BeginMessage(const char* pszCommand) EXCLUSIVE_LOCK_FUNCTION(cs_vSend)
     {
-        ENTER_CRITICAL_SECTION(cs_vSend);
-        assert(vSend.size() == 0);
-        vSend << CMessageHeader(pszCommand, 0);
+        ENTER_CRITICAL_SECTION(cs_vsSend);
+        assert(vsSend.size() == 0);
+        vsSend << CMessageHeader(pszCommand, 0);
         std::string wait2(pszCommand), psCommand2("inv");
 
         if (fDebug)
@@ -465,19 +476,19 @@ public:
             return;
         }
 
-        if (vSend.size() == 0)
+        if (vsSend.size() == 0)
             return;
 
         // Set the size
-        unsigned int nSize = vSend.size() - CMessageHeader::HEADER_SIZE;
-        memcpy((char*)&vSend[CMessageHeader::MESSAGE_SIZE_OFFSET], &nSize, sizeof(nSize));
+        unsigned int nSize = vsSend.size() - CMessageHeader::HEADER_SIZE;
+        memcpy((char*)&vsSend[CMessageHeader::MESSAGE_SIZE_OFFSET], &nSize, sizeof(nSize));
 
         // Set the checksum
-        uint256 hash = Hash(vSend.begin() + CMessageHeader::HEADER_SIZE, vSend.end());
+        uint256 hash = Hash(vsSend.begin() + CMessageHeader::HEADER_SIZE, vsSend.end());
         unsigned int nChecksum = 0;
         memcpy(&nChecksum, &hash, sizeof(nChecksum));
-        assert(vSend.size () >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
-        memcpy((char*)&vSend[CMessageHeader::CHECKSUM_OFFSET], &nChecksum, sizeof(nChecksum));
+        assert(vsSend.size () >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
+        memcpy((char*)&vsSend[CMessageHeader::CHECKSUM_OFFSET], &nChecksum, sizeof(nChecksum));
 
         if (fDebug)
         {
@@ -491,14 +502,14 @@ public:
         }
 
         std::deque<CSerializeData>::iterator it = vSendMsg.insert(vSendMsg.end(), CSerializeData());
-        vSend.GetAndClear(*it);
+        vsSend.GetAndClear(*it);
         nSendSize += (*it).size();
 
         // If write queue empty, attempt "optimistic write"
         if (it == vSendMsg.begin())
             SocketSendData(this);
 
-        LEAVE_CRITICAL_SECTION(cs_vSend);
+        LEAVE_CRITICAL_SECTION(cs_vsSend);
     }
 
 
@@ -526,7 +537,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1;
+            vsSend << a1;
             EndMessage();
         }
         catch (...)
@@ -542,7 +553,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1 << a2;
+            vsSend << a1 << a2;
             EndMessage();
         }
         catch (...)
@@ -558,7 +569,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1 << a2 << a3;
+            vsSend << a1 << a2 << a3;
             EndMessage();
         }
         catch (...)
@@ -574,7 +585,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1 << a2 << a3 << a4;
+            vsSend << a1 << a2 << a3 << a4;
             EndMessage();
         }
         catch (...)
@@ -590,7 +601,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1 << a2 << a3 << a4 << a5;
+            vsSend << a1 << a2 << a3 << a4 << a5;
             EndMessage();
         }
         catch (...)
@@ -606,7 +617,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1 << a2 << a3 << a4 << a5 << a6;
+            vsSend << a1 << a2 << a3 << a4 << a5 << a6;
             EndMessage();
         }
         catch (...)
@@ -622,7 +633,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1 << a2 << a3 << a4 << a5 << a6 << a7;
+            vsSend << a1 << a2 << a3 << a4 << a5 << a6 << a7;
             EndMessage();
         }
         catch (...)
@@ -638,7 +649,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1 << a2 << a3 << a4 << a5 << a6 << a7 << a8;
+            vsSend << a1 << a2 << a3 << a4 << a5 << a6 << a7 << a8;
             EndMessage();
         }
         catch (...)
@@ -654,7 +665,7 @@ public:
         try
         {
             BeginMessage(pszCommand);
-            vSend << a1 << a2 << a3 << a4 << a5 << a6 << a7 << a8 << a9;
+            vsSend << a1 << a2 << a3 << a4 << a5 << a6 << a7 << a8 << a9;
             EndMessage();
         }
         catch (...)
