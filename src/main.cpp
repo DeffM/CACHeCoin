@@ -93,7 +93,9 @@ bool fReindex = false;
 
 CMedianFilter<int> cPeerBlockCounts(5, 0); // Amount of blocks that other nodes claim to have
 
+int nNumberOfHashValues = 50;
 map<uint256, CBlock*> mapOrphanBlocks;
+map<uint256, int64> setIgnoredBlockHashes;
 map<uint256, CBlock*> mapDuplicateStakeBlocks;
 multimap<uint256, CBlock*> mapOrphanBlocksByPrev;
 set<pair<COutPoint, unsigned int> > setStakeSeenOrphan;
@@ -377,7 +379,7 @@ bool IsOtherInitialBlockDownload(bool fOneSec)
 
     if (pindexBest != pindexLastBest)
     {
-        nCountPindex++;
+        if (fOneSec) nCountPindex++;
         pindexLastBest = pindexBest;
         if (nCountPindex > 2 && nLastUpdate <= nCurrentUpdate + (1 * 60))
         {
@@ -388,7 +390,7 @@ bool IsOtherInitialBlockDownload(bool fOneSec)
 
         }
     }
-    if (nBestHeightTime < GetAdjustedTime() - (15 * 60 * 60))
+    if (nBestHeightTime < GetAdjustedTime() - (10 * 24 * 60 * 60))
         fIsOtherInitialBlockDownload = true;
     return fIsOtherInitialBlockDownload;
 }
@@ -3912,14 +3914,14 @@ void CleanUpOldDuplicateStakeBlocks()
 bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp)
 {
 #ifdef TESTING
-    static set<uint256> setIgnoredBlockHashes;
+    static set<uint256> setIgnoredBlocksHashes;
     if (nBlocksToIgnore)
     {
         nBlocksToIgnore--;
-        setIgnoredBlockHashes.insert(GetHash());
+        setIgnoredBlocksHashes.insert(GetHash());
         return state.Invalid(error("ProcessBlock() : block ignored"));
     }
-    if (setIgnoredBlockHashes.count(GetHash()))
+    if (setIgnoredBlocksHashes.count(GetHash()))
         return state.Invalid(error("ProcessBlock() : block ignored"));
 #endif
 
@@ -6676,8 +6678,11 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
     uint256 hash = pblock->GetHash();
     uint256 hashTarget = CBigNum().SetCompact(pblock->nBits).getuint256();
 
+    if (setIgnoredBlockHashes.count(hash))
+        return error("CheckWork() : the block hash has already been verified, block ignored %s", hash.ToString().c_str());
+
     if (hash > hashTarget && pblock->IsProofOfWork())
-        return error("'CheckWork()' : proof-of-work not meeting target");
+        return error("CheckWork() : proof-of-work not meeting target");
 
     //// debug print
     printf("'CheckWork()':\n");
@@ -6689,14 +6694,15 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
     {
         LOCK(cs_main);
         if (pblock->hashPrevBlock != hashBestChain && pblock->IsProofOfWork())
-            return error("'CheckWork()' : generated block is stale");
+            return error("CheckWork() : generated block is stale");
 
         if (pblock->hashPrevBlock != hashBestChain && pblock->IsProofOfStake())
         {
             if (pindexBest->IsProofOfStake())
-                return error("'CheckWork()' : generated block POS accepted by the network with first thread, ignored thread two");
-            else if (pindexBest->IsProofOfWork())
-                     return error("'CheckWork()' : in the network a block POW with an earlier timestamp was found");
+                return error("CheckWork() : generated block POS accepted by the network with first thread, ignored thread two");
+            else
+            if (pindexBest->IsProofOfWork())
+                return error("CheckWork() : in the network a block POW with an earlier timestamp was found");
         }
 
         // Remove key from key pool
@@ -6711,9 +6717,33 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
         // Process this block the same as if we had received it from another node
         CValidationState state;
         if (!ProcessBlock(state, NULL, pblock))
-            return error("'CheckWork()' : ProcessBlock, block not accepted");
+        {
+            int64 nMinBlockTime = GetAdjustedTime() + nMaxClockDrift;
+            if (!setIgnoredBlockHashes.count(hash))
+            {
+                nNumberOfHashValues--;
+                setIgnoredBlockHashes.insert(make_pair(hash, GetAdjustedTime()));
+                if (fDebug)
+                    printf(" 'CheckWork()' - Ignored new block hash added %s\n", hash.ToString().c_str());
+            }
+            for (map<uint256, int64>::iterator its = setIgnoredBlockHashes.begin(); its != setIgnoredBlockHashes.end(); ++its)
+            {
+                 if ((*its).second < nMinBlockTime)
+                 {
+                     nMinBlockTime = (*its).second;
+                     hash = (*its).first;
+                 }
+                 printf(" 'CheckWork()' - Ignored block hash all %s\n", (*its).first.ToString().c_str());
+           }
+           if (nNumberOfHashValues <= 0)
+           {
+               if (fDebug)
+                   printf(" 'CheckWork()' - Ignored prev block hash erase %s\n", hash.ToString().c_str());
+               setIgnoredBlockHashes.erase(hash);
+           }
+           return error("'CheckWork()' : ProcessBlock, block not accepted");
+       }
     }
-
     return true;
 }
 
