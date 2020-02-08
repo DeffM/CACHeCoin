@@ -3207,9 +3207,9 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                          std::string ResultOfChecking;
                          bool fGoIgnoreLaterFoundBlocks = true;
                          ValidationCheckBlock(state, NotAsk, ResultOfChecking, false);
-                         if (nPossibleHeight > pindexBest->nHeight + nMinDepthReplacement && ResultOfChecking == "already have block" &&
-                             pindexBest->nHeight < bestblockindex->nHeight + nDepthOfTheDisputesZone &&
-                             bestblockindex->pprev->nHeight < pindexBest->nHeight - nMinDepthReplacement)
+                         if ((ResultOfChecking == "already have block" && pindexBest->nHeight < bestblockindex->nHeight + nDepthOfTheDisputesZone) &&
+                            ((nPossibleHeight > pindexBest->nHeight + nMinDepthReplacement && bestblockindex->pprev->nHeight < pindexBest->nHeight - nMinDepthReplacement) ||
+                             (nPossibleHeight > pindexBest->nHeight + nMinDepthReplacement * 2 && bestblockindex->pprev->nHeight <= pindexBest->nHeight - (nMinDepthReplacement / 2))))
                          {
                              fGoIgnoreLaterFoundBlocks = false;
                              if (fResetSyncCheckpoint)
