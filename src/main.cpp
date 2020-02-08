@@ -335,9 +335,11 @@ unsigned char SpamHashList()
          if (strcmp(nSpamHashList[nSearched], waitTxSpam.substr(0,20).c_str()) == 0)
          {
              fWriting = false;
-             //printf("'SpamHashList' - previously saved spam-hash %s\n", nSpamHashList[nSearched]);
+             if (fDebug && GetBoolArg("-advanceddebug", 0))
+                 printf("'SpamHashList' - previously saved spam-hash %s\n", nSpamHashList[nSearched]);
          }
-         //printf("'SpamHashList' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
+         if (fDebug && GetBoolArg("-advanceddebug", 0))
+             printf("'SpamHashList' - saved spam-hash all %s\n", nSpamHashList[nSearched]);
     }
 
     if (fWriting)
@@ -379,9 +381,9 @@ bool IsOtherInitialBlockDownload(bool fOneSec)
 
     if (pindexBest != pindexLastBest)
     {
-        if (fOneSec) nCountPindex++;
+        nCountPindex++;
         pindexLastBest = pindexBest;
-        if (nCountPindex > 2 && nLastUpdate <= nCurrentUpdate + (1 * 60))
+        if (nCountPindex > 3 && nLastUpdate <= nCurrentUpdate + (1 * 60))
         {
             nCountPindex = 0;
             nLastUpdate = 0;
@@ -390,7 +392,7 @@ bool IsOtherInitialBlockDownload(bool fOneSec)
 
         }
     }
-    if (nBestHeightTime < GetAdjustedTime() - (10 * 24 * 60 * 60))
+    if (nBestHeightTime < GetAdjustedTime() - (20 * 24 * 60 * 60))
         fIsOtherInitialBlockDownload = true;
     return fIsOtherInitialBlockDownload;
 }
@@ -5308,7 +5310,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                         printf("  strCommand 'inv-SpamHashList' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
                         return false;
                      }
-                     //printf("strCommand 'inv' - all saved spam-hash %s\n", nSpamHashList[nSearched]);
+                     if (fDebug && GetBoolArg("-advanceddebug", 0))
+                         printf("strCommand 'inv' - saved spam-hash all %s\n", nSpamHashList[nSearched]);
                  }
             }
 
@@ -6733,16 +6736,17 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
                      nMinBlockTime = (*its).second;
                      hash = (*its).first;
                  }
-                 printf(" 'CheckWork()' - Ignored block hash all %s\n", (*its).first.ToString().c_str());
-           }
-           if (nNumberOfHashValues <= 0)
-           {
-               if (fDebug)
-                   printf(" 'CheckWork()' - Ignored prev block hash erase %s\n", hash.ToString().c_str());
-               setIgnoredBlockHashes.erase(hash);
-           }
-           return error("'CheckWork()' : ProcessBlock, block not accepted");
-       }
+                 if (fDebug && GetBoolArg("-advanceddebug", 0))
+                     printf(" 'CheckWork()' - Ignored block hash all %s\n", (*its).first.ToString().c_str());
+            }
+            if (nNumberOfHashValues <= 0)
+            {
+                if (fDebug)
+                    printf(" 'CheckWork()' - Ignored prev block hash erase %s\n", hash.ToString().c_str());
+                setIgnoredBlockHashes.erase(hash);
+            }
+            return error("'CheckWork()' : ProcessBlock, block not accepted");
+        }
     }
     return true;
 }
