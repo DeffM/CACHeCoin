@@ -64,11 +64,11 @@ unsigned int nPosTargetSpacing = 1 * 60 * 10; // DIFF: 10-minute block spacing
 
 const int SCRYPT_SCRATCHPAD_SIZE = 131072 + 63;
 
+int64 nNewTimeBlock = 0;
 int64 nHPSTimerStart = 0;
 int64 nBestHeightTime = 0; // WM - Keep track of timestamp of block at best height.
 int64 nSpamHashControl = 30; // % from (nPos)nPowTargetSpacing
 int64 nTimeBestReceived = 0;
-int64 nUnixCachChainTime = 0;
 int64 nPowPindexPrevTime = 0;
 int64 nPosPindexPrevTime = 0;
 int64 nChainStartTime = 1388949883;
@@ -453,7 +453,6 @@ bool SetReload()
     return true;
 }
 
-int64 nNewTimeBlock = 0;
 void ThreadAnalyzerHandler()
 {
     bool fOneSec = false;
@@ -1754,7 +1753,6 @@ unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fPr
         pindexPrevPrevPos = pospindexPrevPrevPrevPrevPrev;
     }
     int64 nLastCoinSearchTime = GetAdjustedTime();
-    nUnixCachChainTime = nLastCoinSearchTime + nNewTimeBlock;
 
     double nPosTargetSpacingTest = 0;
     if (pospindexPrev->GetBlockTime() > nPowForceTimestamp && pospindexPrev->GetBlockTime() <= nPowForceTimestamp + NTest)

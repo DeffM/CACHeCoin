@@ -93,10 +93,10 @@ extern unsigned int nNodeLifespan;
 extern unsigned int nLimitationDistr;
 extern unsigned int nTransactionsUpdated;
 
+extern int64 nNewTimeBlock;
 extern int64 nHPSTimerStart;
 extern int64 nBestHeightTime;
 extern int64 nTimeBestReceived;
-extern int64 nUnixCachChainTime;
 extern int64 nWatchOnlyAddressCalc;
 extern int64 nLastCoinStakeSearchInterval;
 extern int64 nLastCoinPowSearchInterval;

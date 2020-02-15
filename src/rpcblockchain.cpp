@@ -142,7 +142,7 @@ Value getdifficulty(const Array& params, bool fHelp)
        obj.push_back(Pair("XLower-pos",                               (int)nsXLowerPos));
        obj.push_back(Pair("search-interval-without pow block",        (int)nLastCoinWithoutPowSearchInterval));
        obj.push_back(Pair("search-interval-without pos block",        (int)nLastCoinWithoutPosSearchInterval));
-       obj.push_back(Pair("UnixCachChainTime",                        (int)nUnixCachChainTime));
+       obj.push_back(Pair("UnixCachChainTime",                        (int)GetAdjustedTime() + (int)nNewTimeBlock));
        obj.push_back(Pair("study",                                    (double)study));
        obj.push_back(Pair("studys",                                   (double)studys));
     }
