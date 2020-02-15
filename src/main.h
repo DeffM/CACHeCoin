@@ -39,11 +39,11 @@ static const int64 MINT_PROOF_OF_WORK = 100 * COIN;
 static const int64 MIN_MINT_PROOF_OF_WORK = 40 * COIN;
 static const int64 MAX_MINT_PROOF_OF_WORK = 80 * COIN;
 static const int64 MIN_TXOUT_AMOUNT = MIN_TX_FEE;
+
+inline int64 PastDrift(int64 nTime)   { return nTime - 2 * 60 * 60; } // up to 2 hours from the past
+inline int64 FutureDrift(int64 nTime) { return nTime + 2 * 60 * 60; } // up to 2 hours from the future
+
 inline bool MoneyRange(int64 nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
-// Threshold for nLockTime: below this value it is interpreted as block number, otherwise as UNIX timestamp.
-static const unsigned int LOCKTIME_THRESHOLD = 500000000; // Tue Nov  5 00:53:20 1985 UTC
-// Maximum number of script-checking threads allowed
-static const int MAX_SCRIPTCHECK_THREADS = 16;
 
 #ifdef USE_UPNP
 static const int fHaveUPnP = true;
@@ -51,54 +51,53 @@ static const int fHaveUPnP = true;
 static const int fHaveUPnP = false;
 #endif
 
+// Maximum number of script-checking threads allowed
+static const int MAX_SCRIPTCHECK_THREADS = 16;
+
+// Threshold for nLockTime: below this value it is interpreted as block number, otherwise as UNIX timestamp.
+static const unsigned int LOCKTIME_THRESHOLD = 500000000; // Tue Nov  5 00:53:20 1985 UTC
+
+static const int64 nMaxClockDrift = 2 * 60 * 60; // two hours
+// Settings PowForceGlobal
+static const int64 nPowForceTimestamp = 1524837600;
+static const int64 nCorrectedTimestamp = 9999999999;
+
+// Minimum disk space required - used in CheckDiskSpace()
+static const uint64 nMinDiskSpace = 52428800;
+
 static const uint256 hashGenesisBlockOfficial("0x000003e3294d4353a2696ca1f97464de2f141a760bae5a79acb71b3d91446855");
 static const uint256 hashGenesisBlockTestNet("0x000003e3294d4353a2696ca1f97464de2f141a760bae5a79acb71b3d91446855");
 
-static const int64 nMaxClockDrift = 2 * 60 * 60;        // two hours
-
-inline int64 PastDrift(int64 nTime)   { return nTime - 2 * 60 * 60; } // up to 2 hours from the past
-inline int64 FutureDrift(int64 nTime) { return nTime + 2 * 60 * 60; } // up to 2 hours from the future
 
 extern CScript COINBASE_FLAGS;
 
-
-
-
-
-
 extern CCriticalSection cs_main;
+extern CCriticalSection cs_setpwalletRegistered;
+
+extern std::map<uint256, CBlock*> mapOrphanBlocks;
 extern std::map<uint256, CBlockIndex*> mapBlockIndex;
+
+extern std::set<CWallet*> setpwalletRegistered;
 extern std::set<std::pair<COutPoint, unsigned int> > setStakeSeen;
-extern uint256 hashGenesisBlock;
-extern CBlockIndex* pindexGenesisBlock;
-extern unsigned int nStakeMinAge;
-extern int nCoinbaseMaturity;
-extern int nFixHardForkOne;
-extern int nBestHeight;
-extern int nMaxDepthReplacement;
-extern int64 nBestHeightTime;
-extern int64 nWatchOnlyAddressCalc;
-extern CBigNum bnBestChainTrust;
-extern CBigNum bnBestInvalidTrust;
-extern uint256 hashBestChain;
+
 extern CBlockIndex* pindexBest;
-extern std::string WatchOnlyAddress;
-extern std::string HardForkControlAddress;
-extern std::string ScriptPubKeyHardForkOP_CHECKSIG;
-extern std::string ScriptPubKeyAddressOP_CHECKSIG;
-extern std::string ScriptPubKeyHardForkOP_HASH160;
-extern std::string ScriptPubKeyAddressOP_HASH160;
-extern bool IsWatchOnlyAddressVtx;
-extern bool fCreateCoinStakeSleep;
-extern bool IsWatchOnlyAddressTx;
-extern bool fHardForkOne;
-extern bool fCheckFork;
-extern bool fImporting;
-extern bool fReindex;
+extern CBlockIndex* pindexGenesisBlock;
+
+extern int nBestHeight;
+extern int nFixHardForkOne;
+extern int nCoinbaseMaturity;
+extern int nMaxDepthReplacement;
+
+extern unsigned int nStakeMinAge;
+extern unsigned int nNodeLifespan;
+extern unsigned int nLimitationDistr;
 extern unsigned int nTransactionsUpdated;
-extern uint64 nLastBlockTx;
-extern uint64 nLastBlockSize;
+
+extern int64 nHPSTimerStart;
+extern int64 nBestHeightTime;
+extern int64 nTimeBestReceived;
 extern int64 nUnixCachChainTime;
+extern int64 nWatchOnlyAddressCalc;
 extern int64 nLastCoinStakeSearchInterval;
 extern int64 nLastCoinPowSearchInterval;
 extern int64 nLastCoinPowFiveInterval;
@@ -106,40 +105,62 @@ extern int64 nLastCoinWithoutPowSearchInterval;
 extern int64 nsLastCoinPosSearchInterval;
 extern int64 nsLastCoinPosTwoInterval;
 extern int64 nLastCoinWithoutPosSearchInterval;
-extern double nActualTimeIntervalXUXLpow;
-extern double nsActualTimeIntervalXUXLpos;
-extern double nPowTargetSpacingVar;
-extern double nsPosTargetSpacingVar;
-extern double powUpperLower;
-extern double nsposUpperLower;
+
+extern CBigNum bnBestChainTrust;
+extern CBigNum bnBestInvalidTrust;
+
+extern uint64 nLastBlockTx;
+extern uint64 nLastBlockSize;
+
+extern uint256 hashBestChain;
+extern uint256 hashGenesisBlock;
+extern uint256 hashSingleStakeBlock;
+
+extern std::string WatchOnlyAddress;
+extern std::string HardForkControlAddress;
+extern std::string ScriptPubKeyHardForkOP_CHECKSIG;
+extern std::string ScriptPubKeyAddressOP_CHECKSIG;
+extern std::string ScriptPubKeyHardForkOP_HASH160;
+extern std::string ScriptPubKeyAddressOP_HASH160;
+
+extern const std::string strMessageMagic;
+
+extern bool fReindex;
+extern bool fCheckFork;
+extern bool fImporting;
+extern bool fHardForkOne;
+extern bool IsWatchOnlyAddressTx;
+extern bool IsWatchOnlyAddressVtx;
+extern bool fCreateCoinStakeSleep;
+
+extern double study;
+extern double studys;
 extern double XUpperPow;
 extern double XLowerPow;
 extern double nsXUpperPos;
 extern double nsXLowerPos;
-extern double study;
-extern double studys;
-extern const std::string strMessageMagic;
+extern double powUpperLower;
+extern double nsposUpperLower;
+extern double nPowTargetSpacingVar;
+extern double nsPosTargetSpacingVar;
+extern double nActualTimeIntervalXUXLpow;
+extern double nsActualTimeIntervalXUXLpos;
 extern double dHashesPerSec;
-extern int64 nHPSTimerStart;
-extern int64 nTimeBestReceived;
-extern CCriticalSection cs_setpwalletRegistered;
-extern std::set<CWallet*> setpwalletRegistered;
-extern unsigned int nNodeLifespan;
-extern unsigned int nLimitationDistr;
+
 extern unsigned char pchMessageStart[4];
-extern std::map<uint256, CBlock*> mapOrphanBlocks;
-extern uint256 hashSingleStakeBlock;
+
+extern boost::thread_group* MintStakeThread;
 
 // Settings
 extern int64 nTransactionFee;
 extern int nScriptCheckThreads;
 
-// Settings PowForceGlobal
-static const int64 nPowForceTimestamp = 1524837600;
-static const int64 nCorrectedTimestamp = 9999999999;
-
-// Minimum disk space required - used in CheckDiskSpace()
-static const uint64 nMinDiskSpace = 52428800;
+// 'CACHE'Project: Spam Hash List
+extern std::string waitTxSpam;
+extern const unsigned int nNumberOfLines;
+extern unsigned int nLinesSource;
+extern unsigned int nLinesReceiver;
+extern char nSpamHashList[][21];
 
 
 class CReserveKey;
@@ -148,77 +169,68 @@ class CTxIndex;
 class CScriptCheck;
 struct CDiskBlockPos;
 
-void ThreadAnalyzerHandlerInit(void* parg);
+int GetNumBlocksOfPeers();
+
+unsigned int ComputeMinWork(unsigned int nBase, int64 nTime, int64 nBlockTime);
+unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake);
+unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fProofOfWork);
+unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fProofOfStake, bool fOnlyProofOfStakeBlock);
+
+void PrintBlockTree();
+void UnloadBlockIndex();
+void ResendWalletTransactions();
 void RegisterWallet(CWallet* pwalletIn);
 void UnregisterWallet(CWallet* pwalletIn);
+void ThreadAnalyzerHandlerInit(void* parg);
+void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
+void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
+void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
+void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
+void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
+void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
 void SyncWithWallets(const CTransaction& tx, const CBlock* pblock = NULL, bool fUpdate = false, bool fConnect = true);
-bool CheckDiskSpace(uint64 nAdditionalBytes=0);
-FILE* OpenBlockFile(unsigned int nFile, unsigned int nBlockPos, const char* pszMode="rb");
-FILE* AppendBlockFile(unsigned int& nFileRet);
-void UnloadBlockIndex();
-bool LoadBlockIndex(bool fAllowNew=true);
-void PrintBlockTree();
-CBlockIndex* FindBlockByHeight(int nHeight);
-bool ProcessMessages(CNode* pfrom);
-bool SendMessages(CNode* pto, bool fSendTrickle);
-bool LoadExternalBlockFile(FILE* fileIn, CDiskBlockPos *dbp = NULL);
-
-/** Abort with a message */
-bool AbortNode(const std::string &msg);
-
 // Run an instance of the script checking thread
 void ThreadScriptCheck(void* parg);
 // Stop the script checking threads
 void ThreadScriptCheckQuit();
 
-void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
-void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
-CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake = false, bool fProofOfWork = false, bool fCreateCoinStakeSleep = false);
-bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
-void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
-void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
+bool IsInitialBlockDownload();
+bool ProcessMessages(CNode* pfrom);
+bool LoadBlockIndex(bool fAllowNew=true);
+bool CheckDiskSpace(uint64 nAdditionalBytes=0);
+bool IsOtherInitialBlockDownload(bool fOneSec);
+bool SendMessages(CNode* pto, bool fSendTrickle);
+bool IsUntilFullCompleteOneHundredFortyFourBlocks();
+bool GetWalletFile(CWallet* pwallet, std::string &strWalletFileOut);
+bool LoadExternalBlockFile(FILE* fileIn, CDiskBlockPos *dbp = NULL);
 bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey);
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, int64 nBlockTime);
-int64 GetProofOfWorkReward(unsigned int nBits);
-int64 GetProofOfStakeReward(int64 nCoinAge);
-unsigned int ComputeMinWork(unsigned int nBase, int64 nTime, int64 nBlockTime);
-unsigned int GetNextTargetRequiredPow(const CBlockIndex* powpindexLast, bool fProofOfWork);
-unsigned int GetNextTargetRequiredPos(const CBlockIndex* pospindexLast, bool fProofOfStake, bool fOnlyProofOfStakeBlock);
-unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake);
-int GetNumBlocksOfPeers();
-bool IsInitialBlockDownload();
-bool IsOtherInitialBlockDownload(bool fOneSec);
-bool IsUntilFullCompleteOneHundredFortyFourBlocks();
-std::string GetWarnings(std::string strFor);
 bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock);
-uint256 WantedByOrphan(const CBlock* pblockOrphan);
+bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
+// Abort with a message //
+bool AbortNode(const std::string &msg);
+
+FILE* AppendBlockFile(unsigned int& nFileRet);
+FILE* OpenBlockFile(unsigned int nFile, unsigned int nBlockPos, const char* pszMode="rb");
+
+CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake = false, bool fProofOfWork = false, bool fCreateCoinStakeSleep = false);
+
+CBlockIndex* FindBlockByHeight(int nHeight);
+
+const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfStake);
 const CBlockIndex* GetLastBlockIndexPow(const CBlockIndex* powpindex, bool fProofOfWork);
 const CBlockIndex* GetLastBlockIndexPos(const CBlockIndex* pospindex, bool fProofOfStake);
-const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfStake);
-void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
-void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
-void ResendWalletTransactions();
 
-extern boost::thread_group* MintStakeThread;
+int64 GetProofOfStakeReward(int64 nCoinAge);
+int64 GetProofOfWorkReward(unsigned int nBits);
+
+uint256 WantedByOrphan(const CBlock* pblockOrphan);
+
+std::string GetWarnings(std::string strFor);
 
 // cacheproject: calculate Nfactor using timestamp
 unsigned char GetNfactor(int64 nTimestamp);
 
-// cacheproject: Spam Hash List
-extern std::string waitTxSpam;
-extern const unsigned int nNumberOfLines;
-extern unsigned int nLinesSource;
-extern unsigned int nLinesReceiver;
-extern char nSpamHashList[][21];
-
-
-
-
-
-
-
-
-bool GetWalletFile(CWallet* pwallet, std::string &strWalletFileOut);
 
 struct CDiskBlockPos
 {
@@ -250,6 +262,7 @@ struct CDiskBlockPos
     void SetNull() { nFile = -1; nPos = 0; }
     bool IsNull() const { return (nFile == -1); }
 };
+
 
 /** Position on disk for a particular transaction. */
 class CDiskTxPos
@@ -303,7 +316,6 @@ public:
 };
 
 
-
 /** An inpoint - a combination of a transaction and an index n into its vin */
 class CInPoint
 {
@@ -316,7 +328,6 @@ public:
     void SetNull() { ptx = NULL; n = (unsigned int) -1; }
     bool IsNull() const { return (ptx == NULL && n == (unsigned int) -1); }
 };
-
 
 
 /** An outpoint - a combination of a transaction hash and an index n into its vout */
@@ -357,8 +368,6 @@ public:
         printf("%s\n", ToString().c_str());
     }
 };
-
-
 
 
 /** An input of a transaction.  It contains the location of the previous
@@ -440,8 +449,6 @@ public:
         printf("%s\n", ToString().c_str());
     }
 };
-
-
 
 
 /** An output of a transaction.  It contains the public key that the next input
@@ -528,14 +535,13 @@ public:
 };
 
 
-
-
 enum GetMinFee_mode
 {
     GMF_BLOCK,
     GMF_RELAY,
     GMF_SEND,
 };
+
 
 typedef std::map<uint256, std::pair<CTxIndex, CTransaction> > MapPrevTx;
 
@@ -813,6 +819,7 @@ protected:
     const CTxOut& GetOutputFor(const CTxIn& input, const MapPrevTx& inputs) const;
 };
 
+
 /** Closure representing one script verification
  *  Note that this stores references to the spending transaction */
 class CScriptCheck
@@ -840,6 +847,7 @@ public:
         std::swap(nHashType, check.nHashType);
     }
 };
+
 
 /** A transaction with a merkle branch linking it to the block chain. */
 class CMerkleTx : public CTransaction
@@ -888,8 +896,6 @@ public:
     int GetBlocksToMaturity() const;
     bool GoMerkleTxToMemoryPool(CTxDB& txdb, bool fCheckInputs=true, bool fLimitFree=true, bool* pfMissingInputs=NULL);
 };
-
-
 
 
 /**  A txdb record that contains the disk location of a transaction and the
@@ -945,7 +951,6 @@ public:
     int GetDepthInMainChain() const;
 
 };
-
 
 
 class CBlockHeader
@@ -1020,6 +1025,7 @@ public:
         return (nBits == 0);
     }
 };
+
 
 /** Data structure that represents a partial merkle tree.
  *
@@ -1116,6 +1122,7 @@ public:
     // returns the merkle root, or 0 in case of failure
     uint256 ExtractMatches(std::vector<uint256> &vMatch);
 };
+
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -1405,10 +1412,6 @@ private:
 };
 
 
-
-
-
-
 /** The block chain is a tree shaped structure starting with the
  * genesis block at the root, with each block potentially having multiple
  * candidates to be the next block.  pprev and pnext link a path through the
@@ -1624,7 +1627,6 @@ public:
 };
 
 
-
 /** Used to marshal pointers into hashes for db storage. */
 class CDiskBlockIndex : public CBlockIndex
 {
@@ -1704,6 +1706,7 @@ public:
     }
 };
 
+
 /** Capture information about block/transaction validation */
 class CValidationState {
 private:
@@ -1755,6 +1758,7 @@ public:
         return corruptionPossible;
     }
 };
+
 
 /** Describes a place in the block chain to another node such that if the
  * other node doesn't have the same branch, it can find a recent common trunk.
@@ -1884,12 +1888,6 @@ public:
 };
 
 
-
-
-
-
-
-
 class CTxMemPool
 {
 public:
@@ -1927,6 +1925,7 @@ public:
         return mapTx[hash];
     }
 };
+
 
 extern CTxMemPool mempool;
 
