@@ -675,7 +675,7 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
              CTxDestination address;
              const CTxOut &txout = vout[i];
              if (ExtractDestination(txout.scriptPubKey, address))
-              {
+             {
                  if (CBitcoinAddress(address).ToString() == WatchOnlyAddress)
                  {
                      fIn = true;
@@ -684,7 +684,7 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
                      nCreditWatchAddress += txout.nValue;
                      printf(" 'CTransaction->HardForkAndInputsControl()' - Input transaction to IsWatchOnlyAddress %s\n", txout.ToString().c_str());
                  }
-              }
+             }
         }
 
         int64 nDebitWatchAddress = 0;
@@ -694,83 +694,88 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
              CTxIndex txindex;
              CTransaction prev;
              const COutPoint prevout = vin[i].prevout;
-             if(txdb.ReadDiskTx(prevout.hash, prev))
+             if (txdb.ReadDiskTx(prevout.hash, prev))
              {
-                if (prevout.n < prev.vout.size())
-                {
-                    CTxDestination address;
-                    const CTxOut &vout = prev.vout[prevout.n];
-                    if (ExtractDestination(vout.scriptPubKey, address))
-                    {
-                        if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && fInOut)
-                        {
-                            fIn = false;
-                            fOut = false;
-                            fInOut = true;
-                            nDebitWatchAddress -= vout.nValue;
-                            printf(" 'CTransaction->HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(in its address) %s\n", vout.ToString().c_str());
-                        }
-                        else if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && !fInOut)
-                        {
-                                 fIn = false;
-                                 fOut = true;
-                                 fInOut = false;
-                                 nDebitWatchAddress -= vout.nValue;
-                                 printf(" 'CTransaction->HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
-                        }
-                    }
-                    vector<vector<unsigned char> > vSolutions;
-                    txnouttype whichType;
-                    // get the scriptPubKey corresponding to this input:
-                    const CScript& prevScript = vout.scriptPubKey;
-                    if (!Solver(prevScript, whichType, vSolutions))
-                        return false;
-                    int nArgsExpected = ScriptSigArgsExpected(whichType, vSolutions);
-                    if (nArgsExpected < 0)
-                        return false;
-
-                    // Transactions with extra stuff in their scriptSigs are
-                    // non-standard. Note that this EvalScript() call will
-                    // be quick, because if there are any operations
-                    // beside "push data" in the scriptSig the
-                    // IsStandard() call returns false
-                    vector<vector<unsigned char> > stack;
-                    if (!EvalScript(stack, vin[i].scriptSig, *this, i, false, 0))
-                        return false;
-
-                    if (whichType == TX_SCRIPTHASH)
-                    {
-                        if (stack.empty())
-                            return false;
-                        CScript subscript(stack.back().begin(), stack.back().end());
-                        vector<vector<unsigned char> > vSolutions2;
-                        txnouttype whichType2;
-                        if (!Solver(subscript, whichType2, vSolutions2))
-                            return false;
-                        if (whichType2 == TX_SCRIPTHASH)
-                            return false;
-
-                        int tmpExpected;
-                        tmpExpected = ScriptSigArgsExpected(whichType2, vSolutions2);
-                        if (tmpExpected < 0)
-                            return false;
-                        nArgsExpected += tmpExpected;
-                    }
-                    if (stack.size() != (unsigned int)nArgsExpected)
-                        return false;
-                }
-                else if (prevout.n >= prev.vout.size())
-                {
-                         fInvalid = true;
-                         return false;
-                }
-             }
-             else if(txdb.ReadTxIndex(prevout.hash, txindex))
-                     if (prevout.n >= txindex.vSpent.size())
+                 if (prevout.n < prev.vout.size())
+                 {
+                     CTxDestination address;
+                     const CTxOut &vout = prev.vout[prevout.n];
+                     if (ExtractDestination(vout.scriptPubKey, address))
                      {
-                         fInvalid = true;
-                         return false;
+                         if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && fInOut)
+                         {
+                             fIn = false;
+                             fOut = false;
+                             fInOut = true;
+                             nDebitWatchAddress -= vout.nValue;
+                             printf(" 'CTransaction->HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(in its address) %s\n", vout.ToString().c_str());
+                         }
+                         else
+                         if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && !fInOut)
+                         {
+                             fIn = false;
+                             fOut = true;
+                             fInOut = false;
+                             nDebitWatchAddress -= vout.nValue;
+                             printf(" 'CTransaction->HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
+                         }
                      }
+                     vector<vector<unsigned char> > vSolutions;
+                     txnouttype whichType;
+                     // get the scriptPubKey corresponding to this input:
+                     const CScript& prevScript = vout.scriptPubKey;
+                     if (!Solver(prevScript, whichType, vSolutions))
+                         return false;
+                     int nArgsExpected = ScriptSigArgsExpected(whichType, vSolutions);
+                     if (nArgsExpected < 0)
+                         return false;
+
+                     // Transactions with extra stuff in their scriptSigs are
+                     // non-standard. Note that this EvalScript() call will
+                     // be quick, because if there are any operations
+                     // beside "push data" in the scriptSig the
+                     // IsStandard() call returns false
+                     vector<vector<unsigned char> > stack;
+                     if (!EvalScript(stack, vin[i].scriptSig, *this, i, false, 0))
+                         return false;
+
+                     if (whichType == TX_SCRIPTHASH)
+                     {
+                         if (stack.empty())
+                             return false;
+                         CScript subscript(stack.back().begin(), stack.back().end());
+                         vector<vector<unsigned char> > vSolutions2;
+                         txnouttype whichType2;
+                         if (!Solver(subscript, whichType2, vSolutions2))
+                             return false;
+                         if (whichType2 == TX_SCRIPTHASH)
+                             return false;
+
+                         int tmpExpected;
+                         tmpExpected = ScriptSigArgsExpected(whichType2, vSolutions2);
+                         if (tmpExpected < 0)
+                             return false;
+                         nArgsExpected += tmpExpected;
+                     }
+                     if (stack.size() != (unsigned int)nArgsExpected)
+                         return false;
+                 }
+                 else
+                 if (prevout.n >= prev.vout.size())
+                 {
+                     fInvalid = true;
+                     return false;
+                 }
+             }
+             else
+             if (txdb.ReadTxIndex(prevout.hash, txindex))
+             {
+                 if (prevout.n >= txindex.vSpent.size())
+                 {
+                     fInvalid = true;
+                     return false;
+                 }
+             }
         }
 
         for (unsigned int i = 0; i < vout.size(); i++)
