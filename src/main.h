@@ -97,7 +97,6 @@ extern int64 nNewTimeBlock;
 extern int64 nHPSTimerStart;
 extern int64 nBestHeightTime;
 extern int64 nTimeBestReceived;
-extern int64 nWatchOnlyAddressCalc;
 extern int64 nLastCoinStakeSearchInterval;
 extern int64 nLastCoinPowSearchInterval;
 extern int64 nLastCoinPowFiveInterval;
@@ -116,21 +115,12 @@ extern uint256 hashBestChain;
 extern uint256 hashGenesisBlock;
 extern uint256 hashSingleStakeBlock;
 
-extern std::string WatchOnlyAddress;
-extern std::string HardForkControlAddress;
-extern std::string ScriptPubKeyHardForkOP_CHECKSIG;
-extern std::string ScriptPubKeyAddressOP_CHECKSIG;
-extern std::string ScriptPubKeyHardForkOP_HASH160;
-extern std::string ScriptPubKeyAddressOP_HASH160;
-
 extern const std::string strMessageMagic;
 
 extern bool fReindex;
 extern bool fCheckFork;
 extern bool fImporting;
 extern bool fHardForkOne;
-extern bool IsWatchOnlyAddressTx;
-extern bool IsWatchOnlyAddressVtx;
 extern bool fCreateCoinStakeSleep;
 
 extern double study;
@@ -150,6 +140,7 @@ extern double dHashesPerSec;
 extern unsigned char pchMessageStart[4];
 
 extern boost::thread_group* MintStakeThread;
+extern boost::thread_group* BalanceOfAnyAdressThread;
 
 // Settings
 extern int64 nTransactionFee;
@@ -185,6 +176,7 @@ void ThreadAnalyzerHandlerInit(void* parg);
 void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
 void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
+void GetBalanceOfAnyAdress(int64 nAmount, std::string stWatchOnlyAddress);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
@@ -661,8 +653,7 @@ public:
 
     /** Hard fork and inputs control
     */
-    bool HardForkAndInputsControl(CValidationState &state, const MapPrevTx &mapInputs, int64 &nWatchOnlyAddressCalc,
-                                  bool &fInvalid) const;
+    bool HardForkAndInputsControl(CValidationState &state, const MapPrevTx &mapInputs, bool &fInvalid) const;
 
     /** Count ECDSA signature operations the old-fashioned (pre-0.6) way
         @return number of sigops this transaction's outputs will produce when spent
@@ -1393,7 +1384,7 @@ public:
         printf("\n");
     }
 
-    bool HardForkControl(CValidationState &state) const;
+    bool GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
     bool CheckFork(CValidationState &state, uint256 &pSyncCheckpointHash, uint256 &pLastCheckPointHash, int &nForkParentHeight, int &nForkBlockHeight);
     bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug);
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);

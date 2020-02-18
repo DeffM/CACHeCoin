@@ -496,108 +496,25 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn)
     return true;
 }
 
-bool CWallet::AddToWalletWatchOnlyAddress(CValidationState &state, const CTransaction& tx, const CBlock* pblock,
-                                          bool fUpdate)
+bool CWallet::AddToWalletIfInvolvingMe(CValidationState &state, const CTransaction& tx, const CBlock* pblock,
+                                       bool fUpdate)
 {
-    CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
-    ssTx << tx;
-    string TxRawTransaction = HexStr(ssTx.begin(), ssTx.end());
-
-    if (true)
+    // AddToWalletIfInvolvingMe
+    uint256 hash = tx.GetHash();
     {
-        IsWatchOnlyAddressVtx = false;
-        BOOST_FOREACH(const CTxOut& txout, tx.vout)
-        {
-             CTxDestination address;
-             if (ExtractDestination(txout.scriptPubKey, address))
-             {
-                 if (CBitcoinAddress(address).ToString() == WatchOnlyAddress)
-                 {
-                     if (tx.IsCoinBase() || tx.IsCoinStake())
-                     {
-                         printf(" 'CWallet VTX' - vtx transaction IsWatchOnlyAddress %s\n", txout.ToString().c_str());
-                         ScriptPubKeyAddressOP_CHECKSIG = txout.scriptPubKey.ToString().substr(0,60).c_str();
-                     }
-                         else
-                         {
-                             printf(" 'CWallet TX' - tx transaction IsWatchOnlyAddress %s\n", txout.ToString().c_str());
-                             ScriptPubKeyAddressOP_HASH160 = txout.scriptPubKey.ToString().substr(19,35).c_str();
-                         }
-                 }
-                 if (CBitcoinAddress(address).ToString() == HardForkControlAddress)
-                 {
-                     if (tx.IsCoinBase() || tx.IsCoinStake())
-                     {
-                         printf(" 'CWallet VTX' - vtx transaction HardForkControlAddress %s\n", txout.ToString().c_str());
-                         ScriptPubKeyHardForkOP_CHECKSIG = txout.scriptPubKey.ToString().substr(0,60).c_str();
-                     }
-                         else
-                         {
-                             printf(" 'CWallet TX' - tx transaction HardForkControlAddress %s\n", txout.ToString().c_str());
-                             ScriptPubKeyHardForkOP_HASH160 = txout.scriptPubKey.ToString().substr(19,35).c_str();
-                         }
-                 }
-             }
-        }
-
-        // AddToWalletIfInvolvingMe
-        uint256 hash = tx.GetHash();
-
         LOCK(cs_wallet);
         bool fExisted = mapWallet.count(hash);
-        if (fExisted && !fUpdate)
+        if (fExisted && !fUpdate) return false;
+        if (fExisted || IsMine(tx) || IsFromMe(tx))
         {
-            IsWatchOnlyAddressVtx = false;
-            return false;
-        }
-
-        if (true)
-        {
-            string::size_type OP_CHECKSIG = TxRawTransaction.find(ScriptPubKeyAddressOP_CHECKSIG);
-            if (OP_CHECKSIG != string::npos && OP_CHECKSIG != 0)
-            {
-                IsWatchOnlyAddressVtx = true;
-            }
-            string::size_type OP_HASH160 = TxRawTransaction.find(ScriptPubKeyAddressOP_HASH160);
-            if (OP_HASH160 != string::npos && OP_HASH160 != 0)
-            {
-                IsWatchOnlyAddressVtx = true;
-            }
-            string::size_type HOP_CHECKSIG = TxRawTransaction.find(ScriptPubKeyHardForkOP_CHECKSIG);
-            if (HOP_CHECKSIG != string::npos && HOP_CHECKSIG != 0)
-            {
-                IsWatchOnlyAddressVtx = true;
-            }
-            string::size_type HOP_HASH160 = TxRawTransaction.find(ScriptPubKeyHardForkOP_HASH160);
-            if (HOP_HASH160 != string::npos && HOP_HASH160 != 0)
-            {
-                IsWatchOnlyAddressVtx = true;
-            }
-            if (!IsWatchOnlyAddressVtx && IsWatchOnlyAddressTx)
-                IsWatchOnlyAddressVtx = true;
-        }
-
-        if (fExisted || IsMine(tx) || IsFromMe(tx) || IsWatchOnlyAddressVtx)
-        {
-            IsWatchOnlyAddressTx = false;
-            IsWatchOnlyAddressVtx = false;
-            if (!pblock)
-            {
-                CWalletTx wtx(this,tx);
-                return AddToWallet(wtx);
-            }
-                else if (pblock)
-                   {
-                         CWalletTx wtx(this,tx);
-                         wtx.SetMerkleBranch(pblock);
-                         return AddToWallet(wtx);
-                   }
+            CWalletTx wtx(this,tx);
+            // Get merkle branch if transaction was found in a block
+            if (pblock)
+                wtx.SetMerkleBranch(pblock);
+            return AddToWallet(wtx);
         }
         else
-        {
-            IsWatchOnlyAddressVtx = false;
             WalletUpdateSpent(tx);
-        }
     }
     return false;
 }
@@ -879,33 +796,8 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
             block.ReadFromDisk(pindex, true);
             BOOST_FOREACH(CTransaction& tx, block.vtx)
             {
-                if (AddToWalletWatchOnlyAddress(state, tx, &block, fUpdate))
+                if (AddToWalletIfInvolvingMe(state, tx, &block, fUpdate))
                     ret++;
-            }
-            pindex = pindex->pnext;
-        }
-    }
-    return ret;
-}
-
-int CWallet::ScanForWalletWatchAddress(CBlockIndex* pindexStart, bool fUpdate)
-{
-    int ret = 0;
-
-    CBlockIndex* pindex = pindexStart;
-    {
-        LOCK(cs_wallet);
-        CValidationState state;
-        while (pindex)
-        {
-            CBlock block;
-            block.ReadFromDisk(pindex, true);
-            BOOST_FOREACH(CTransaction& tx, block.vtx)
-            {
-                if (!block.HardForkControl(state))
-                    printf("CWallet() : error hardforkcontrol function\n");
-                    else if (AddToWalletWatchOnlyAddress(state, tx, &block, fUpdate))
-                             ret++;
             }
             pindex = pindex->pnext;
         }

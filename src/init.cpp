@@ -862,18 +862,6 @@ bool AppInit2()
             strErrors << _("Cannot write default address") << "\n";
     }
 
-    string strAccount = "watchonlyaddress";
-
-    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
-    {
-        const CBitcoinAddress& watchaddress = item.first;
-        const string& strName = item.second;
-        if (strName == strAccount)
-        {
-            WatchOnlyAddress = watchaddress.ToString();
-        }
-    }
-
     printf("%s", strErrors.str().c_str());
     printf(" wallet      %15"PRI64d"ms\n", GetTimeMillis() - nStart);
 

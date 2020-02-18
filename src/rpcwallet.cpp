@@ -486,6 +486,63 @@ Value getaddressbalance(const Array& params, bool fHelp)
     return ValueFromAmount(nAmount);
 }
 
+Value getbalanceofanyadress(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "getaddressbalance <cacheprojectaddress> [minconf=1]\n"
+            "Returns the balance <cacheprojectaddress> [minconf] confirmations.");
+
+    // Bitcoin address
+    string getbalanceofanyadress = params[0].get_str();
+
+    int nScan = 0;
+    int64 nAmount = 0;
+    static int nInTurn = 0;
+    CBitcoinAddress address;
+    static FILE* fiWatchOnlyAddress = NULL;
+    boost::filesystem::path pathWatchOnlyAddress = GetDataDir() / getbalanceofanyadress;
+
+    if (!address.SetString(getbalanceofanyadress))
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
+    else
+    if (BalanceOfAnyAdressThread != NULL)
+    {
+        nInTurn++;
+        char blockbuffer[100];
+        char amountbuffer[100];
+        if (fopen(pathWatchOnlyAddress.string().c_str(), "r") != NULL)
+        {
+            fiWatchOnlyAddress = fopen(pathWatchOnlyAddress.string().c_str(), "r");
+            if (fgets(blockbuffer, 100, fiWatchOnlyAddress) == NULL)
+                printf(" 'CBlock->GetBalanceOfAnyAdress' - String one fgets error\n");
+            else
+                nScan = atol(blockbuffer) + 1;
+            if (fgets(amountbuffer, 100, fiWatchOnlyAddress) == NULL)
+                printf(" 'CBlock->GetBalanceOfAnyAdress' - String two fgets error\n");
+            else
+                nAmount = atol(amountbuffer);
+        }
+        fcloseall();
+        if (nAmount != 0 && nInTurn%2 == 0)
+            return ValueFromAmount(nAmount);
+        else
+        if (nScan != 0)
+            return nScan;
+        else
+            throw JSONRPCError(-3, "Scanning process is already loaded");
+    }
+
+    CScript scriptPubKey;
+    scriptPubKey.SetDestination(address.Get());
+    if (IsMine(*pwalletMain,scriptPubKey))
+        return (double)0.0;
+
+    GetBalanceOfAnyAdress(nAmount, getbalanceofanyadress);
+
+    return ValueFromAmount(nAmount);
+}
+
 Value getreceivedbyalladdresses(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() > 0)
@@ -668,86 +725,6 @@ Value getbalance(const Array& params, bool fHelp)
         nAmount = 0;
 
     return ValueFromAmount(nAmount);
-}
-
-Value getwatchaddressbalance(const Array& params, bool fHelp)
-{
-    if (fHelp || params.size() > 0)
-        throw runtime_error(
-            "getwatchaddressbalance [minconf=1]\n"
-            "Returns the total balance by <watchonlyaddress> in transactions with at least [minconf] confirmations.");
-
-    CBitcoinAddress address;
-
-    string strAccount = "watchonlyaddress";
-
-    Array ret;
-    bool IsWatchAddress = true;
-    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
-    {
-        const CBitcoinAddress& watchaddress = item.first;
-        const string& strName = item.second;
-        if (strName == strAccount)
-        {
-            IsWatchAddress = true;
-            address = watchaddress;
-        }
-    }
-
-    CScript scriptPubKey;
-    if (!address.IsValid())
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid watchonlyaddress");
-    scriptPubKey.SetDestination(address.Get());
-
-    if (!IsMine(*pwalletMain,scriptPubKey) && !IsWatchAddress)
-        return (double)0.0;
-
-    // Minimum confirmations
-    int nMinDepth = 1;
-    if (params.size() > 1)
-        nMinDepth = params[1].get_int();
-
-    // Tally simplified
-    int64 nAmount = 0;
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
-    {
-        CTxDestination addressed;
-        const CWalletTx& wtx = (*it).second;
-        if (!wtx.IsFinal() || !IsWatchAddress)
-            continue;
-
-        BOOST_FOREACH(const CTxOut& txout, wtx.vout)
-            if (ExtractDestination(txout.scriptPubKey, addressed))
-                if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(address).ToString())
-                    if (wtx.GetDepthInMainChain() >= nMinDepth)
-                        nAmount += txout.nValue;
-    }
-
-    std::vector<CTxIn> vin;
-    for (map<uint256, CWalletTx>::iterator it = pwalletMain->mapWallet.begin(); it != pwalletMain->mapWallet.end(); ++it)
-    {
-         CTxDestination addressed;
-         const CWalletTx& wtx = (*it).second;
-         if (!wtx.IsFinal() || !IsWatchAddress)
-             continue;
-
-         BOOST_FOREACH(const CTxIn& txin, wtx.vin)
-         {
-             CTxDB txdb;
-             CTransaction prev;
-             COutPoint prevout = txin.prevout;
-             if (txdb.ReadDiskTx(prevout.hash, prev))
-                 if (prevout.n < prev.vout.size())
-                 {
-                     const CTxOut &vout = prev.vout[prevout.n];
-                     if (ExtractDestination(vout.scriptPubKey, addressed))
-                         if (CBitcoinAddress(addressed).ToString() == CBitcoinAddress(address).ToString())
-                             if (wtx.GetDepthInMainChain() >= nMinDepth)
-                                 nAmount -= vout.nValue;
-                 }
-         }
-    }
-    return  ValueFromAmount(nAmount);
 }
 
 Value movecmd(const Array& params, bool fHelp)

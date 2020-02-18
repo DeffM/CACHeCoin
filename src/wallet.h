@@ -166,12 +166,11 @@ public:
 
     void MarkDirty();
     bool AddToWallet(const CWalletTx& wtxIn);
-    bool AddToWalletWatchOnlyAddress(CValidationState &state, const CTransaction& tx,
-                                     const CBlock* pblock, bool fUpdate);
+    bool AddToWalletIfInvolvingMe(CValidationState &state, const CTransaction& tx,
+                                  const CBlock* pblock, bool fUpdate);
     bool EraseFromWallet(uint256 hash);
     void WalletUpdateSpent(const CTransaction& prevout);
     int ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate = false);
-    int ScanForWalletWatchAddress(CBlockIndex* pindexStart, bool fUpdate = false);
     void ReacceptWalletTransactions();
     void ResendWalletTransactions();
     int64 GetBalance() const;
@@ -256,10 +255,6 @@ public:
                 throw std::runtime_error("CWallet::GetCredit() : value out of range");
         }
         return nCredit;
-    }
-    int64 GetWatchOnlyAddressCalc(const CTransaction& tx) const
-    {
-        return nWatchOnlyAddressCalc;
     }
     int64 GetChange(const CTransaction& tx) const
     {
@@ -400,13 +395,11 @@ public:
     mutable bool fImmatureCreditCached;
     mutable bool fAvailableCreditCached;
     mutable bool fChangeCached;
-    mutable bool fWatchOnlyAddress;
     mutable int64 nDebitCached;
     mutable int64 nCreditCached;
     mutable int64 nImmatureCreditCached;
     mutable int64 nAvailableCreditCached;
     mutable int64 nChangeCached;
-    mutable int64 nWatchOnlyAddress;
 
     CWalletTx()
     {
@@ -445,13 +438,11 @@ public:
         fImmatureCreditCached = false;
         fAvailableCreditCached = false;
         fChangeCached = false;
-        fWatchOnlyAddress = false;
         nDebitCached = 0;
         nCreditCached = 0;
         nImmatureCreditCached = 0;
         nAvailableCreditCached = 0;
         nChangeCached = 0;
-        nWatchOnlyAddress = 0;
         nOrderPos = -1;
     }
 
@@ -539,7 +530,6 @@ public:
         fAvailableCreditCached = false;
         fDebitCached = false;
         fChangeCached = false;
-        fWatchOnlyAddress = false;
     }
 
     void BindWallet(CWallet *pwalletIn)
@@ -604,15 +594,6 @@ public:
         nCreditCached = pwallet->GetCredit(*this);
         fCreditCached = true;
         return nCreditCached;
-    }
-
-    int64 GetWatchOnlyAddressCalc(bool fUseCache=true) const
-    {
-        if (fUseCache && fWatchOnlyAddress)
-            return nWatchOnlyAddress;
-        nWatchOnlyAddress = pwallet->GetWatchOnlyAddressCalc(*this);
-        fWatchOnlyAddress = true;
-        return nWatchOnlyAddress;
     }
 
     int64 GetImmatureCredit(bool fUseCache=true) const

@@ -62,7 +62,6 @@ class TransactionRecord
 public:
     enum Type
     {
-        WatchOnlyAddress,
         Other,
         Generated,
         SendToAddress,

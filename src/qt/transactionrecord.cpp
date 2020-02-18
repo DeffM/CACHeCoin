@@ -30,24 +30,21 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
     int64 nDebit = wtx.GetDebit();
     int64 nNet = nCredit - nDebit;
     uint256 hash = wtx.GetHash();
-    int64 nWatchAddressCalc = wtx.GetWatchOnlyAddressCalc(true);
     std::map<std::string, std::string> mapValue = wtx.mapValue;
 
-    if (wtx.IsCoinStake() && nDebit > 0) // ppcoin: coinstake transaction
+    if (wtx.IsCoinStake()) // ppcoin: coinstake transaction
     {
-        if (false)
-            parts.append(TransactionRecord(hash, nTime, TransactionRecord::StakeMint, "", 0, 0));
-            else
-                parts.append(TransactionRecord(hash, nTime, TransactionRecord::StakeMint, "", -nDebit, wtx.GetValueOut()));
+        parts.append(TransactionRecord(hash, nTime, TransactionRecord::StakeMint, "", -nDebit, wtx.GetValueOut()));
     }
-    else if (nNet > 0 || wtx.IsCoinBase())
+    else
+    if (nNet > 0 || wtx.IsCoinBase())
     {
         //
         // Credit
         //
         BOOST_FOREACH(const CTxOut& txout, wtx.vout)
         {
-            if(wallet->IsMine(txout))
+            if (wallet->IsMine(txout))
             {
                 TransactionRecord sub(hash, nTime);
                 CTxDestination address;
@@ -70,14 +67,9 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
                     // Generated
                     sub.type = TransactionRecord::Generated;
                 }
-
                 parts.append(sub);
             }
         }
-    }
-    else if (nNet == 0 || IsWatchOnlyAddressVtx)
-    {
-             parts.append(TransactionRecord(hash, nTime, TransactionRecord::WatchOnlyAddress, "WatchOnlyAddress", 0, nWatchAddressCalc));
     }
     else
     {
@@ -93,8 +85,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
         {
             // Payment to self
             int64 nChange = wtx.GetChange();
-			parts.append(TransactionRecord(hash, nTime, TransactionRecord::SendToSelf, "",
-								-(nDebit - nChange), nCredit - nChange));
+	    parts.append(TransactionRecord(hash, nTime, TransactionRecord::SendToSelf, "", -(nDebit - nChange), nCredit - nChange));
         }
         else if (fAllFromMe)
         {
@@ -102,14 +93,12 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
             // Debit
             //
             int64 nTxFee = nDebit - wtx.GetValueOut();
-
             for (unsigned int nOut = 0; nOut < wtx.vout.size(); nOut++)
             {
                 const CTxOut& txout = wtx.vout[nOut];
                 TransactionRecord sub(hash, nTime);
                 sub.idx = parts.size();
-
-                if(wallet->IsMine(txout))
+                if (wallet->IsMine(txout))
                 {
                     // Ignore parts sent to self, as this is usually the change
                     // from a transaction sent back to our own address.
@@ -125,10 +114,9 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
                 }
                 else
                 {
-					// Sent to IP, or other non-address transaction like OP_EVAL
-					sub.type = TransactionRecord::SendToOther;
-					sub.address = mapValue["to"];
-
+		    // Sent to IP, or other non-address transaction like OP_EVAL
+		    sub.type = TransactionRecord::SendToOther;
+		    sub.address = mapValue["to"];
                 }
 
                 int64 nValue = txout.nValue;
@@ -151,7 +139,6 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
             parts.append(TransactionRecord(hash, nTime, TransactionRecord::Other, "", nNet, 0));
         }
     }
-
     return parts;
 }
 
@@ -205,8 +192,7 @@ void TransactionRecord::updateStatus(const CWalletTx &wtx)
     }
 
     // For generated transactions, determine maturity
-    if(type == TransactionRecord::Generated || type == TransactionRecord::StakeMint ||
-    type == TransactionRecord::WatchOnlyAddress)
+    if(type == TransactionRecord::Generated || type == TransactionRecord::StakeMint)
     {
         int64 nCredit = wtx.GetCredit(true);
         if (nCredit == 0)
