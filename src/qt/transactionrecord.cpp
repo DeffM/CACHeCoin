@@ -115,9 +115,9 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
                 }
                 else
                 {
-		    // Sent to IP, or other non-address transaction like OP_EVAL
-		    sub.type = TransactionRecord::SendToOther;
-		    sub.address = mapValue["to"];
+                    // Sent to IP, or other non-address transaction like OP_EVAL
+                    sub.type = TransactionRecord::SendToOther;
+                    sub.address = mapValue["to"];
                 }
 
                 int64 nValue = txout.nValue;
