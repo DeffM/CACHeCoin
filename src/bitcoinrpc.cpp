@@ -316,6 +316,7 @@ static const CRPCCommand vRPCCommands[] =
     { "getbalance",                 &getbalance,                 false,  false },
     { "getaddressbalance",          &getaddressbalance,          false,  false },
     { "getbalanceofanyadress",      &getbalanceofanyadress,      false,  false },
+    { "getbalanceofalladress",      &getbalanceofalladress,      false,  false },
     { "getreceivedbyalladdresses",  &getreceivedbyalladdresses,  false,  false },
     { "getsenttobyalladdresses",    &getsenttobyalladdresses,    false,  false },
     { "getbalancealladdresses",     &getbalancealladdresses,     false,  false },

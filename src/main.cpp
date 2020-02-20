@@ -3427,9 +3427,12 @@ bool CBlock::GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std:
     char buffer[100];
     nAmount = 0;
     unsigned int nScan = 0;
-    if (!fiWatchOnlyAddress && fopen(pathWatchOnlyAddress.string().c_str(), "r") != NULL)
+    if (boost::filesystem::exists(pathWatchOnlyAddress) != 0)
     {
-        fiWatchOnlyAddress = fopen(pathWatchOnlyAddress.string().c_str(), "r");
+        if (!fiWatchOnlyAddress)
+            fiWatchOnlyAddress = fopen(pathWatchOnlyAddress.string().c_str(), "r");
+        if (fiWatchOnlyAddress)
+            fiWatchOnlyAddress = freopen(pathWatchOnlyAddress.string().c_str(), "r", fiWatchOnlyAddress);
         if (fgets(buffer, 100, fiWatchOnlyAddress) == NULL)
             printf(" 'CBlock->GetBalanceOfAnyAdress' - String one fgets error\n");
         else
@@ -3488,11 +3491,11 @@ bool CBlock::GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std:
                 }
             }
         }
-        if (nScan%500 == 0)
+        if (nScan%1000 == 0)
         {
             if (fiWatchOnlyAddress)
             {
-                if (freopen(pathWatchOnlyAddress.string().c_str(), "w", fiWatchOnlyAddress) != 0)
+                if (freopen(pathWatchOnlyAddress.string().c_str(), "w", fiWatchOnlyAddress) != NULL)
                     setbuf(fiWatchOnlyAddress, NULL);
             }
             if (!fiWatchOnlyAddress)
@@ -3502,7 +3505,6 @@ bool CBlock::GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std:
             }
             fprintf(fiWatchOnlyAddress, "%d\n", nScan);
             fprintf(fiWatchOnlyAddress, "%"PRI64d"\n", nAmount);
-            Sleep(10000);
         }
     }
     fcloseall();
@@ -3547,6 +3549,192 @@ void GetBalanceOfAnyAdress(int64 nAmount, std::string stWatchOnlyAddress)
               BalanceOfAnyAdressThread = NULL;
               BalanceOfAnyAdressThread = new boost::thread_group();
               BalanceOfAnyAdressThread->create_thread(boost::bind(&GetBalanceOfAnyAdressThread, nAmount, stWatchOnlyAddress));
+     }
+}
+
+bool CBlock::GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress)
+{
+    CBlock block;
+    stWatchOnlyAddress = "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+    static FILE* fiBlockScan = NULL;
+    static FILE* fiReadWatchAllAddress = NULL;
+    static FILE* fiWriteWatchAllAddress = NULL;
+    boost::filesystem::path pathBlockScan = GetDataDir() / "nBlockScan";
+    boost::filesystem::path basedir = GetDataDir();
+    boost::filesystem::create_directories(basedir/"balancealladress");
+
+    char bufferScan[100];
+    unsigned int nScan = 0;
+    if (!fiBlockScan && fopen(pathBlockScan.string().c_str(), "r") != NULL)
+    {
+        fiBlockScan = fopen(pathBlockScan.string().c_str(), "r");
+        if (fgets(bufferScan, 100, fiBlockScan) == NULL)
+            printf(" 'CBlock->GetBalanceOfAnyAdress' - String one fgets error\n");
+        else
+            nScan = atol(bufferScan) + 1;
+    }
+
+    for (; nScan < (unsigned int)pindexBest->nHeight; nScan++)
+    {
+        if (fShutdown) return true;
+        CBlockIndex* getbalanceanyadressindex = FindBlockByHeight(nScan);
+        block.ReadFromDisk(getbalanceanyadressindex, true);
+        for (unsigned int k = 0; k < block.vtx.size(); k++)
+        {
+            for (unsigned int i = 0; i < block.vtx[k].vout.size(); i++)
+            {
+                CTxDestination address;
+                const CTxOut &txout = block.vtx[k].vout[i];
+                if (ExtractDestination(txout.scriptPubKey, address))
+                {
+                    if (CBitcoinAddress(address).ToString() != stWatchOnlyAddress)
+                    {
+                        char bufferAmount[100];
+                        boost::filesystem::path pathBalanceAllAdress = basedir / "balancealladress" / CBitcoinAddress(address).ToString();
+                        if (boost::filesystem::exists(pathBalanceAllAdress) != 0)
+                        {
+                            if (!fiReadWatchAllAddress)
+                                fiReadWatchAllAddress = fopen(pathBalanceAllAdress.string().c_str(), "r");
+                            if (fiReadWatchAllAddress)
+                                fiReadWatchAllAddress = freopen(pathBalanceAllAdress.string().c_str(), "r", fiReadWatchAllAddress);
+                            if (fgets(bufferAmount, 100, fiReadWatchAllAddress) == NULL)
+                                printf(" 'CBlock->GetBalanceOfAnyAdress' - String two fgets error\n");
+                            else
+                                nAmount = atol(bufferAmount);
+                        }
+                        else
+                            nAmount = 0;
+
+                        nAmount += txout.nValue;
+
+                        if (fiWriteWatchAllAddress)
+                        {
+                            if (freopen(pathBalanceAllAdress.string().c_str(), "w", fiWriteWatchAllAddress) != NULL)
+                                setbuf(fiWriteWatchAllAddress, NULL);
+                        }
+                        if (!fiWriteWatchAllAddress)
+                        {
+                            fiWriteWatchAllAddress = fopen(pathBalanceAllAdress.string().c_str(), "w");
+                            if (fiWriteWatchAllAddress) setbuf(fiWriteWatchAllAddress, NULL);
+                        }
+                        fprintf(fiWriteWatchAllAddress, "%"PRI64d"\n", nAmount);
+                        if (fDebug)
+                            printf(" 'CBlock->GetBalanceOfAnyAdress()' - Input transaction to WatchOnlyAddress %s\n", txout.ToString().c_str());
+                    }
+                }
+            }
+        }
+        for (unsigned int k = 0; k < block.vtx.size(); k++)
+        {
+            for (unsigned int i = 0; i < block.vtx[k].vin.size(); i++)
+            {
+                CTxDB txdb("r");
+                CTransaction prev;
+                CTxDestination address;
+                COutPoint prevout = block.vtx[k].vin[i].prevout;
+                if(txdb.ReadDiskTx(prevout.hash, prev))
+                {
+                   if (prevout.n < prev.vout.size())
+                   {
+                       const CTxOut &vout = prev.vout[prevout.n];
+                       if (ExtractDestination(vout.scriptPubKey, address))
+                       {
+                           if (CBitcoinAddress(address).ToString() != stWatchOnlyAddress)
+                           {
+                               char bufferAmount[100];
+                               boost::filesystem::path pathBalanceAllAdress = basedir / "balancealladress" / CBitcoinAddress(address).ToString();
+                               if (boost::filesystem::exists(pathBalanceAllAdress) != 0)
+                               {
+                                   if (!fiReadWatchAllAddress)
+                                       fiReadWatchAllAddress = fopen(pathBalanceAllAdress.string().c_str(), "r");
+                                   if (fiReadWatchAllAddress)
+                                       fiReadWatchAllAddress = freopen(pathBalanceAllAdress.string().c_str(), "r", fiReadWatchAllAddress);
+                                   if (fgets(bufferAmount, 100, fiReadWatchAllAddress) == NULL)
+                                       printf(" 'CBlock->GetBalanceOfAnyAdress' - String two fgets error\n");
+                                   else
+                                       nAmount = atol(bufferAmount);
+                               }
+                               else
+                                   nAmount = 0;
+
+                               nAmount -= vout.nValue;
+
+                               if (fiWriteWatchAllAddress)
+                               {
+                                   if (freopen(pathBalanceAllAdress.string().c_str(), "w", fiWriteWatchAllAddress) != NULL)
+                                       setbuf(fiWriteWatchAllAddress, NULL);
+                               }
+                               if (!fiWriteWatchAllAddress)
+                               {
+                                   fiWriteWatchAllAddress = fopen(pathBalanceAllAdress.string().c_str(), "w");
+                                   if (fiWriteWatchAllAddress) setbuf(fiWriteWatchAllAddress, NULL);
+                               }
+                               fprintf(fiWriteWatchAllAddress, "%"PRI64d"\n", nAmount);
+                               if (fDebug)
+                                   printf(" 'CBlock->GetBalanceOfAnyAdress()' - Output transaction from WatchOnlyAddress %s\n", vout.ToString().c_str());
+                           }
+                       }
+                   }
+                }
+            }
+        }
+        if (nScan%1000 == 0)
+        {
+            if (fiBlockScan)
+            {
+                if (freopen(pathBlockScan.string().c_str(), "w", fiBlockScan) != NULL)
+                    setbuf(fiBlockScan, NULL);
+            }
+            if (!fiBlockScan)
+            {
+                fiBlockScan = fopen(pathBlockScan.string().c_str(), "w");
+                if (fiBlockScan) setbuf(fiBlockScan, NULL);
+            }
+            fprintf(fiBlockScan, "%d\n", nScan);
+        }
+    }
+    fcloseall();
+    return true;
+}
+
+void static GetBalanceOfAllAdressThread(int64 nAmount, std::string stWatchOnlyAddress)
+{
+    CBlock block;
+    CValidationState state;
+    std::string s = strprintf(" 'CACHE'PROJECT_%s", "THREAD_BALANCEALLADRESS");
+    RenameThread(s.c_str());
+    try
+    {
+        printf("%s - started\n", "THREAD_BALANCEALLADRESS");
+        block.GetBalanceOfAllAdress(state, nAmount, stWatchOnlyAddress);
+        printf("%s - exited\n", "THREAD_BALANCEALLADRESS");
+    }
+    catch (boost::thread_interrupted)
+    {
+        printf("%s - interrupted\n", "THREAD_BALANCEALLADRESS");
+        throw;
+    }
+    catch (std::exception& e) {
+        PrintException(&e, "THREAD_BALANCEALLADRESS");
+    }
+    catch (...) {
+        PrintException(NULL, "THREAD_BALANCEALLADRESS");
+    }
+}
+
+boost::thread_group* BalanceOfAllAdressThread = NULL;
+void GetBalanceOfAllAdress(int64 nAmount, std::string stWatchOnlyAddress)
+{
+     if (BalanceOfAllAdressThread != NULL)
+     {
+         printf(" 'THREAD_BALANCEALLADRESS' - already loaded\n");
+     }
+     else if (BalanceOfAllAdressThread == NULL)
+     {
+              delete BalanceOfAllAdressThread;
+              BalanceOfAllAdressThread = NULL;
+              BalanceOfAllAdressThread = new boost::thread_group();
+              BalanceOfAllAdressThread->create_thread(boost::bind(&GetBalanceOfAllAdressThread, nAmount, stWatchOnlyAddress));
      }
 }
 

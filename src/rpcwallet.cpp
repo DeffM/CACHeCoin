@@ -543,6 +543,48 @@ Value getbalanceofanyadress(const Array& params, bool fHelp)
     return ValueFromAmount(nAmount);
 }
 
+Value getbalanceofalladress(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "getbalanceofalladress any <cacheprojectaddress> [minconf=1]\n"
+            "Returns the balance all <cacheprojectaddress> [minconf] confirmations.");
+
+    // Bitcoin address
+    string getbalanceofalladress = params[0].get_str();
+
+    int nScan = 0;
+    int64 nAmount = 0;
+    CBitcoinAddress address;
+    static FILE* fiBlockScan = NULL;;
+    boost::filesystem::path pathBlockScan = GetDataDir() / "nBlockScan";
+
+    if (!address.SetString(getbalanceofalladress))
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid 'CACHE'Project address");
+    else
+    if (BalanceOfAllAdressThread != NULL)
+    {
+        char blockbuffer[100];
+        if (fopen(pathBlockScan.string().c_str(), "r") != NULL)
+        {
+            fiBlockScan = fopen(pathBlockScan.string().c_str(), "r");
+            if (fgets(blockbuffer, 100, fiBlockScan) == NULL)
+                printf(" 'CBlock->GetBalanceOfAnyAdress' - String one fgets error\n");
+            else
+                nScan = atol(blockbuffer);
+        }
+        fcloseall();
+        if (nScan != 0)
+            return nScan;
+        else
+            throw JSONRPCError(-3, "Scanning process is already loaded");
+    }
+
+    GetBalanceOfAllAdress(nAmount, getbalanceofalladress);
+
+    return ValueFromAmount(nAmount);
+}
+
 Value getreceivedbyalladdresses(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() > 0)

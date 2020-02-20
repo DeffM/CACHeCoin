@@ -141,6 +141,7 @@ extern unsigned char pchMessageStart[4];
 
 extern boost::thread_group* MintStakeThread;
 extern boost::thread_group* BalanceOfAnyAdressThread;
+extern boost::thread_group* BalanceOfAllAdressThread;
 
 // Settings
 extern int64 nTransactionFee;
@@ -177,6 +178,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
 void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
 void GetBalanceOfAnyAdress(int64 nAmount, std::string stWatchOnlyAddress);
+void GetBalanceOfAllAdress(int64 nAmount, std::string stWatchOnlyAddress);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
@@ -1385,6 +1387,7 @@ public:
     }
 
     bool GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
+    bool GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
     bool CheckFork(CValidationState &state, uint256 &pSyncCheckpointHash, uint256 &pLastCheckPointHash, int &nForkParentHeight, int &nForkBlockHeight);
     bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug);
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
