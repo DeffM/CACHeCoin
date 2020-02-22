@@ -534,7 +534,7 @@ Value sendrawtransaction(const Array& params, bool fHelp)
         if (!tx.GoTxToMemoryPool(state, txdb, mapInputs, mapUnused, true, false))
             throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX rejected");
 
-        SyncWithWallets(tx, NULL, true);
+        SyncWithWallets(hashTx, tx, NULL, true);
     }
     RelayMessage(CInv(MSG_TX, hashTx), tx);
 

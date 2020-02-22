@@ -176,7 +176,7 @@ void static EraseFromWallets(uint256 hash)
 }
 
 // make sure all wallets know about the given transaction, in the given block
-void SyncWithWallets(const CTransaction& tx, const CBlock* pblock, bool fUpdate, bool fConnect)
+void SyncWithWallets(const uint256 &hash, const CTransaction& tx, const CBlock* pblock, bool fUpdate, bool fConnect)
 {
     if (!fConnect)
     {
@@ -189,10 +189,9 @@ void SyncWithWallets(const CTransaction& tx, const CBlock* pblock, bool fUpdate,
         }
         return;
     }
-    CValidationState state;
     BOOST_FOREACH(CWallet* pwallet, setpwalletRegistered)
     {
-        pwallet->AddToWalletIfInvolvingMe(state, tx, pblock, fUpdate);
+        pwallet->AddToWalletIfInvolvingMe(hash, tx, pblock, fUpdate, false);
     }
 }
 
@@ -1152,7 +1151,7 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
         // If updated, erase old tx from wallet
         if (ptxOld)
             EraseFromWallets(ptxOld->GetHash());
-        SyncWithWallets(tx, NULL, true, true);
+        SyncWithWallets(hash, tx, NULL, true, false);
         printf(" 'CTxMemPool->CheckTxMemPool()' - Accepted %s (poolsz %"PRIszu")\n", hash.ToString().substr(0,10).c_str(), mapTx.size());
     }
     return true;
@@ -2520,7 +2519,7 @@ bool CBlock::DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex)
 
     // ppcoin: clean up wallet after disconnecting coinstake
     BOOST_FOREACH(CTransaction& tx, vtx)
-        SyncWithWallets(tx, this, false, false);
+        SyncWithWallets(tx.GetHash(), tx, this, false, false);
 
     return true;
 }
@@ -2562,6 +2561,22 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     bool fStrictPayToScriptHash = true; // Always active in NovaCoin
     bool fScriptChecks = pindex->nHeight >= Checkpoints::GetTotalBlocksEstimate();
 
+    for (unsigned int i=0; i<vtx.size(); i++)
+    {
+         uint256 hash = GetTxHash(i);
+         if (fEnforceBIP30)
+         {
+             CTxIndex txindexOld;
+             if (txdb.ReadTxIndex(hash, txindexOld))
+             {
+                 BOOST_FOREACH(CDiskTxPos &pos, txindexOld.vSpent)
+                     if (pos.IsNull())
+                         return false;
+             }
+         }
+
+    }
+
     //// issue here: it doesn't know the version
     unsigned int nTxPos;
     if (fJustCheck)
@@ -2572,25 +2587,16 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
         nTxPos = pindex->nBlockPos + ::GetSerializeSize(CBlock(), SER_DISK, CLIENT_VERSION) - (2 * GetSizeOfCompactSize(0)) + GetSizeOfCompactSize(vtx.size());
 
     map<uint256, CTxIndex> mapQueuedChanges;
+
     CCheckQueueControl<CScriptCheck> control(fScriptChecks && nScriptCheckThreads ? &scriptcheckqueue : NULL);
+
     int64 nFees = 0;
     int64 nValueIn = 0;
     int64 nValueOut = 0;
     unsigned int nSigOps = 0;
-    BOOST_FOREACH(CTransaction& tx, vtx)
+    for (unsigned int i=0; i<vtx.size(); i++)
     {
-        uint256 hashTx = tx.GetHash();
-
-        if (fEnforceBIP30)
-        {
-            CTxIndex txindexOld;
-            if (txdb.ReadTxIndex(hashTx, txindexOld))
-            {
-                BOOST_FOREACH(CDiskTxPos &pos, txindexOld.vSpent)
-                    if (pos.IsNull())
-                        return false;
-            }
-        }
+        const CTransaction &tx = vtx[i];
 
         nSigOps += tx.GetLegacySigOpCount();
         if (nSigOps > MAX_BLOCK_SIGOPS)
@@ -2631,7 +2637,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
                 nFees += nTxValueIn - nTxValueOut;
             control.Add(vChecks);
         }
-        mapQueuedChanges[hashTx] = CTxIndex(posThisTx, tx.vout.size());
+        mapQueuedChanges[GetTxHash(i)] = CTxIndex(posThisTx, tx.vout.size());
     }
 
     // ppcoin: track money supply and mint amount info
@@ -2666,8 +2672,8 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     }
 
     // Watch for transactions paying to me
-    BOOST_FOREACH(CTransaction& tx, vtx)
-        SyncWithWallets(tx, this, true);
+    for (unsigned int i=0; i<vtx.size(); i++)
+        SyncWithWallets(GetTxHash(i), vtx[i], this, true);
 
     return true;
 }
@@ -3434,11 +3440,11 @@ bool CBlock::GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std:
         if (fiWatchOnlyAddress)
             fiWatchOnlyAddress = freopen(pathWatchOnlyAddress.string().c_str(), "r", fiWatchOnlyAddress);
         if (fgets(buffer, 100, fiWatchOnlyAddress) == NULL)
-            printf(" 'CBlock->GetBalanceOfAnyAdress' - String one fgets error\n");
+            printf(" 'CBlock->GetBalanceOfAnyAdress()' - String one fgets error\n");
         else
             nScan = atol(buffer) + 1;
         if (fgets(buffer, 100, fiWatchOnlyAddress) == NULL)
-            printf(" 'CBlock->GetBalanceOfAnyAdress' - String two fgets error\n");
+            printf(" 'CBlock->GetBalanceOfAnyAdress()' - String two fgets error\n");
         else
             nAmount = atol(buffer);
     }
@@ -3473,21 +3479,21 @@ bool CBlock::GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std:
                 CTransaction prev;
                 CTxDestination address;
                 COutPoint prevout = block.vtx[k].vin[i].prevout;
-                if(txdb.ReadDiskTx(prevout.hash, prev))
+                if (txdb.ReadDiskTx(prevout.hash, prev))
                 {
-                   if (prevout.n < prev.vout.size())
-                   {
-                       const CTxOut &vout = prev.vout[prevout.n];
-                       if (ExtractDestination(vout.scriptPubKey, address))
-                       {
-                           if (CBitcoinAddress(address).ToString() == stWatchOnlyAddress)
-                           {
-                               nAmount -= vout.nValue;
-                               if (fDebug)
-                                   printf(" 'CBlock->GetBalanceOfAnyAdress()' - Output transaction from WatchOnlyAddress %s\n", vout.ToString().c_str());
-                           }
-                       }
-                   }
+                    if (prevout.n < prev.vout.size())
+                    {
+                        const CTxOut &vout = prev.vout[prevout.n];
+                        if (ExtractDestination(vout.scriptPubKey, address))
+                        {
+                            if (CBitcoinAddress(address).ToString() == stWatchOnlyAddress)
+                            {
+                                nAmount -= vout.nValue;
+                                if (fDebug)
+                                    printf(" 'CBlock->GetBalanceOfAnyAdress()' - Output transaction from WatchOnlyAddress %s\n", vout.ToString().c_str());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3569,7 +3575,7 @@ bool CBlock::GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std:
     {
         fiBlockScan = fopen(pathBlockScan.string().c_str(), "r");
         if (fgets(bufferScan, 100, fiBlockScan) == NULL)
-            printf(" 'CBlock->GetBalanceOfAnyAdress' - String one fgets error\n");
+            printf(" 'CBlock->GetBalanceOfAllAdress()' - String one fgets error\n");
         else
             nScan = atol(bufferScan) + 1;
     }
@@ -3598,7 +3604,7 @@ bool CBlock::GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std:
                             if (fiReadWatchAllAddress)
                                 fiReadWatchAllAddress = freopen(pathBalanceAllAdress.string().c_str(), "r", fiReadWatchAllAddress);
                             if (fgets(bufferAmount, 100, fiReadWatchAllAddress) == NULL)
-                                printf(" 'CBlock->GetBalanceOfAnyAdress' - String two fgets error\n");
+                                printf(" 'CBlock->GetBalanceOfAllAdress()' - String two fgets error\n");
                             else
                                 nAmount = atol(bufferAmount);
                         }
@@ -3619,7 +3625,7 @@ bool CBlock::GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std:
                         }
                         fprintf(fiWriteWatchAllAddress, "%"PRI64d"\n", nAmount);
                         if (fDebug)
-                            printf(" 'CBlock->GetBalanceOfAnyAdress()' - Input transaction to WatchOnlyAddress %s\n", txout.ToString().c_str());
+                            printf(" 'CBlock->GetBalanceOfAllAdress()' - Input transaction to BalanceAllAdress %s\n", txout.ToString().c_str());
                     }
                 }
             }
@@ -3632,49 +3638,49 @@ bool CBlock::GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std:
                 CTransaction prev;
                 CTxDestination address;
                 COutPoint prevout = block.vtx[k].vin[i].prevout;
-                if(txdb.ReadDiskTx(prevout.hash, prev))
+                if (txdb.ReadDiskTx(prevout.hash, prev))
                 {
-                   if (prevout.n < prev.vout.size())
-                   {
-                       const CTxOut &vout = prev.vout[prevout.n];
-                       if (ExtractDestination(vout.scriptPubKey, address))
-                       {
-                           if (CBitcoinAddress(address).ToString() != stWatchOnlyAddress)
-                           {
-                               char bufferAmount[100];
-                               boost::filesystem::path pathBalanceAllAdress = basedir / "balancealladress" / CBitcoinAddress(address).ToString();
-                               if (boost::filesystem::exists(pathBalanceAllAdress) != 0)
-                               {
-                                   if (!fiReadWatchAllAddress)
-                                       fiReadWatchAllAddress = fopen(pathBalanceAllAdress.string().c_str(), "r");
-                                   if (fiReadWatchAllAddress)
-                                       fiReadWatchAllAddress = freopen(pathBalanceAllAdress.string().c_str(), "r", fiReadWatchAllAddress);
-                                   if (fgets(bufferAmount, 100, fiReadWatchAllAddress) == NULL)
-                                       printf(" 'CBlock->GetBalanceOfAnyAdress' - String two fgets error\n");
-                                   else
-                                       nAmount = atol(bufferAmount);
-                               }
-                               else
-                                   nAmount = 0;
+                    if (prevout.n < prev.vout.size())
+                    {
+                        const CTxOut &vout = prev.vout[prevout.n];
+                        if (ExtractDestination(vout.scriptPubKey, address))
+                        {
+                            if (CBitcoinAddress(address).ToString() != stWatchOnlyAddress)
+                            {
+                                char bufferAmount[100];
+                                boost::filesystem::path pathBalanceAllAdress = basedir / "balancealladress" / CBitcoinAddress(address).ToString();
+                                if (boost::filesystem::exists(pathBalanceAllAdress) != 0)
+                                {
+                                    if (!fiReadWatchAllAddress)
+                                        fiReadWatchAllAddress = fopen(pathBalanceAllAdress.string().c_str(), "r");
+                                    if (fiReadWatchAllAddress)
+                                        fiReadWatchAllAddress = freopen(pathBalanceAllAdress.string().c_str(), "r", fiReadWatchAllAddress);
+                                    if (fgets(bufferAmount, 100, fiReadWatchAllAddress) == NULL)
+                                        printf(" 'CBlock->GetBalanceOfAllAdress()' - String two fgets error\n");
+                                    else
+                                        nAmount = atol(bufferAmount);
+                                }
+                                else
+                                    nAmount = 0;
 
-                               nAmount -= vout.nValue;
+                                nAmount -= vout.nValue;
 
-                               if (fiWriteWatchAllAddress)
-                               {
-                                   if (freopen(pathBalanceAllAdress.string().c_str(), "w", fiWriteWatchAllAddress) != NULL)
-                                       setbuf(fiWriteWatchAllAddress, NULL);
-                               }
-                               if (!fiWriteWatchAllAddress)
-                               {
-                                   fiWriteWatchAllAddress = fopen(pathBalanceAllAdress.string().c_str(), "w");
-                                   if (fiWriteWatchAllAddress) setbuf(fiWriteWatchAllAddress, NULL);
-                               }
-                               fprintf(fiWriteWatchAllAddress, "%"PRI64d"\n", nAmount);
-                               if (fDebug)
-                                   printf(" 'CBlock->GetBalanceOfAnyAdress()' - Output transaction from WatchOnlyAddress %s\n", vout.ToString().c_str());
-                           }
-                       }
-                   }
+                                if (fiWriteWatchAllAddress)
+                                {
+                                    if (freopen(pathBalanceAllAdress.string().c_str(), "w", fiWriteWatchAllAddress) != NULL)
+                                        setbuf(fiWriteWatchAllAddress, NULL);
+                                }
+                                if (!fiWriteWatchAllAddress)
+                                {
+                                    fiWriteWatchAllAddress = fopen(pathBalanceAllAdress.string().c_str(), "w");
+                                    if (fiWriteWatchAllAddress) setbuf(fiWriteWatchAllAddress, NULL);
+                                }
+                                fprintf(fiWriteWatchAllAddress, "%"PRI64d"\n", nAmount);
+                                if (fDebug)
+                                    printf(" 'CBlock->GetBalanceOfAllAdress()' - Output transaction from BalanceAllAdress %s\n", vout.ToString().c_str());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3735,6 +3741,154 @@ void GetBalanceOfAllAdress(int64 nAmount, std::string stWatchOnlyAddress)
               BalanceOfAllAdressThread = NULL;
               BalanceOfAllAdressThread = new boost::thread_group();
               BalanceOfAllAdressThread->create_thread(boost::bind(&GetBalanceOfAllAdressThread, nAmount, stWatchOnlyAddress));
+     }
+}
+
+bool CBlock::ImportPrivKeyFast(CValidationState &state, std::string stImportPrivKeyAddress)
+{
+    CBlock block;
+    //stImportPrivKeyAddress = "CbgnVLcLgujqb6WVdCdP8u92q1PLK77HDy";
+    static FILE* fiImportPrivKeyAddress = NULL;
+    boost::filesystem::path pathImportPrivKeyAddress = GetDataDir() / stImportPrivKeyAddress;
+
+    char buffer[100];
+    int64 nAmount = 0;
+    unsigned int nScan = (unsigned int)pindexBest->nHeight;
+    if (boost::filesystem::exists(pathImportPrivKeyAddress) != 0)
+    {
+        if (!fiImportPrivKeyAddress)
+            fiImportPrivKeyAddress = fopen(pathImportPrivKeyAddress.string().c_str(), "r");
+        if (fiImportPrivKeyAddress)
+            fiImportPrivKeyAddress = freopen(pathImportPrivKeyAddress.string().c_str(), "r", fiImportPrivKeyAddress);
+        if (fgets(buffer, 100, fiImportPrivKeyAddress) == NULL)
+            printf(" 'CBlock->ImportPrivKeyFast()' - String one fgets error\n");
+        else
+            nScan = atol(buffer) - 1;
+        if (fgets(buffer, 100, fiImportPrivKeyAddress) == NULL)
+            printf(" 'CBlock->ImportPrivKeyFast()' - String two fgets error\n");
+        else
+            nAmount = atol(buffer);
+    }
+
+    BOOST_FOREACH(CWallet* pwallet, setpwalletRegistered)
+    {
+        for (;   nScan > 1;   nScan--)
+        {
+            if (fShutdown)
+            {
+                pwallet->ReacceptWalletTransactions();
+                Sleep(100000);
+                return true;
+            }
+
+            CBlockIndex* getbalanceanyadressindex = FindBlockByHeight(nScan);
+            block.ReadFromDisk(getbalanceanyadressindex, true);
+            for (unsigned int k = 0; k < block.vtx.size(); k++)
+            {
+                for (unsigned int i = 0; i < block.vtx[k].vout.size(); i++)
+                {
+                    CTxDestination address;
+                    const CTxOut &txout = block.vtx[k].vout[i];
+                    if (ExtractDestination(txout.scriptPubKey, address))
+                    {
+                        if (CBitcoinAddress(address).ToString() == stImportPrivKeyAddress)
+                        {
+                            nAmount += txout.nValue;
+                            if (pwallet->AddToWalletIfInvolvingMe(txout.GetHash(), block.vtx[k], &block, true, true))
+                                if (fDebug)
+                                    printf(" 'CBlock->ImportPrivKeyFast()' - Input transaction to ImportPrivKeyAddress %s\n", txout.ToString().c_str());
+                        }
+                    }
+                }
+            }
+            for (unsigned int k = 0; k < block.vtx.size(); k++)
+            {
+                for (unsigned int i = 0; i < block.vtx[k].vin.size(); i++)
+                {
+                    CTxDB txdb("r");
+                    CTransaction prev;
+                    CTxDestination address;
+                    COutPoint prevout = block.vtx[k].vin[i].prevout;
+                    if (txdb.ReadDiskTx(prevout.hash, prev))
+                    {
+                        if (prevout.n < prev.vout.size())
+                        {
+                            const CTxOut &vout = prev.vout[prevout.n];
+                            if (ExtractDestination(vout.scriptPubKey, address))
+                            {
+                                if (CBitcoinAddress(address).ToString() == stImportPrivKeyAddress)
+                                {
+                                    nAmount -= vout.nValue;
+                                    if (pwallet->AddToWalletIfInvolvingMe(vout.GetHash(), block.vtx[k], &block, true, true))
+                                        if (fDebug)
+                                            printf(" 'CBlock->ImportPrivKeyFast()' - Output transaction from ImportPrivKeyAddress %s\n", vout.ToString().c_str());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (nScan%30 == 0)
+            {
+                if (fiImportPrivKeyAddress)
+                {
+                    if (freopen(pathImportPrivKeyAddress.string().c_str(), "w", fiImportPrivKeyAddress) != NULL)
+                        setbuf(fiImportPrivKeyAddress, NULL);
+                }
+                if (!fiImportPrivKeyAddress)
+                {
+                    fiImportPrivKeyAddress = fopen(pathImportPrivKeyAddress.string().c_str(), "w");
+                    if (fiImportPrivKeyAddress) setbuf(fiImportPrivKeyAddress, NULL);
+                }
+                fprintf(fiImportPrivKeyAddress, "%d\n", nScan);
+                fprintf(fiImportPrivKeyAddress, "%"PRI64d"\n", nAmount);
+            }
+        }
+        fcloseall();
+        pwallet->ReacceptWalletTransactions();
+        Sleep(10000);
+    }
+    return true;
+}
+
+void static ImportPrivKeyFastThread(std::string stImportPrivKeyAddress)
+{
+    CBlock block;
+    CValidationState state;
+    std::string s = strprintf(" 'CACHE'PROJECT_%s", "THREAD_PRIVKEYFAST");
+    RenameThread(s.c_str());
+    try
+    {
+        printf("%s - started\n", "THREAD_PRIVKEYFAST");
+        block.ImportPrivKeyFast(state, stImportPrivKeyAddress);
+        printf("%s - exited\n", "THREAD_PRIVKEYFAST");
+    }
+    catch (boost::thread_interrupted)
+    {
+        printf("%s - interrupted\n", "THREAD_PRIVKEYFAST");
+        throw;
+    }
+    catch (std::exception& e) {
+        PrintException(&e, "THREAD_PRIVKEYFAST");
+    }
+    catch (...) {
+        PrintException(NULL, "THREAD_PRIVKEYFAST");
+    }
+}
+
+boost::thread_group* thImportPrivKeyFastThread = NULL;
+void ImportPrivKeyFast(std::string stImportPrivKeyAddress)
+{
+     if (thImportPrivKeyFastThread != NULL)
+     {
+         printf(" 'THREAD_PRIVKEYFAST' - already loaded\n");
+     }
+     else if (thImportPrivKeyFastThread == NULL)
+     {
+              delete thImportPrivKeyFastThread;
+              thImportPrivKeyFastThread = NULL;
+              thImportPrivKeyFastThread = new boost::thread_group();
+              thImportPrivKeyFastThread->create_thread(boost::bind(&ImportPrivKeyFastThread, stImportPrivKeyAddress));
      }
 }
 

@@ -569,7 +569,7 @@ Value getbalanceofalladress(const Array& params, bool fHelp)
         {
             fiBlockScan = fopen(pathBlockScan.string().c_str(), "r");
             if (fgets(blockbuffer, 100, fiBlockScan) == NULL)
-                printf(" 'CBlock->GetBalanceOfAnyAdress' - String one fgets error\n");
+                printf(" 'CBlock->GetBalanceOfllAdress' - String fgets error\n");
             else
                 nScan = atol(blockbuffer);
         }

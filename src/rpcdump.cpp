@@ -71,6 +71,78 @@ Value importprivkey(const Array& params, bool fHelp)
     return Value::null;
 }
 
+Value importprivkeyfast(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 2)
+        throw runtime_error(
+            "importprivkeyfast <cacheprojectprivkey> [label]\n"
+            "Adds a private key (as returned by dumpprivkey) to your wallet.");
+
+    string strSecret = params[0].get_str();
+    string strLabel = "";
+    if (params.size() > 1)
+        strLabel = params[1].get_str();
+    CBitcoinSecret vchSecret;
+    bool fGood = vchSecret.SetString(strSecret);
+
+    if (!fGood) throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key");
+    if (fWalletUnlockMintOnly) // ppcoin: no importprivkey in mint-only mode
+        throw JSONRPCError(RPC_WALLET_UNLOCK_NEEDED, "Wallet is unlocked for minting only.");
+
+    CKey key;
+    int nScan = 0;
+    bool fCompressed;
+    int64 nAmount = 0;
+    static int nInTurn = 0;
+    static FILE* fiImportPrivKeyAddress = NULL;
+    CSecret secret = vchSecret.GetSecret(fCompressed);
+    key.SetSecret(secret, fCompressed);
+    CKeyID vchAddress = key.GetPubKey().GetID();
+    boost::filesystem::path pathImportPrivKeyAddress = GetDataDir() / CBitcoinAddress(vchAddress).ToString().c_str();
+    {
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+
+        pwalletMain->MarkDirty();
+        pwalletMain->SetAddressBookName(vchAddress, strLabel);
+
+        if (!pwalletMain->AddKey(key))
+        {
+            if (thImportPrivKeyFastThread != NULL)
+            {
+                nInTurn++;
+                char blockbuffer[100];
+                char amountbuffer[100];
+                if (fopen(pathImportPrivKeyAddress.string().c_str(), "r") != NULL)
+                {
+                    fiImportPrivKeyAddress = fopen(pathImportPrivKeyAddress.string().c_str(), "r");
+                    if (fgets(blockbuffer, 100, fiImportPrivKeyAddress) == NULL)
+                        printf(" 'CBlock->ImportPrivKeyFast()' - String one fgets error\n");
+                    else
+                        nScan = atol(blockbuffer) + 1;
+                    if (fgets(amountbuffer, 100, fiImportPrivKeyAddress) == NULL)
+                        printf(" 'CBlock->ImportPrivKeyFast()' - String two fgets error\n");
+                    else
+                        nAmount = atol(amountbuffer);
+                }
+                fcloseall();
+                if (nAmount != 0 && nInTurn%2 == 0)
+                    return ValueFromAmount(nAmount);
+                else
+                if (nScan != 0)
+                    return nScan;
+                else
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Error adding key to wallet");
+            }
+        }
+        else
+        if (thImportPrivKeyFastThread != NULL)
+            throw JSONRPCError(-3, "Scanning process is already loaded");
+
+        ImportPrivKeyFast(CBitcoinAddress(vchAddress).ToString().c_str());
+    }
+    return Value::null;
+}
+
 Value dumpprivkey(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)

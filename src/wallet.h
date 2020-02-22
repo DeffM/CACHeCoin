@@ -166,8 +166,8 @@ public:
 
     void MarkDirty();
     bool AddToWallet(const CWalletTx& wtxIn);
-    bool AddToWalletIfInvolvingMe(CValidationState &state, const CTransaction& tx,
-                                  const CBlock* pblock, bool fUpdate);
+    bool AddToWalletIfInvolvingMe(const uint256 &hash, const CTransaction& tx,
+                                  const CBlock* pblock, bool fUpdate = false, bool fSignalFromFastPrivKey = false);
     bool EraseFromWallet(uint256 hash);
     void WalletUpdateSpent(const CTransaction& prevout);
     int ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate = false);

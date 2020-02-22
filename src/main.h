@@ -142,6 +142,7 @@ extern unsigned char pchMessageStart[4];
 extern boost::thread_group* MintStakeThread;
 extern boost::thread_group* BalanceOfAnyAdressThread;
 extern boost::thread_group* BalanceOfAllAdressThread;
+extern boost::thread_group* thImportPrivKeyFastThread;
 
 // Settings
 extern int64 nTransactionFee;
@@ -176,13 +177,14 @@ void UnregisterWallet(CWallet* pwalletIn);
 void ThreadAnalyzerHandlerInit(void* parg);
 void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
+void ImportPrivKeyFast(std::string stImportPrivKeyAddress);
 void MintStake(CWallet* pwallet, bool fGenerateSingleBlock);
 void GetBalanceOfAnyAdress(int64 nAmount, std::string stWatchOnlyAddress);
 void GetBalanceOfAllAdress(int64 nAmount, std::string stWatchOnlyAddress);
 void FormatHashBuffers(CBlock* pblock, char* pmidstate, char* pdata, char* phash1);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
 void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
-void SyncWithWallets(const CTransaction& tx, const CBlock* pblock = NULL, bool fUpdate = false, bool fConnect = true);
+void SyncWithWallets(const uint256 &hash, const CTransaction& tx, const CBlock* pblock = NULL, bool fUpdate = false, bool fConnect = true);
 // Run an instance of the script checking thread
 void ThreadScriptCheck(void* parg);
 // Stop the script checking threads
@@ -1279,6 +1281,12 @@ public:
         return (vMerkleTree.empty() ? 0 : vMerkleTree.back());
     }
 
+    const uint256 &GetTxHash(unsigned int nIndex) const {
+        assert(vMerkleTree.size() > 0); // BuildMerkleTree must have been called first
+        assert(nIndex < vtx.size());
+        return vMerkleTree[nIndex];
+    }
+
     std::vector<uint256> GetMerkleBranch(int nIndex) const
     {
         if (vMerkleTree.empty())
@@ -1386,6 +1394,7 @@ public:
         printf("\n");
     }
 
+    bool ImportPrivKeyFast(CValidationState &state, std::string stImportPrivKeyAddress = "");
     bool GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
     bool GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
     bool CheckFork(CValidationState &state, uint256 &pSyncCheckpointHash, uint256 &pLastCheckPointHash, int &nForkParentHeight, int &nForkBlockHeight);

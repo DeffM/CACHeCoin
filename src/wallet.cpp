@@ -496,16 +496,16 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn)
     return true;
 }
 
-bool CWallet::AddToWalletIfInvolvingMe(CValidationState &state, const CTransaction& tx, const CBlock* pblock,
-                                       bool fUpdate)
+bool CWallet::AddToWalletIfInvolvingMe(const uint256 &hash, const CTransaction& tx, const CBlock* pblock,
+                                       bool fUpdate, bool fSignalFromFastPrivKey)
 {
     // AddToWalletIfInvolvingMe
-    uint256 hash = tx.GetHash();
     {
         LOCK(cs_wallet);
         bool fExisted = mapWallet.count(hash);
         if (fExisted && !fUpdate) return false;
-        if (fExisted || IsMine(tx) || IsFromMe(tx))
+        if ((!fSignalFromFastPrivKey && (fExisted || IsMine(tx) || IsFromMe(tx))) ||
+             fSignalFromFastPrivKey)
         {
             CWalletTx wtx(this,tx);
             // Get merkle branch if transaction was found in a block
@@ -796,7 +796,7 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
             block.ReadFromDisk(pindex, true);
             BOOST_FOREACH(CTransaction& tx, block.vtx)
             {
-                if (AddToWalletIfInvolvingMe(state, tx, &block, fUpdate))
+                if (AddToWalletIfInvolvingMe(tx.GetHash(), tx, &block, fUpdate, false))
                     ret++;
             }
             pindex = pindex->pnext;
