@@ -367,7 +367,7 @@ void CWallet::MarkDirty()
     }
 }
 
-bool CWallet::AddToWallet(const CWalletTx& wtxIn)
+bool CWallet::AddToWallet(const CWalletTx& wtxIn, bool fMapWatchOnlyAddress)
 {
     uint256 hash = wtxIn.GetHash();
     {
@@ -456,7 +456,7 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn)
         printf("AddToWallet %s  %s%s\n", wtxIn.GetHash().ToString().substr(0,10).c_str(), (fInsertedNew ? "new" : ""), (fUpdated ? "update" : ""));
 
         // Write to disk
-        if (fInsertedNew || fUpdated)
+        if ((fInsertedNew || fUpdated) && !fMapWatchOnlyAddress)
             if (!wtx.WriteToDisk())
                 return false;
 #ifndef QT_GUI
@@ -496,22 +496,32 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn)
     return true;
 }
 
+bool CWallet::TxToWtx(const CTransaction tx, const uint256 hash)
+{
+    {
+        CWalletTx wtx(this, tx);
+        mapWatchOnlyAddress.insert(make_pair(hash, wtx));
+    }
+    return true;
+}
+
 bool CWallet::AddToWalletIfInvolvingMe(const uint256 &hash, const CTransaction& tx, const CBlock* pblock,
-                                       bool fUpdate, bool fSignalFromFastPrivKey)
+                                       bool fUpdate, bool fSignalFromFastPrivKey, bool fMapWatchOnlyAddress)
 {
     // AddToWalletIfInvolvingMe
     {
         LOCK(cs_wallet);
         bool fExisted = mapWallet.count(hash);
+        fMapWatchOnlyAddress = mapWatchOnlyAddress.count(hash);
         if (fExisted && !fUpdate) return false;
         if ((!fSignalFromFastPrivKey && (fExisted || IsMine(tx) || IsFromMe(tx))) ||
-             fSignalFromFastPrivKey)
+             fSignalFromFastPrivKey || (fMapWatchOnlyAddress && !fExisted))
         {
             CWalletTx wtx(this,tx);
             // Get merkle branch if transaction was found in a block
             if (pblock)
                 wtx.SetMerkleBranch(pblock);
-            return AddToWallet(wtx);
+            return AddToWallet(wtx, fMapWatchOnlyAddress);
         }
         else
             WalletUpdateSpent(tx);
@@ -1663,7 +1673,7 @@ bool CWallet::CommitTransaction(CWalletTx& wtxNew, CReserveKey& reservekey, int 
 
             // Add tx to wallet, because if it has change it's also ours,
             // otherwise just for transaction history.
-            AddToWallet(wtxNew);
+            AddToWallet(wtxNew, false);
 
             // Mark old coins as spent
             set<CWalletTx*> setCoins;

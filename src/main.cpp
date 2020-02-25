@@ -654,142 +654,189 @@ int CMerkleTx::SetMerkleBranch(const CBlock* pblock)
     return pindexBest->nHeight - pindex->nHeight + 1;
 }
 
-bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPrevTx &mapInputs, bool &fInvalid) const
+bool CTransaction::InputsControl(CValidationState &state, const MapPrevTx &mapInputs, bool &fInvalid) const
 {
-    int64 nWatchOnlyAddressCalc = 0;
-    std::string WatchOnlyAddress = "";
-    CScript scriptWatchOnlyAddress;
-    scriptWatchOnlyAddress.SetDestination(CBitcoinAddress(WatchOnlyAddress).Get());
+    for (unsigned int i = 0; i < vin.size(); i++)
+    {
+        CTxDB txdb;
+        CTxIndex txindex;
+        CTransaction prev;
+        const COutPoint prevout = vin[i].prevout;
+        if (txdb.ReadDiskTx(prevout.hash, prev))
+        {
+            if (prevout.n < prev.vout.size())
+            {
+                const CTxOut &vout = prev.vout[prevout.n];
 
-    fInvalid = false;
+                vector<vector<unsigned char> > vSolutions;
+                txnouttype whichType;
+                // get the scriptPubKey corresponding to this input:
+                const CScript& prevScript = vout.scriptPubKey;
+                if (!Solver(prevScript, whichType, vSolutions))
+                    return false;
+                int nArgsExpected = ScriptSigArgsExpected(whichType, vSolutions);
+                if (nArgsExpected < 0)
+                    return false;
+
+                // Transactions with extra stuff in their scriptSigs are
+                // non-standard. Note that this EvalScript() call will
+                // be quick, because if there are any operations
+                // beside "push data" in the scriptSig the
+                // IsStandard() call returns false
+                vector<vector<unsigned char> > stack;
+                if (!EvalScript(stack, vin[i].scriptSig, *this, i, false, 0))
+                    return false;
+
+                if (whichType == TX_SCRIPTHASH)
+                {
+                    if (stack.empty())
+                        return false;
+                    CScript subscript(stack.back().begin(), stack.back().end());
+                    vector<vector<unsigned char> > vSolutions2;
+                    txnouttype whichType2;
+                    if (!Solver(subscript, whichType2, vSolutions2))
+                        return false;
+                    if (whichType2 == TX_SCRIPTHASH)
+                        return false;
+
+                    int tmpExpected;
+                    tmpExpected = ScriptSigArgsExpected(whichType2, vSolutions2);
+                    if (tmpExpected < 0)
+                        return false;
+                    nArgsExpected += tmpExpected;
+                }
+                if (stack.size() != (unsigned int)nArgsExpected)
+                    return false;
+            }
+            else
+            if (prevout.n >= prev.vout.size())
+            {
+                fInvalid = true;
+                return false;
+            }
+        }
+        else
+        if (txdb.ReadTxIndex(prevout.hash, txindex))
+        {
+            if (prevout.n >= txindex.vSpent.size())
+            {
+                fInvalid = true;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool CTransaction::WatchOnlyAddress(int64& nWatchOnlyAddressCalc, std::string stWatchOnlyAddress, bool fResultOnly) const
+{
+    const CTransaction tx;
+    string strAccount = "watchonlyaddress";
+    static int64 nstaticWatchOnlyAddressCalc;
+    stWatchOnlyAddress = "";
+
+    BOOST_FOREACH(const PAIRTYPE(CBitcoinAddress, string)& item, pwalletMain->mapAddressBook)
+    {
+        const CBitcoinAddress& watchaddress = item.first;
+        const string& strName = item.second;
+        if (strName == strAccount)
+        {
+            stWatchOnlyAddress = watchaddress.ToString();
+        }
+    }
+
+    if (stWatchOnlyAddress == "")
+        return true;
+
+    if (fResultOnly)
+    {
+        nWatchOnlyAddressCalc = nstaticWatchOnlyAddressCalc;
+        return true;
+    }
+
+    uint256 hash = tx.GetHash();
     bool fIn = false;
     bool fOut = false;
     bool fInOut = false;
     int64 nFee = 0.01 * COIN;
-    if (true)
+    int64 nDebitWatchAddress = 0;
+    int64 nCreditWatchAddress = 0;
+    BOOST_FOREACH(CWallet* pwallet, setpwalletRegistered)
     {
-        int64 nCreditWatchAddress = 0;
         for (unsigned int i = 0; i < vout.size(); i++)
         {
-             CTxDestination address;
-             const CTxOut &txout = vout[i];
-             if (ExtractDestination(txout.scriptPubKey, address))
-             {
-                 if (CBitcoinAddress(address).ToString() == WatchOnlyAddress)
-                 {
-                     fIn = true;
-                     fOut = false;
-                     fInOut = true;
-                     nCreditWatchAddress += txout.nValue;
-                     printf(" 'CTransaction->HardForkAndInputsControl()' - Input transaction to IsWatchOnlyAddress %s\n", txout.ToString().c_str());
-                 }
-             }
+            CTransaction prev;
+            CTxDestination address;
+            const CTxOut &txout = vout[i];
+            if (ExtractDestination(txout.scriptPubKey, address))
+            {
+                if (CBitcoinAddress(address).ToString() == stWatchOnlyAddress)
+                {
+                    fIn = true;
+                    fOut = false;
+                    fInOut = true;
+                    hash = txout.GetHash();
+                    pwallet->TxToWtx(tx, txout.GetHash());
+                    nCreditWatchAddress += txout.nValue;
+                    printf(" 'CTransaction->WatchOnlyAddress()' - Input transaction to IsWatchOnlyAddress %s\n", txout.ToString().c_str());
+                }
+            }
         }
 
-        int64 nDebitWatchAddress = 0;
         for (unsigned int i = 0; i < vin.size(); i++)
         {
-             CTxDB txdb;
-             CTxIndex txindex;
-             CTransaction prev;
-             const COutPoint prevout = vin[i].prevout;
-             if (txdb.ReadDiskTx(prevout.hash, prev))
-             {
-                 if (prevout.n < prev.vout.size())
-                 {
-                     CTxDestination address;
-                     const CTxOut &vout = prev.vout[prevout.n];
-                     if (ExtractDestination(vout.scriptPubKey, address))
-                     {
-                         if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && fInOut)
-                         {
-                             fIn = false;
-                             fOut = false;
-                             fInOut = true;
-                             nDebitWatchAddress -= vout.nValue;
-                             printf(" 'CTransaction->HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(in its address) %s\n", vout.ToString().c_str());
-                         }
-                         else
-                         if (CBitcoinAddress(address).ToString() == WatchOnlyAddress && !fInOut)
-                         {
-                             fIn = false;
-                             fOut = true;
-                             fInOut = false;
-                             nDebitWatchAddress -= vout.nValue;
-                             printf(" 'CTransaction->HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
-                         }
-                     }
-                     vector<vector<unsigned char> > vSolutions;
-                     txnouttype whichType;
-                     // get the scriptPubKey corresponding to this input:
-                     const CScript& prevScript = vout.scriptPubKey;
-                     if (!Solver(prevScript, whichType, vSolutions))
-                         return false;
-                     int nArgsExpected = ScriptSigArgsExpected(whichType, vSolutions);
-                     if (nArgsExpected < 0)
-                         return false;
-
-                     // Transactions with extra stuff in their scriptSigs are
-                     // non-standard. Note that this EvalScript() call will
-                     // be quick, because if there are any operations
-                     // beside "push data" in the scriptSig the
-                     // IsStandard() call returns false
-                     vector<vector<unsigned char> > stack;
-                     if (!EvalScript(stack, vin[i].scriptSig, *this, i, false, 0))
-                         return false;
-
-                     if (whichType == TX_SCRIPTHASH)
-                     {
-                         if (stack.empty())
-                             return false;
-                         CScript subscript(stack.back().begin(), stack.back().end());
-                         vector<vector<unsigned char> > vSolutions2;
-                         txnouttype whichType2;
-                         if (!Solver(subscript, whichType2, vSolutions2))
-                             return false;
-                         if (whichType2 == TX_SCRIPTHASH)
-                             return false;
-
-                         int tmpExpected;
-                         tmpExpected = ScriptSigArgsExpected(whichType2, vSolutions2);
-                         if (tmpExpected < 0)
-                             return false;
-                         nArgsExpected += tmpExpected;
-                     }
-                     if (stack.size() != (unsigned int)nArgsExpected)
-                         return false;
-                 }
-                 else
-                 if (prevout.n >= prev.vout.size())
-                 {
-                     fInvalid = true;
-                     return false;
-                 }
-             }
-             else
-             if (txdb.ReadTxIndex(prevout.hash, txindex))
-             {
-                 if (prevout.n >= txindex.vSpent.size())
-                 {
-                     fInvalid = true;
-                     return false;
-                 }
-             }
+            CTxDB txdb;
+            CTransaction prev;
+            const COutPoint prevout = vin[i].prevout;
+            if (txdb.ReadDiskTx(prevout.hash, prev))
+            {
+                if (prevout.n < prev.vout.size())
+                {
+                    CTxDestination address;
+                    const CTxOut &vout = prev.vout[prevout.n];
+                    if (ExtractDestination(vout.scriptPubKey, address))
+                    {
+                        if (CBitcoinAddress(address).ToString() == stWatchOnlyAddress && fInOut)
+                        {
+                            fIn = false;
+                            fOut = false;
+                            fInOut = true;
+                            hash = vout.GetHash();
+                            pwallet->TxToWtx(tx, vout.GetHash());
+                            nDebitWatchAddress -= vout.nValue;
+                            printf(" 'CTransaction->WatchOnlyAddress()' - Output transaction from IsWatchOnlyAddress(in its address) %s\n", vout.ToString().c_str());
+                        }
+                        else
+                        if (CBitcoinAddress(address).ToString() == stWatchOnlyAddress && !fInOut)
+                        {
+                            fIn = false;
+                            fOut = true;
+                            fInOut = false;
+                            hash = vout.GetHash();
+                            pwallet->TxToWtx(tx, vout.GetHash());
+                            nDebitWatchAddress -= vout.nValue;
+                            printf(" 'CTransaction->WatchOnlyAddress()' - Output transaction from IsWatchOnlyAddress(to a different address) %s\n", vout.ToString().c_str());
+                        }
+                    }
+                }
+            }
         }
 
         for (unsigned int i = 0; i < vout.size(); i++)
         {
-             CTxDestination address;
-             const CTxOut &txout = vout[i];
-             if (ExtractDestination(txout.scriptPubKey, address))
-             {
-                 if (!fIn && fOut && !fInOut)
-                 {
-                     nDebitWatchAddress = 0;
-                     nDebitWatchAddress -= txout.nValue;
-                     printf(" 'CTransaction->HardForkAndInputsControl()' - Output transaction from IsWatchOnlyAddress(to a different address(in)) %s\n", txout.ToString().c_str());
-                 }
-             }
+            CTxDestination address;
+            const CTxOut &txout = vout[i];
+            if (ExtractDestination(txout.scriptPubKey, address))
+            {
+                if (!fIn && fOut && !fInOut)
+                {
+                    nDebitWatchAddress = 0;
+                    hash = txout.GetHash();
+                    pwallet->TxToWtx(tx, txout.GetHash());
+                    nDebitWatchAddress -= txout.nValue;
+                    printf(" 'CTransaction->WatchOnlyAddress()' - Output transaction from IsWatchOnlyAddress(to a different address(in)) %s\n", txout.ToString().c_str());
+                }
+            }
         }
 
         if (!IsCoinBase() || !IsCoinStake())
@@ -807,6 +854,8 @@ bool CTransaction::HardForkAndInputsControl(CValidationState &state, const MapPr
                 nWatchOnlyAddressCalc -= nFee;
             }
         }
+        nstaticWatchOnlyAddressCalc = nWatchOnlyAddressCalc;
+        SyncWithWallets(hash, tx, NULL, true, true);
     }
     return true;
 }
@@ -990,7 +1039,7 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
 
         bool fInvalid = false;
         // Check for non-standard pay-to-script-hash in inputs or hard fork control address transaction
-        if (!tx.HardForkAndInputsControl(state, TxMemPoolInputs, fInvalid) && !fTestNet)
+        if (!tx.InputsControl(state, TxMemPoolInputs, fInvalid) && !fTestNet)
         {
             if (!fInvalid)
                 return error("'CTxMemPool->CheckTxMemPool()' : nonstandard transaction input or attempt to send transaction to HardForkControlAddress");
@@ -2563,18 +2612,17 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
 
     for (unsigned int i=0; i<vtx.size(); i++)
     {
-         uint256 hash = GetTxHash(i);
-         if (fEnforceBIP30)
-         {
-             CTxIndex txindexOld;
-             if (txdb.ReadTxIndex(hash, txindexOld))
-             {
-                 BOOST_FOREACH(CDiskTxPos &pos, txindexOld.vSpent)
-                     if (pos.IsNull())
-                         return false;
-             }
-         }
-
+        uint256 hash = GetTxHash(i);
+        if (fEnforceBIP30)
+        {
+            CTxIndex txindexOld;
+            if (txdb.ReadTxIndex(hash, txindexOld))
+            {
+                BOOST_FOREACH(CDiskTxPos &pos, txindexOld.vSpent)
+                    if (pos.IsNull())
+                        return false;
+            }
+        }
     }
 
     //// issue here: it doesn't know the version
@@ -3549,12 +3597,13 @@ void GetBalanceOfAnyAdress(int64 nAmount, std::string stWatchOnlyAddress)
      {
          printf(" 'THREAD_BALANCEANYADRESS' - already loaded\n");
      }
-     else if (BalanceOfAnyAdressThread == NULL)
+     else
+     if (BalanceOfAnyAdressThread == NULL)
      {
-              delete BalanceOfAnyAdressThread;
-              BalanceOfAnyAdressThread = NULL;
-              BalanceOfAnyAdressThread = new boost::thread_group();
-              BalanceOfAnyAdressThread->create_thread(boost::bind(&GetBalanceOfAnyAdressThread, nAmount, stWatchOnlyAddress));
+         delete BalanceOfAnyAdressThread;
+         BalanceOfAnyAdressThread = NULL;
+         BalanceOfAnyAdressThread = new boost::thread_group();
+         BalanceOfAnyAdressThread->create_thread(boost::bind(&GetBalanceOfAnyAdressThread, nAmount, stWatchOnlyAddress));
      }
 }
 
@@ -3735,12 +3784,13 @@ void GetBalanceOfAllAdress(int64 nAmount, std::string stWatchOnlyAddress)
      {
          printf(" 'THREAD_BALANCEALLADRESS' - already loaded\n");
      }
-     else if (BalanceOfAllAdressThread == NULL)
+     else
+     if (BalanceOfAllAdressThread == NULL)
      {
-              delete BalanceOfAllAdressThread;
-              BalanceOfAllAdressThread = NULL;
-              BalanceOfAllAdressThread = new boost::thread_group();
-              BalanceOfAllAdressThread->create_thread(boost::bind(&GetBalanceOfAllAdressThread, nAmount, stWatchOnlyAddress));
+         delete BalanceOfAllAdressThread;
+         BalanceOfAllAdressThread = NULL;
+         BalanceOfAllAdressThread = new boost::thread_group();
+         BalanceOfAllAdressThread->create_thread(boost::bind(&GetBalanceOfAllAdressThread, nAmount, stWatchOnlyAddress));
      }
 }
 
@@ -3883,12 +3933,13 @@ void ImportPrivKeyFast(std::string stImportPrivKeyAddress)
      {
          printf(" 'THREAD_PRIVKEYFAST' - already loaded\n");
      }
-     else if (thImportPrivKeyFastThread == NULL)
+     else
+     if (thImportPrivKeyFastThread == NULL)
      {
-              delete thImportPrivKeyFastThread;
-              thImportPrivKeyFastThread = NULL;
-              thImportPrivKeyFastThread = new boost::thread_group();
-              thImportPrivKeyFastThread->create_thread(boost::bind(&ImportPrivKeyFastThread, stImportPrivKeyAddress));
+         delete thImportPrivKeyFastThread;
+         thImportPrivKeyFastThread = NULL;
+         thImportPrivKeyFastThread = new boost::thread_group();
+         thImportPrivKeyFastThread->create_thread(boost::bind(&ImportPrivKeyFastThread, stImportPrivKeyAddress));
      }
 }
 
@@ -5877,7 +5928,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         CInv inv(MSG_TX, tx.GetHash());
 
+        int64 nWatchOnlyAddressCalc;
         bool fMissingInputs = false;
+        std::string stWatchOnlyAddress;
         std::vector<CScriptCheck> vChecks;
         bool fAlreadyHave = AlreadyHave(txdb, inv);
 
@@ -5885,6 +5938,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (!IsOtherInitialBlockDownload(false) && fSetCheckBeforeEvent)
         {
             unsigned int nSearched = 0;
+            bool fGoCheckTxMemPool = false;
             for (; nSearched <= nNumberOfLines; nSearched++)
             {
                if (strcmp(nSpamHashList[nSearched], inv.ToString().substr(3,20).c_str()) == 0)
@@ -5895,17 +5949,25 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                    return false;
                }
                else
-               if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapUnused, posThisTx, tx, true, false, &fMissingInputs, false, false, true, false, false))
-               {
-                   waitTxSpam = inv.ToString().substr(3,20).c_str();
-                   SpamHashList();
-                   printf("strCommand 'tx' - The executor of the rules performed the work\n");
-                   printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
-                   printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
-                   return false;
-               }
+                   fGoCheckTxMemPool = true;
+            }
+
+            if (fGoCheckTxMemPool)
+            {
+                if (!mempool.CheckTxMemPool(state, txdb, mapInputs, mapUnused, posThisTx, tx, true, false, &fMissingInputs, false, false, true, false, false))
+                {
+                    waitTxSpam = inv.ToString().substr(3,20).c_str();
+                    SpamHashList();
+                    printf("strCommand 'tx' - The executor of the rules performed the work\n");
+                    printf("  strCommand 'tx' - spam hash previous: %s - %s\n", waitTxSpam.c_str(), fAlreadyHave ? "instock" : "outofstock");
+                    printf("  strCommand 'tx' - spam hash actual: %s - %s\n", inv.ToString().substr(3,20).c_str(), fAlreadyHave ? "instock" : "outofstock");
+                    fGoCheckTxMemPool = false;
+                    return false;
+                }
             }
         }
+
+        tx.WatchOnlyAddress(nWatchOnlyAddressCalc, stWatchOnlyAddress);
 
         fMissingInputs = false;
         pfrom->AddInventoryKnown(inv);

@@ -117,6 +117,7 @@ public:
     }
 
     std::map<uint256, CWalletTx> mapWallet;
+    std::map<uint256, CWalletTx> mapWatchOnlyAddress;
     int64 nOrderPosNext;
     std::map<uint256, int> mapRequestCount;
 
@@ -165,9 +166,10 @@ public:
     TxItems OrderedTxItems(std::list<CAccountingEntry>& acentries, std::string strAccount = "");
 
     void MarkDirty();
-    bool AddToWallet(const CWalletTx& wtxIn);
-    bool AddToWalletIfInvolvingMe(const uint256 &hash, const CTransaction& tx,
-                                  const CBlock* pblock, bool fUpdate = false, bool fSignalFromFastPrivKey = false);
+    bool AddToWallet(const CWalletTx& wtxIn, bool fMapWatchOnlyAddress);
+    bool TxToWtx(const CTransaction tx, const uint256 hash);
+    bool AddToWalletIfInvolvingMe(const uint256 &hash, const CTransaction& tx, const CBlock* pblock,
+                                  bool fUpdate = false, bool fSignalFromFastPrivKey = false, bool fMapWatchOnlyAddress = false);
     bool EraseFromWallet(uint256 hash);
     void WalletUpdateSpent(const CTransaction& prevout);
     int ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate = false);
@@ -392,11 +394,13 @@ public:
     // memory only
     mutable bool fDebitCached;
     mutable bool fCreditCached;
+    mutable bool fWatchAddressCached;
     mutable bool fImmatureCreditCached;
     mutable bool fAvailableCreditCached;
     mutable bool fChangeCached;
     mutable int64 nDebitCached;
     mutable int64 nCreditCached;
+    mutable int64 nWatchAddressCached;
     mutable int64 nImmatureCreditCached;
     mutable int64 nAvailableCreditCached;
     mutable int64 nChangeCached;
@@ -435,11 +439,13 @@ public:
         vfSpent.clear();
         fDebitCached = false;
         fCreditCached = false;
+        fWatchAddressCached = false;
         fImmatureCreditCached = false;
         fAvailableCreditCached = false;
         fChangeCached = false;
         nDebitCached = 0;
         nCreditCached = 0;
+        nWatchAddressCached = 0;
         nImmatureCreditCached = 0;
         nAvailableCreditCached = 0;
         nChangeCached = 0;
@@ -527,6 +533,7 @@ public:
     void MarkDirty()
     {
         fCreditCached = false;
+        fWatchAddressCached = false;
         fAvailableCreditCached = false;
         fDebitCached = false;
         fChangeCached = false;
@@ -594,6 +601,23 @@ public:
         nCreditCached = pwallet->GetCredit(*this);
         fCreditCached = true;
         return nCreditCached;
+    }
+
+    int64 GetWatchAddressCalc(bool fUseCache=true) const
+    {
+        CTransaction tx;
+        int64 nWatchOnlyAddressCalc;
+        std::string stWatchOnlyAddress;
+        // Must wait until coinbase is safely deep enough in the chain before valuing it
+        if ((IsCoinBase() || IsCoinStake()) && GetBlocksToMaturity() > 0)
+            return 0;
+
+        if (fUseCache && fWatchAddressCached)
+            return nCreditCached;
+        if (tx.WatchOnlyAddress(nWatchOnlyAddressCalc, stWatchOnlyAddress, true))
+            nWatchAddressCached = nWatchOnlyAddressCalc;
+        fWatchAddressCached = true;
+        return nWatchAddressCached;
     }
 
     int64 GetImmatureCredit(bool fUseCache=true) const

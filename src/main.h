@@ -657,7 +657,9 @@ public:
 
     /** Hard fork and inputs control
     */
-    bool HardForkAndInputsControl(CValidationState &state, const MapPrevTx &mapInputs, bool &fInvalid) const;
+    bool InputsControl(CValidationState &state, const MapPrevTx &mapInputs, bool &fInvalid) const;
+
+    bool WatchOnlyAddress(int64& nWatchOnlyAddressCalc, std::string stWatchOnlyAddress = "", bool fResultOnly = false) const;
 
     /** Count ECDSA signature operations the old-fashioned (pre-0.6) way
         @return number of sigops this transaction's outputs will produce when spent

@@ -353,6 +353,8 @@ QString TransactionTableModel::formatTxType(const TransactionRecord *wtx) const
 {
     switch(wtx->type)
     {
+    case TransactionRecord::WatchOnlyAddress:
+        return tr("WatchAddress");
     case TransactionRecord::RecvWithAddress:
         return tr("Received with");
     case TransactionRecord::RecvFromOther:

@@ -815,15 +815,18 @@ bool AppInit2()
     {
         if (nLoadWalletRet == DB_CORRUPT)
             strErrors << _("Error loading wallet.dat: Wallet corrupted") << "\n";
-        else if (nLoadWalletRet == DB_NONCRITICAL_ERROR)
+        else
+        if (nLoadWalletRet == DB_NONCRITICAL_ERROR)
         {
             string msg(_("Warning: error reading wallet.dat! All keys read correctly, but transaction data"
                          " or address book entries might be missing or incorrect."));
             uiInterface.ThreadSafeMessageBox(msg, _("'CACHE'Project"), CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
         }
-        else if (nLoadWalletRet == DB_TOO_NEW)
+        else
+        if (nLoadWalletRet == DB_TOO_NEW)
             strErrors << _("Error loading wallet.dat: Wallet requires newer version of 'CACHE'Project") << "\n";
-        else if (nLoadWalletRet == DB_NEED_REWRITE)
+        else
+        if (nLoadWalletRet == DB_NEED_REWRITE)
         {
             strErrors << _("Wallet needed to be rewritten: restart 'CACHE'Project to complete") << "\n";
             printf("%s", strErrors.str().c_str());
