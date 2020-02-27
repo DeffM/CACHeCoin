@@ -765,7 +765,6 @@ bool CTransaction::WatchOnlyAddress(int64& nWatchOnlyAddressCalc, std::string st
     {
         for (unsigned int i = 0; i < vout.size(); i++)
         {
-            CTransaction prev;
             CTxDestination address;
             const CTxOut &txout = vout[i];
             if (ExtractDestination(txout.scriptPubKey, address))

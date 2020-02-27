@@ -445,7 +445,8 @@ QString TransactionTableModel::formatTxAmount(const TransactionRecord *wtx, bool
 
 QVariant TransactionTableModel::txStatusDecoration(const TransactionRecord *wtx) const
 {
-    if(wtx->type == TransactionRecord::Generated || wtx->type == TransactionRecord::StakeMint)
+    if(wtx->type == TransactionRecord::Generated || wtx->type == TransactionRecord::StakeMint ||
+       wtx->type == TransactionRecord::WatchOnlyAddress)
     {
         switch(wtx->status.maturity)
         {
