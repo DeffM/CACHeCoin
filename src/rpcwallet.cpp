@@ -523,7 +523,7 @@ Value getbalanceofanyadress(const Array& params, bool fHelp)
             else
                 nAmount = atol(amountbuffer);
         }
-        fcloseall();
+        if (fiWatchOnlyAddress) fclose(fiWatchOnlyAddress);
         if (nAmount != 0 && nInTurn%2 == 0)
             return ValueFromAmount(nAmount);
         else
@@ -573,7 +573,7 @@ Value getbalanceofalladress(const Array& params, bool fHelp)
             else
                 nScan = atol(blockbuffer);
         }
-        fcloseall();
+        if (fiBlockScan) fclose(fiBlockScan);
         if (nScan != 0)
             return nScan;
         else

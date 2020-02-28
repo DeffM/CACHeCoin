@@ -3498,7 +3498,12 @@ bool CBlock::GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std:
 
     for (; nScan < (unsigned int)pindexBest->nHeight; nScan++)
     {
-        if (fShutdown) return true;
+        if (fShutdown)
+        {
+            if (fiWatchOnlyAddress) fclose(fiWatchOnlyAddress);
+            return true;
+        }
+
         CBlockIndex* getbalanceanyadressindex = FindBlockByHeight(nScan);
         block.ReadFromDisk(getbalanceanyadressindex, true);
         for (unsigned int k = 0; k < block.vtx.size(); k++)
@@ -3560,7 +3565,7 @@ bool CBlock::GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std:
             fprintf(fiWatchOnlyAddress, "%"PRI64d"\n", nAmount);
         }
     }
-    fcloseall();
+    if (fiWatchOnlyAddress) fclose(fiWatchOnlyAddress);
     return true;
 }
 
@@ -3630,7 +3635,14 @@ bool CBlock::GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std:
 
     for (; nScan < (unsigned int)pindexBest->nHeight; nScan++)
     {
-        if (fShutdown) return true;
+        if (fShutdown)
+        {
+            if (fiBlockScan) fclose(fiBlockScan);
+            if (fiReadWatchAllAddress) fclose(fiReadWatchAllAddress);
+            if (fiWriteWatchAllAddress) fclose(fiWriteWatchAllAddress);
+            return true;
+        }
+
         CBlockIndex* getbalanceanyadressindex = FindBlockByHeight(nScan);
         block.ReadFromDisk(getbalanceanyadressindex, true);
         for (unsigned int k = 0; k < block.vtx.size(); k++)
@@ -3747,7 +3759,9 @@ bool CBlock::GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std:
             fprintf(fiBlockScan, "%d\n", nScan);
         }
     }
-    fcloseall();
+    if (fiBlockScan) fclose(fiBlockScan);
+    if (fiReadWatchAllAddress) fclose(fiReadWatchAllAddress);
+    if (fiWriteWatchAllAddress) fclose(fiWriteWatchAllAddress);
     return true;
 }
 
@@ -3827,6 +3841,7 @@ bool CBlock::ImportPrivKeyFast(CValidationState &state, std::string stImportPriv
             {
                 pwallet->ReacceptWalletTransactions();
                 Sleep(100000);
+                if (fiImportPrivKeyAddress) fclose(fiImportPrivKeyAddress);
                 return true;
             }
 
@@ -3893,7 +3908,7 @@ bool CBlock::ImportPrivKeyFast(CValidationState &state, std::string stImportPriv
                 fprintf(fiImportPrivKeyAddress, "%"PRI64d"\n", nAmount);
             }
         }
-        fcloseall();
+        if (fiImportPrivKeyAddress) fclose(fiImportPrivKeyAddress);
         pwallet->ReacceptWalletTransactions();
         Sleep(10000);
     }

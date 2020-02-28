@@ -124,7 +124,7 @@ Value importprivkeyfast(const Array& params, bool fHelp)
                     else
                         nAmount = atol(amountbuffer);
                 }
-                fcloseall();
+                if (fiImportPrivKeyAddress) fclose(fiImportPrivKeyAddress);
                 if (nAmount != 0 && nInTurn%2 == 0)
                     return ValueFromAmount(nAmount);
                 else
