@@ -94,7 +94,7 @@ Value importprivkeyfast(const Array& params, bool fHelp)
     bool fCompressed;
     int64 nAmount = 0;
     static int nInTurn = 0;
-    static FILE* fiImportPrivKeyAddress = NULL;
+    FILE* fiImportPrivKeyAddress = NULL;
     CSecret secret = vchSecret.GetSecret(fCompressed);
     key.SetSecret(secret, fCompressed);
     CKeyID vchAddress = key.GetPubKey().GetID();

@@ -10,6 +10,7 @@
 #include "util.h"
 #include "ui_interface.h"
 #include "checkpoints.h"
+#include <boost/bimap.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/filesystem/convenience.hpp>
@@ -23,6 +24,9 @@
 
 using namespace std;
 using namespace boost;
+
+typedef boost::bimap<uint256, uint256> setbimap;
+extern setbimap bimapVirtualCheckPointBlockIndex;
 
 #ifdef WIN32
 // Win32 LevelDB doesn't use filedescriptors, and the ones used for
@@ -788,6 +792,53 @@ bool AppInit2()
         if (nFound == 0)
             printf("No blocks matching %s were found\n", strMatch.c_str());
         return false;
+    }
+
+    FILE* fiVirtualCheckPointBlockIndex = NULL;
+    boost::filesystem::path pathVirtualCheckPointBlockIndex = GetDataDir() / "VirtualCheckPointHash";
+
+    char bufferLeft[100];
+    char bufferRight[100];
+    uint256 nScanLeft = 0;
+    uint256 nScanRight = 0;
+    if (boost::filesystem::exists(pathVirtualCheckPointBlockIndex) != 0)
+    {
+        if (fiVirtualCheckPointBlockIndex)
+        {
+            fiVirtualCheckPointBlockIndex = freopen(pathVirtualCheckPointBlockIndex.string().c_str(), "r", fiVirtualCheckPointBlockIndex);
+            setbuf(fiVirtualCheckPointBlockIndex, NULL);
+        }
+        if (!fiVirtualCheckPointBlockIndex)
+        {
+            fiVirtualCheckPointBlockIndex = fopen(pathVirtualCheckPointBlockIndex.string().c_str(), "r");
+            if (fiVirtualCheckPointBlockIndex) setbuf(fiVirtualCheckPointBlockIndex, NULL);
+        }
+
+        unsigned int nMaxString = 1000;
+        for (unsigned int f = 0; f < nMaxString; f++)
+        {
+            bool fGoBlockIndex = true;
+            if (feof(fiVirtualCheckPointBlockIndex)) break;
+            if (fgets(bufferLeft, 100, fiVirtualCheckPointBlockIndex) == NULL ||
+                ferror(fiVirtualCheckPointBlockIndex))
+            {
+                fGoBlockIndex = false;
+                printf(" 'CBlock->CheckFork' - String one fgets error\n");
+            }
+            if (fgets(bufferRight, 100, fiVirtualCheckPointBlockIndex) == NULL ||
+                ferror(fiVirtualCheckPointBlockIndex) || !fGoBlockIndex)
+            {
+                fGoBlockIndex = false;
+                printf(" 'CBlock->CheckFork' - String two fgets error\n");
+            }
+            if (fGoBlockIndex)
+            {
+                nScanLeft = uint256(bufferLeft);
+                nScanRight = uint256(bufferRight);
+                bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(nScanLeft, nScanRight));
+            }
+        }
+        fclose(fiVirtualCheckPointBlockIndex);
     }
 
     // ********************************************************* Step 8: load wallet

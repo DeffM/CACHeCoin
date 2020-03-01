@@ -500,7 +500,7 @@ Value getbalanceofanyadress(const Array& params, bool fHelp)
     int64 nAmount = 0;
     static int nInTurn = 0;
     CBitcoinAddress address;
-    static FILE* fiWatchOnlyAddress = NULL;
+    FILE* fiWatchOnlyAddress = NULL;
     boost::filesystem::path pathWatchOnlyAddress = GetDataDir() / getbalanceofanyadress;
 
     if (!address.SetString(getbalanceofanyadress))
@@ -556,7 +556,7 @@ Value getbalanceofalladress(const Array& params, bool fHelp)
     int nScan = 0;
     int64 nAmount = 0;
     CBitcoinAddress address;
-    static FILE* fiBlockScan = NULL;;
+    FILE* fiBlockScan = NULL;;
     boost::filesystem::path pathBlockScan = GetDataDir() / "nBlockScan";
 
     if (!address.SetString(getbalanceofalladress))

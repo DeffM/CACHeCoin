@@ -12,6 +12,7 @@
 #include "checkqueue.h"
 #include "kernel.h"
 #include "scrypt_mine.h"
+#include <boost/bimap.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
@@ -31,12 +32,15 @@ CCriticalSection cs_setpwalletRegistered;
 
 map<uint256, CBlock*> mapOrphanBlocks;
 map<uint256, uint256> mapProofOfStake;
-int nNumberOfHashValues = 50;
 map<uint256, CBlockIndex*> mapBlockIndex;
+int nNumberOfHashValues = 50;
 map<uint256, int64> setIgnoredBlockHashes;
 map<uint256, CBlock*> mapDuplicateStakeBlocks;
 map<uint256, CTransaction> mapOrphanTransactions;
 map<uint256, set<uint256> > mapOrphanTransactionsByPrev;
+
+typedef boost::bimap<uint256, uint256> setbimap;
+setbimap bimapVirtualCheckPointBlockIndex;
 
 multimap<uint256, CBlock*> mapOrphanBlocksByPrev;
 
@@ -88,7 +92,6 @@ uint256 hashSingleStakeBlock;
 uint256 hashGenesisBlock = hashGenesisBlockOfficial;
 
 bool fReindex = false;
-bool fCheckFork = false;
 bool fImporting = false;
 bool fCreateCoinStakeSleep = false;
 
@@ -3052,46 +3055,84 @@ bool CBlock::GetCoinAge(uint64& nCoinAge) const
 }
 
 // check fork
+bool fCheckFork = false;
 int nDepthOfTheDisputesZone = 0;
-bool CBlock::CheckFork(CValidationState &state, uint256 &pSyncCheckpointHash, uint256 &pLastCheckPointHash,
-                       int &nForkParentHeight, int &nForkBlockHeight)
+bool CBlock::CheckFork(uint256 &uianLastHashCheckPointPrev, uint256 &uianLastHashCheckPoint, uint256 uiquNewBlockHash, bool fResultOnly)
 {
-    uint256 checkpointhash;
-    bool fIsHashSyncCheckpoint = false;
-    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 70);
-    for (int m = 0; m <= pindexBest->nHeight; m++)
+    if (fCheckFork) return true;
+    static int inLastForkBlockHeight;
+    static uint256 uiLastHashCheckPoint;
+    static uint256 uiLastHashCheckPointPrev;
+    static bool fIsHashSyncCheckpoint;
+
+    if (fResultOnly)
     {
-       Checkpoints::CheckMapCheckpointsHash(m, checkpointhash);
-       if (Checkpoints::hashSyncCheckpoint == checkpointhash || Checkpoints::hashSyncCheckpoint == 0)
-       {
-           fIsHashSyncCheckpoint = true;
-           break;
-       }
+        uianLastHashCheckPointPrev = uiLastHashCheckPointPrev;
+        uianLastHashCheckPoint = uiLastHashCheckPoint;
+        return fIsHashSyncCheckpoint;
     }
 
-    if (!fIsHashSyncCheckpoint)
+    inLastForkBlockHeight = 0;
+    fIsHashSyncCheckpoint = false;
+    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 70);
+    for (setbimap::right_const_iterator its = bimapVirtualCheckPointBlockIndex.right.begin(); its != bimapVirtualCheckPointBlockIndex.right.end(); ++its)
     {
-        fIsHashSyncCheckpoint = true;
-        uint256 hash = Checkpoints::hashSyncCheckpoint;
-        if (mapBlockIndex.count(hash) == 0)
-            if (fDebug)
-                printf(" 'CBlock->CheckFork()' - Virtual checkpoint hash = %s\n",
-                hash.ToString().substr(0,20).c_str());
-        CBlockIndex* pindexForkParent = mapBlockIndex[hash];
-        nForkParentHeight = pindexForkParent->pprev->nHeight;
-        pSyncCheckpointHash = hash;
-        if (nForkParentHeight >= pindexBest->nHeight - (nDepthOfTheDisputesZone + 1))
+        CBlockIndex* checkpointblockindex = mapBlockIndex[(*its).first];
+        if (checkpointblockindex->nHeight > inLastForkBlockHeight && checkpointblockindex->nHeight < nBestHeight)
         {
-            fIsHashSyncCheckpoint = false;
-            if (fDebug)
-                printf(" 'CBlock->CheckFork()' - ForkParentHeight=%d, SyncCheckpointHash=%s\n", nForkParentHeight, pSyncCheckpointHash.ToString().substr(0,20).c_str());
+            inLastForkBlockHeight = checkpointblockindex->nHeight;
+            uiLastHashCheckPoint = checkpointblockindex->GetBlockHash();
+        }
+    }
+    for (setbimap::left_const_iterator its = bimapVirtualCheckPointBlockIndex.left.begin(); its != bimapVirtualCheckPointBlockIndex.left.end(); ++its)
+    {
+        if (uiquNewBlockHash == (*its).first)
+        {
+            uiLastHashCheckPointPrev = (*its).first;
+            uiLastHashCheckPoint = (*its).second;
+            uianLastHashCheckPointPrev = uiLastHashCheckPointPrev;
+            uianLastHashCheckPoint = uiLastHashCheckPoint;
+            fIsHashSyncCheckpoint = true;
+            return true;
         }
     }
 
-    pLastCheckPointHash = checkpointhash;
-    if (fDebug)
-        printf(" 'CBlock->CheckFork()' - Last checkpoint hash = %s\n", pLastCheckPointHash.ToString().c_str());
+    if (inLastForkBlockHeight >= nBestHeight - nDepthOfTheDisputesZone)
+    {
+        fIsHashSyncCheckpoint = true;
+        if (fDebug)
+            printf(" 'CBlock->CheckFork()' - CheckPointBlockHeight = %d, CheckPointBlockHash = %s\n", inLastForkBlockHeight, uiLastHashCheckPoint.ToString().substr(0,20).c_str());
+    }
     return fIsHashSyncCheckpoint;
+}
+
+bool CBlock::SetCheckPointHashes(uint256 uiHashLeft, uint256 uiHashRight)
+{
+    FILE* fiVirtualCheckPointBlockIndex = NULL;
+    boost::filesystem::path pathVirtualCheckPointBlockIndex = GetDataDir() / "VirtualCheckPointHash";
+
+    if (fiVirtualCheckPointBlockIndex)
+    {
+        if (freopen(pathVirtualCheckPointBlockIndex.string().c_str(), "a", fiVirtualCheckPointBlockIndex) != NULL)
+            setbuf(fiVirtualCheckPointBlockIndex, NULL);
+    }
+    if (!fiVirtualCheckPointBlockIndex)
+    {
+        fiVirtualCheckPointBlockIndex = fopen(pathVirtualCheckPointBlockIndex.string().c_str(), "a");
+        if (fiVirtualCheckPointBlockIndex) setbuf(fiVirtualCheckPointBlockIndex, NULL);
+    }
+    for (setbimap::right_const_iterator its = bimapVirtualCheckPointBlockIndex.right.begin(); its != bimapVirtualCheckPointBlockIndex.right.end(); ++its)
+    {
+        if (fDebug)
+            printf(" 'CBlock->SetCheckPointHashes()' - All virtual CheckPoint %s :: %s\n", (*its).second.ToString().c_str(), (*its).first.ToString().c_str());
+    }
+
+    if (fiVirtualCheckPointBlockIndex)
+        fprintf(fiVirtualCheckPointBlockIndex, "%s ::: FORK PARENT\n%s ::: PARENT'S CHILD\n", uiHashLeft.ToString().c_str(), uiHashRight.ToString().c_str());
+
+    fclose(fiVirtualCheckPointBlockIndex);
+
+    return true;
 }
 
 int nMinDepthReplacement = 2;
@@ -3154,6 +3195,11 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     txdb.WriteBlockIndex(CDiskBlockIndex(pindexNew));
     if (!txdb.TxnCommit())
         return false;
+
+    uint256 uianLastHashCheckPoint;
+    uint256 uianLastHashCheckPointPrev;
+    if (CheckFork(uianLastHashCheckPointPrev, uianLastHashCheckPoint, pindexNew->GetBlockHash(), true))
+        printf(" 'CBlock->AddToBlockIndex' - !!!!! TESTING !!!!!\n");
 
     // Tracking and managing forks
     fCheckFork = false;
@@ -3335,6 +3381,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                              if (fGoIgnoreLaterFoundBlocks && fShowLog)
                                  printf("  priority has a second block, NewChainTrust=%s down\n", pindexNew->bnChainTrust.ToString().c_str());
                          }
+
+                         if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint))
+                         {
+                             bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint));
+                             SetCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint);
+                         }
+
                          if (fOOOPS)
                              return false;
                          break;
@@ -3404,6 +3457,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                              if (fGoCheckPoint && fShowLog)
                                  printf("  priority has the first block, BestChainTrust=%s down\n", bnBestChainTrust.ToString().c_str());
                          }
+
+                         if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint))
+                         {
+                             bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint));
+                             SetCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint);
+                         }
+
                          if (fOOPS)
                              return false;
                          break;
@@ -3413,6 +3473,9 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
              }
         }
     }
+
+    if (CheckFork(uianLastHashCheckPointPrev, uianLastHashCheckPoint, pindexNew->GetBlockHash(), false))
+        printf(" 'CBlock->AddToBlockIndex' - !!!!! TESTING !!!!!\n");
 
     // New best
     if (pindexNew->bnChainTrust > bnBestChainTrust)
@@ -3474,7 +3537,7 @@ bool CBlock::GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std:
 {
     CBlock block;
     //stWatchOnlyAddress = "CKBj1szhTdzfFeZCoyMnedToofedtFg6i2";
-    static FILE* fiWatchOnlyAddress = NULL;
+    FILE* fiWatchOnlyAddress = NULL;
     boost::filesystem::path pathWatchOnlyAddress = GetDataDir() / stWatchOnlyAddress;
 
     char buffer[100];
@@ -3615,9 +3678,9 @@ bool CBlock::GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std:
 {
     CBlock block;
     stWatchOnlyAddress = "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
-    static FILE* fiBlockScan = NULL;
-    static FILE* fiReadWatchAllAddress = NULL;
-    static FILE* fiWriteWatchAllAddress = NULL;
+    FILE* fiBlockScan = NULL;
+    FILE* fiReadWatchAllAddress = NULL;
+    FILE* fiWriteWatchAllAddress = NULL;
     boost::filesystem::path pathBlockScan = GetDataDir() / "nBlockScan";
     boost::filesystem::path basedir = GetDataDir();
     boost::filesystem::create_directories(basedir/"balancealladress");
@@ -3811,7 +3874,7 @@ bool CBlock::ImportPrivKeyFast(CValidationState &state, std::string stImportPriv
 {
     CBlock block;
     //stImportPrivKeyAddress = "CbgnVLcLgujqb6WVdCdP8u92q1PLK77HDy";
-    static FILE* fiImportPrivKeyAddress = NULL;
+    FILE* fiImportPrivKeyAddress = NULL;
     boost::filesystem::path pathImportPrivKeyAddress = GetDataDir() / stImportPrivKeyAddress;
 
     char buffer[100];
