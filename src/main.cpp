@@ -3057,7 +3057,8 @@ bool CBlock::GetCoinAge(uint64& nCoinAge) const
 // check fork
 bool fCheckFork = false;
 int nDepthOfTheDisputesZone = 0;
-bool CBlock::CheckFork(uint256 &uianLastHashCheckPointPrev, uint256 &uianLastHashCheckPoint, uint256 uiquNewBlockHash, bool fResultOnly)
+bool CBlock::CheckFork(uint256 &uianLastHashCheckPointPrev, uint256 &uianLastHashCheckPoint, uint256 uiquNewBlockHash,
+                       bool fResultOnly, bool fSignalFromWalletFunction)
 {
     if (fCheckFork) return true;
     static int inLastForkBlockHeight;
@@ -3075,33 +3076,40 @@ bool CBlock::CheckFork(uint256 &uianLastHashCheckPointPrev, uint256 &uianLastHas
     inLastForkBlockHeight = 0;
     fIsHashSyncCheckpoint = false;
     nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 70);
-    for (setbimap::right_const_iterator its = bimapVirtualCheckPointBlockIndex.right.begin(); its != bimapVirtualCheckPointBlockIndex.right.end(); ++its)
+    if (fSignalFromWalletFunction)
     {
-        CBlockIndex* checkpointblockindex = mapBlockIndex[(*its).first];
-        if (checkpointblockindex->nHeight > inLastForkBlockHeight && checkpointblockindex->nHeight < nBestHeight)
+        for (setbimap::right_const_iterator its = bimapVirtualCheckPointBlockIndex.right.begin(); its != bimapVirtualCheckPointBlockIndex.right.end(); ++its)
         {
-            inLastForkBlockHeight = checkpointblockindex->nHeight;
-            uiLastHashCheckPoint = checkpointblockindex->GetBlockHash();
+            CBlockIndex* checkpointblockindex = mapBlockIndex[(*its).first];
+            if (checkpointblockindex->nHeight > inLastForkBlockHeight && checkpointblockindex->nHeight < nBestHeight)
+            {
+                inLastForkBlockHeight = checkpointblockindex->nHeight;
+                uiLastHashCheckPoint = checkpointblockindex->GetBlockHash();
+            }
         }
-    }
-    for (setbimap::left_const_iterator its = bimapVirtualCheckPointBlockIndex.left.begin(); its != bimapVirtualCheckPointBlockIndex.left.end(); ++its)
-    {
-        if (uiquNewBlockHash == (*its).first)
+
+        if (inLastForkBlockHeight >= nBestHeight - nDepthOfTheDisputesZone)
         {
-            uiLastHashCheckPointPrev = (*its).first;
-            uiLastHashCheckPoint = (*its).second;
-            uianLastHashCheckPointPrev = uiLastHashCheckPointPrev;
-            uianLastHashCheckPoint = uiLastHashCheckPoint;
             fIsHashSyncCheckpoint = true;
-            return true;
+            if (fDebug)
+                printf(" 'CBlock->CheckFork()' - CheckPointBlockHeight = %d, CheckPointBlockHash = %s\n", inLastForkBlockHeight, uiLastHashCheckPoint.ToString().substr(0,20).c_str());
         }
     }
 
-    if (inLastForkBlockHeight >= nBestHeight - nDepthOfTheDisputesZone)
+    if (!fSignalFromWalletFunction)
     {
-        fIsHashSyncCheckpoint = true;
-        if (fDebug)
-            printf(" 'CBlock->CheckFork()' - CheckPointBlockHeight = %d, CheckPointBlockHash = %s\n", inLastForkBlockHeight, uiLastHashCheckPoint.ToString().substr(0,20).c_str());
+        for (setbimap::left_const_iterator its = bimapVirtualCheckPointBlockIndex.left.begin(); its != bimapVirtualCheckPointBlockIndex.left.end(); ++its)
+        {
+            if (uiquNewBlockHash == (*its).first)
+            {
+                uiLastHashCheckPointPrev = (*its).first;
+                uiLastHashCheckPoint = (*its).second;
+                uianLastHashCheckPointPrev = uiLastHashCheckPointPrev;
+                uianLastHashCheckPoint = uiLastHashCheckPoint;
+                fIsHashSyncCheckpoint = true;
+                return true;
+            }
+        }
     }
     return fIsHashSyncCheckpoint;
 }
@@ -3198,7 +3206,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
 
     uint256 uianLastHashCheckPoint;
     uint256 uianLastHashCheckPointPrev;
-    if (CheckFork(uianLastHashCheckPointPrev, uianLastHashCheckPoint, pindexNew->GetBlockHash(), true))
+    if (CheckFork(uianLastHashCheckPointPrev, uianLastHashCheckPoint, pindexNew->GetBlockHash(), true, false))
         printf(" 'CBlock->AddToBlockIndex' - !!!!! TESTING !!!!!\n");
 
     // Tracking and managing forks
@@ -3382,7 +3390,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                  printf("  priority has a second block, NewChainTrust=%s down\n", pindexNew->bnChainTrust.ToString().c_str());
                          }
 
-                         if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint))
+                         if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint) && fResetSyncCheckpoint)
                          {
                              bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint));
                              SetCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint);
@@ -3458,7 +3466,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                  printf("  priority has the first block, BestChainTrust=%s down\n", bnBestChainTrust.ToString().c_str());
                          }
 
-                         if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint))
+                         if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint) && fResetSyncCheckpoint)
                          {
                              bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint));
                              SetCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint);
@@ -3474,7 +3482,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         }
     }
 
-    if (CheckFork(uianLastHashCheckPointPrev, uianLastHashCheckPoint, pindexNew->GetBlockHash(), false))
+    if (CheckFork(uianLastHashCheckPointPrev, uianLastHashCheckPoint, pindexNew->GetBlockHash(), false, false))
         printf(" 'CBlock->AddToBlockIndex' - !!!!! TESTING !!!!!\n");
 
     // New best
