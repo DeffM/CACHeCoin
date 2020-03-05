@@ -1396,12 +1396,13 @@ public:
         printf("\n");
     }
 
-    bool SetCheckPointHashes(uint256 uiHashLeft, uint256 uiHashRight);
+    bool CheckFork();
+    bool SetVirtualCheckPointHashes(uint256 uiHashLeft, uint256 uiHashRight);
     bool ImportPrivKeyFast(CValidationState &state, std::string stImportPrivKeyAddress = "");
     bool GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
     bool GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
-    bool CheckFork(uint256 &uianLastHashCheckPointPrev, uint256 &uianLastHashCheckPoint, uint256 uiquNewBlockHash,
-                   bool fResultOnly, bool fSignalFromWalletFunction);
+    bool GetVirtualCheckPointHashes(int &inanLastForkBlockHeight, uint256 &uianLastHashCheckPointPrev, uint256 &uianLastHashCheckPoint,
+                                    uint256 uiquNewBlockHash, bool fResultOnly);
     bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug);
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
     bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
