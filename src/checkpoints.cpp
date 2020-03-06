@@ -264,10 +264,10 @@ namespace Checkpoints
         const CBlockIndex *apindex = GetLastBlockIndex(pindexBest, false);
         const CBlockIndex *bpindex = GetLastBlockIndexPow(pindexBest, false);
         const CBlockIndex *pindex;
-        if(pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
-           pindex = apindex;
-           else
-               pindex = bpindex;
+        if (pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
+            pindex = apindex;
+        else
+            pindex = bpindex;
 
         // Search forward for a block within max span and maturity window
         while (pindex->pnext && (pindex->GetBlockTime() + CHECKPOINT_MAX_SPAN <= pindexBest->GetBlockTime() || pindex->nHeight + std::min(6, nCoinbaseMaturity - 20) <= pindexBest->nHeight))
@@ -338,7 +338,8 @@ namespace Checkpoints
             }
             txdb.Close();
         }
-        else if(!mapBlockIndex.count(hash))
+        else
+        if (!mapBlockIndex.count(hash))
         {
             // checkpoint block not yet accepted
             hashPendingCheckpoint = hash;
