@@ -3135,28 +3135,54 @@ bool CBlock::CheckFork()
     return fIsFork;
 }
 
-bool CBlock::SetVirtualCheckPointHashes(uint256 uiHashLeft, uint256 uiHashRight)
+bool CBlock::SetVirtualCheckPointHashes(uint256 uiHashLeft, uint256 uiHashRight, bool fConflict)
 {
     FILE* fiVirtualCheckPointBlockIndex = NULL;
     boost::filesystem::path pathVirtualCheckPointBlockIndex = GetDataDir() / "VirtualCheckPointHash";
 
     if (fiVirtualCheckPointBlockIndex)
     {
-        if (freopen(pathVirtualCheckPointBlockIndex.string().c_str(), "a", fiVirtualCheckPointBlockIndex) != NULL)
-            setbuf(fiVirtualCheckPointBlockIndex, NULL);
+        if (fConflict)
+        {
+            if (freopen(pathVirtualCheckPointBlockIndex.string().c_str(), "w", fiVirtualCheckPointBlockIndex) != NULL)
+                setbuf(fiVirtualCheckPointBlockIndex, NULL);
+        }
+        else
+        {
+            if (freopen(pathVirtualCheckPointBlockIndex.string().c_str(), "a", fiVirtualCheckPointBlockIndex) != NULL)
+                setbuf(fiVirtualCheckPointBlockIndex, NULL);
+        }
     }
     if (!fiVirtualCheckPointBlockIndex)
     {
-        fiVirtualCheckPointBlockIndex = fopen(pathVirtualCheckPointBlockIndex.string().c_str(), "a");
-        if (fiVirtualCheckPointBlockIndex) setbuf(fiVirtualCheckPointBlockIndex, NULL);
+        if (fConflict)
+        {
+            fiVirtualCheckPointBlockIndex = fopen(pathVirtualCheckPointBlockIndex.string().c_str(), "w");
+            if (fiVirtualCheckPointBlockIndex) setbuf(fiVirtualCheckPointBlockIndex, NULL);
+        }
+        else
+        {
+            fiVirtualCheckPointBlockIndex = fopen(pathVirtualCheckPointBlockIndex.string().c_str(), "a");
+            if (fiVirtualCheckPointBlockIndex) setbuf(fiVirtualCheckPointBlockIndex, NULL);
+
+        }
     }
+
+    if (fConflict)
+    {
+        if (bimapVirtualCheckPointBlockIndex.left.erase(uiHashLeft))
+            bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(uiHashLeft, uiHashRight));
+    }
+
     for (setbimap::right_const_iterator its = bimapVirtualCheckPointBlockIndex.right.begin(); its != bimapVirtualCheckPointBlockIndex.right.end(); ++its)
     {
+        if (fConflict)
+            fprintf(fiVirtualCheckPointBlockIndex, "%s ::: FORK PARENT\n%s ::: PARENT'S CHILD\n", (*its).second.ToString().c_str(), (*its).first.ToString().c_str());
         if (fDebug && GetBoolArg("-advanceddebug", 0))
             printf(" 'CBlock->SetCheckPointHashes()' - All virtual CheckPoint %s :: %s\n", (*its).second.ToString().c_str(), (*its).first.ToString().c_str());
     }
 
-    if (fiVirtualCheckPointBlockIndex)
+    if (fiVirtualCheckPointBlockIndex && !fConflict)
         fprintf(fiVirtualCheckPointBlockIndex, "%s ::: FORK PARENT\n%s ::: PARENT'S CHILD\n", uiHashLeft.ToString().c_str(), uiHashRight.ToString().c_str());
 
     fclose(fiVirtualCheckPointBlockIndex);
@@ -3225,6 +3251,19 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     if (!txdb.TxnCommit())
         return false;
 
+    //uint256 pindexnews = uint256("0x956a84914571101d14cc7c7879e1c893f99e737a920af27a213c5830137cea41");
+    //uint256 pindexpprev = uint256("0x000182f7d9b999f0da40604ed64759aac7a9f1bf7e27b89a637d84922b60f52f");
+    //if (!bimapVirtualCheckPointBlockIndex.right.count(pindexnews))
+    //{
+    //    if (!bimapVirtualCheckPointBlockIndex.left.count(pindexpprev))
+    //    {
+    //        bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(pindexpprev, pindexnews));
+    //        SetVirtualCheckPointHashes(pindexpprev, pindexnews, false);
+    //    }
+    //    else
+    //        SetVirtualCheckPointHashes(pindexpprev, pindexnews, true);
+    //}
+
     // Tracking and managing forks
     fCheckFork = false;
     int nFixPrev = 0;
@@ -3239,8 +3278,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     }
     CBlockIndex* newblockindex = pindexNew;
     nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 70);
-    //bool fIgnoreLaterFoundBlocks = GetArg("-ignorelaterfoundblocks", 0);
-    //bool fSetVirtualDecentralizedCheckPoint = GetArg("-setvirtualdecentralizedcheckpoint", 1);
     if (!fHardForkOne && pindexNew->nHeight)
     {
         // Offset in a block index for parallel search
@@ -3404,8 +3441,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
 
                         if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint) && fResetSyncCheckpoint)
                         {
-                            bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint));
-                            SetVirtualCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint);
+                            if (!bimapVirtualCheckPointBlockIndex.left.count(bestblockindex->pprev->GetBlockHash()))
+                            {
+                                bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint));
+                                SetVirtualCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint, false);
+                            }
+                            else
+                                SetVirtualCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint, true);
                         }
 
                         if (fOOOPS)
@@ -3480,8 +3522,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
 
                         if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint) && fResetSyncCheckpoint)
                         {
-                            bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint));
-                            SetVirtualCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint);
+                            if (!bimapVirtualCheckPointBlockIndex.left.count(bestblockindex->pprev->GetBlockHash()))
+                            {
+                                bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint));
+                                SetVirtualCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint, false);
+                            }
+                            else
+                                SetVirtualCheckPointHashes(bestblockindex->pprev->GetBlockHash(), Checkpoints::hashSyncCheckpoint, true);
                         }
 
                         if (fOOPS)
@@ -4357,7 +4404,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
                 if (fUseVirtualCheckPoint)
                     Checkpoints::hashSyncCheckpoint = uianLastHashCheckPoint;
                 if (fDebug)
-                    printf(" 'CBlock->AcceptBlock()' - TESTING, SetVirtualCheckPointHashes() %s\n", uianLastHashCheckPoint.ToString().c_str());
+                    printf(" 'CBlock->AcceptBlock()' - SetVirtualCheckPointHashes() %s\n", uianLastHashCheckPoint.ToString().c_str());
             }
         }
 

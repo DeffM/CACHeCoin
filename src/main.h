@@ -1397,7 +1397,7 @@ public:
     }
 
     bool CheckFork();
-    bool SetVirtualCheckPointHashes(uint256 uiHashLeft, uint256 uiHashRight);
+    bool SetVirtualCheckPointHashes(uint256 uiHashLeft, uint256 uiHashRight, bool fConflict);
     bool ImportPrivKeyFast(CValidationState &state, std::string stImportPrivKeyAddress = "");
     bool GetBalanceOfAnyAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
     bool GetBalanceOfAllAdress(CValidationState &state, int64& nAmount, std::string stWatchOnlyAddress = "");
