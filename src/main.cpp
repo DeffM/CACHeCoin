@@ -2881,7 +2881,8 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
             state.Invalid(error("CBlock->SetBestChain() : TxnCommit failed"));
         pindexGenesisBlock = pindexNew;
     }
-    else if (hashPrevBlock == hashBestChain)
+    else
+    if (hashPrevBlock == hashBestChain)
     {
         if (!SetBestChainInner(state, txdb, pindexNew))
             state.Invalid(error("CBlock->SetBestChain() : SetBestChainInner failed"));
@@ -3251,19 +3252,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     if (!txdb.TxnCommit())
         return false;
 
-    //uint256 pindexnews = uint256("0x956a84914571101d14cc7c7879e1c893f99e737a920af27a213c5830137cea41");
-    //uint256 pindexpprev = uint256("0x000182f7d9b999f0da40604ed64759aac7a9f1bf7e27b89a637d84922b60f52f");
-    //if (!bimapVirtualCheckPointBlockIndex.right.count(pindexnews))
-    //{
-    //    if (!bimapVirtualCheckPointBlockIndex.left.count(pindexpprev))
-    //    {
-    //        bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(pindexpprev, pindexnews));
-    //        SetVirtualCheckPointHashes(pindexpprev, pindexnews, false);
-    //    }
-    //    else
-    //        SetVirtualCheckPointHashes(pindexpprev, pindexnews, true);
-    //}
-
     // Tracking and managing forks
     fCheckFork = false;
     int nFixPrev = 0;
@@ -3303,9 +3291,9 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                 CBlockIndex* bestblockindex = FindBlockByHeight(k);
                 if (newblockindex->pprev->GetBlockHash() == bestblockindex->pprev->GetBlockHash())
                 {
-                    if (nPossibleHeight <= pindexBest->nHeight || nPossibleHeight > pindexBest->nHeight + (signed)DEFAULT_MAX_ORPHAN_BLOCKS)
+                    if (nPossibleHeight > pindexBest->nHeight + (signed)DEFAULT_MAX_ORPHAN_BLOCKS)
                     {
-                        if (fDebug)
+                        if (fDebug && GetBoolArg("-advanceddebug", 0))
                             printf(" 'CBlock->AddToBlockIndex()' - Old Zone Filtering(Info Only)... %d, %d\n",
                             nPossibleHeight, pindexBest->nHeight);
                     }
