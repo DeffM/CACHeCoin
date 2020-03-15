@@ -4017,6 +4017,7 @@ void ImportPrivKeyFast(std::string stImportPrivKeyAddress)
 
 bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug)
 {
+    int nDoNotCheckBlock = 364727;
     bool fGoFalse = false;
     ResultOfChecking = "";
     bool fWrongTime = false;
@@ -4037,6 +4038,7 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
     if (miPrev != mapBlockIndex.end() && (IsProofOfStake() || IsProofOfWork()))
     {
         CBlockIndex* pindexPrev = (*miPrev).second;
+        int nNewBestHeight = pindexPrev->nHeight + 1;
         if (pindexPrev->nHeight && fHardForkOne && (nBestHeight == nFixHardForkOne ||
             pindexPrev->nHeight == nFixHardForkOne))
         {
@@ -4048,11 +4050,17 @@ bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs,
             }
         }
 
+        if (nNewBestHeight == nDoNotCheckBlock)
+        {
+            ResultOfChecking = "do not check block";
+            return true;
+        }
+
         if (pindexPrev->nHeight && pindexPrev->nHeight <= pindexBest->pprev->nHeight)
         {
             fGoFalse = false;
             if (fDebug && fCheckDebug)
-                printf(" 'CBlock->ValidationCheckBlock()' - Entry at block height=%d, accepted\n", pindexPrev->nHeight + 1);
+                printf(" 'CBlock->ValidationCheckBlock()' - Entry at block height=%d, accepted\n", nNewBestHeight);
             if (pindexPrev->nHeight + 1 <= pindexBest->nHeight - nMaximumDepthInBlocksForEntry)
             {
                 ResultOfChecking = "too deep";
@@ -4455,7 +4463,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     if (pblock->IsProofOfStake())
     {
         uint256 hashProofOfStake = 0;
-        if (!CheckProofOfStake(pblock->vtx[1], pblock->nBits, hashProofOfStake))
+        if (!CheckProofOfStake(pblock->vtx[1], pblock->nBits, hashProofOfStake) && ResultOfChecking != "do not check block")
         {
             printf(" WARNING: 'ProcessBlock()' - check proof-of-stake failed for block %s\n", hash.ToString().c_str());
             return false; // do not error here as we expect this during initial block download

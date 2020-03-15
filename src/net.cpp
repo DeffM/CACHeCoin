@@ -1870,6 +1870,7 @@ boost::thread_group* StartMessageHandlerThreadGroup = NULL;
 extern boost::thread_group* MintStakeThread;
 extern boost::thread_group* ScriptCheckThreadGroup;
 extern boost::thread_group* StartRpcHandlerThreadGroup;
+extern boost::thread_group* rpc_worker_group;
 
 void StartNode(void* parg)
 {
@@ -1963,22 +1964,22 @@ bool StopNode()
     while(true);
 
     if (MintStakeThread != NULL) printf("MintStakeThread still running\n");
+    if (rpc_worker_group != NULL) printf("RpcWorkerGroup still running\n");
     if (StartNetThreadGroup != NULL) printf("StartNetThreadGroup still running\n");
     if (ScriptCheckThreadGroup != NULL) printf("ScriptCheckThread still running\n");
 #ifdef USE_UPNP
     if (StartUPnPThreadGroup != NULL) printf("StartUPnPThreadGroup still running\n");
 #endif
-    if (StartRpcHandlerThreadGroup != NULL) printf("StartRpcHandlerThreadGroup still running\n");
     if (StartMessageHandlerThreadGroup != NULL) printf("StartMessageHandlerThreadGroup still running\n");
 
     if (vnThreadsRunning[THREAD_MINER] > 0) printf("ThreadBitcoinMiner still running\n");
 
-    while (StartMessageHandlerThreadGroup != NULL || ScriptCheckThreadGroup != NULL || StartRpcHandlerThreadGroup != NULL)
+    while (StartMessageHandlerThreadGroup != NULL || ScriptCheckThreadGroup != NULL || rpc_worker_group != NULL)
     {
         Sleep(100);
-        ScriptCheckThreadGroup = NULL;
-        StartRpcHandlerThreadGroup = NULL;
-        StartMessageHandlerThreadGroup = NULL;
+        delete rpc_worker_group; rpc_worker_group = NULL;
+        delete ScriptCheckThreadGroup; ScriptCheckThreadGroup = NULL;
+        delete StartMessageHandlerThreadGroup; StartMessageHandlerThreadGroup = NULL;
     }
     Sleep(50);
     DumpAddresses();

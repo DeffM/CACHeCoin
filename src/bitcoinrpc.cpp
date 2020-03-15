@@ -38,10 +38,10 @@ using namespace json_spirit;
 CReserveKey* pMiningKey = NULL;
 
 // These are created by StartRPCThreads, destroyed in StopRPCThreads
+boost::thread_group* rpc_worker_group = NULL;
+static ssl::context* rpc_ssl_context = NULL;
 static asio::io_service* rpc_io_service = NULL;
 static map<string, boost::shared_ptr<deadline_timer> > deadlineTimers;
-static ssl::context* rpc_ssl_context = NULL;
-static boost::thread_group* rpc_worker_group = NULL;
 extern boost::thread_group* StartRpcHandlerThreadGroup;
 
 static std::string strRPCUserColonPass;
@@ -950,6 +950,8 @@ void StopRPCThreads()
     delete rpc_worker_group; rpc_worker_group = NULL;
     delete rpc_ssl_context; rpc_ssl_context = NULL;
     delete rpc_io_service; rpc_io_service = NULL;
+
+    printf("THREAD_RPCHANDLER - exited\n");
 }
 
 class JSONRequest

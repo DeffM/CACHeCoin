@@ -560,7 +560,7 @@ bool AppInit2()
         for (int i = 0; i < nScriptCheckThreads; i++)
         {
             if (!ScriptCheckThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_SCRIPTCHECK", &ScriptCheck)))
-                printf("Error: ScriptCheckThread(ScriptCheck) failed\n");
+                printf("Error: ScriptCheckThreadGroup(ScriptCheck) failed\n");
         }
     }
 
@@ -1021,8 +1021,10 @@ bool AppInit2()
     }
     if (StartRpcHandlerThreadGroup != NULL && fServer)
     {
-        if (!StartRpcHandlerThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_RPCHANDLER", &StartRPCThreads)))
-            printf("Error: StartRpcHandlerThreadGroup(StartRPCThreads) failed\n");
+        StartRPCThreads();
+        printf("THREAD_RPCHANDLER - started\n");
+        //if (!StartRpcHandlerThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_RPCHANDLER", &StartRPCThreads)))
+              //printf("Error: StartRpcHandlerThreadGroup(StartRPCThreads) failed\n");
     }
 
     // ********************************************************* Step 12: finished
