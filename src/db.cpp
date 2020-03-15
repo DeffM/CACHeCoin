@@ -63,11 +63,8 @@ void CDBEnv::Close()
 
 bool CDBEnv::Open(boost::filesystem::path pathEnv_)
 {
-    if (fDbEnvInit)
-        return true;
-
-    if (fShutdown)
-        return false;
+    if (fDbEnvInit) return true;
+    if (fShutdown) return false;
 
     pathEnv = pathEnv_;
     filesystem::path pathDataDir = pathEnv;
@@ -364,7 +361,7 @@ bool CDBEnv::RemoveDb(const string& strFile)
 
 bool CDB::Rewrite(const string& strFile, const char* pszSkip)
 {
-    while (!fShutdown)
+    while (true)
     {
         {
             LOCK(bitdb.cs_db);
@@ -455,7 +452,6 @@ bool CDB::Rewrite(const string& strFile, const char* pszSkip)
     return false;
 }
 
-
 void CDBEnv::Flush(bool fShutdown)
 {
     int64 nStart = GetTimeMillis();
@@ -501,8 +497,6 @@ void CDBEnv::Flush(bool fShutdown)
         }
     }
 }
-
-
 
 
 
@@ -845,12 +839,14 @@ bool CTxDB::LoadBlockIndexGuts()
         fFlags = DB_NEXT;
         if (ret == DB_NOTFOUND)
             break;
-        else if (ret != 0)
+        else
+        if (ret != 0)
             return false;
 
         // Unserialize
 
-        try {
+        try
+        {
         string strType;
         ssKey >> strType;
         if (strType == "blockindex" && !fRequestShutdown)

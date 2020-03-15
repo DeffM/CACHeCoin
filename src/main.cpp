@@ -2148,10 +2148,9 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                                        bool &fSkippingChecks, bool fBlock, bool fMiner, bool fScriptChecks, bool fReserve,
                                        std::vector<CScriptCheck> *pvChecks, unsigned int flags) const
 {
-    fReserve = false;
+
     if (fBlock && !fMiner)
     {
-        fReserve = true;
         for (unsigned int i = 0; i < vin.size(); i++)
         {
             COutPoint prevout = vin[i].prevout;
@@ -2202,7 +2201,6 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                 return error("CTransaction->CheckInputsLevelTwo() : %s prev tx %s index entry not found", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
         }
     }
-    //printf("     fReserve %s\n", fReserve ? "Use" : "NotUse");
 
     fSkippingChecks = false;
     // Take over previous transactions' spent pointers
@@ -2294,10 +2292,6 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             CTxIndex& txindex = inputsRet[prevout.hash].first;
             CTransaction& txPrev = inputsRet[prevout.hash].second;
 
-
-            // Skip ECDSA signature verification when connecting blocks (fBlock=true)
-            // before the last blockchain checkpoint. This is safe because block merkle hashes are
-            // still computed and checked, and any change will be caught at the next checkpoint.
             if (fScriptChecks)
             {
                 // Verify signature
@@ -2313,7 +2307,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                     if (flags & SCRIPT_VERIFY_STRICTENC)
                     {
                         // Don't trigger DoS code in case of STRICT_FLAGS caused failure.
-                        CScriptCheck check(txPrev, *this, i, flags & ~SCRIPT_VERIFY_STRICTENC, 0);
+                        CScriptCheck check(txPrev, *this, i, flags & (~SCRIPT_VERIFY_STRICTENC), 0);
                         if (check())
                             return state.Invalid(error("CTransaction->CheckInputsLevelTwo() : %s strict VerifySignature failed", GetHash().ToString().substr(0,10).c_str()));
                     }
@@ -2327,13 +2321,8 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             if (!(fBlock && (nBestHeight < Checkpoints::GetTotalBlocksEstimate())))
             {
                 // Verify signature
-                if (!VerifySignature(txPrev, *this, i, fReserve, 0))
+                if (!VerifySignature(txPrev, *this, i, SCRIPT_VERIFY_STRICTENC || SCRIPT_VERIFY_P2SH, 0))
                 {
-                    // only during transition phase for P2SH: do not invoke anti-DoS code for
-                    // potentially old clients relaying bad P2SH transactions
-                    if (fReserve && VerifySignature(txPrev, *this, i, false, 0))
-                        return state.Invalid(error("CTransaction->CheckInputsLevelTwo() : %s P2SH VerifySignature failed", GetHash().ToString().substr(0,10).c_str()));
-
                     return state.DoS(100,error("CTransaction->CheckInputsLevelTwo() : %s VerifySignature failed", GetHash().ToString().substr(0,10).c_str()));
                 }
             }
@@ -2492,65 +2481,19 @@ unsigned int CTransaction::GetP2SHSigOpCount(const MapPrevTx& inputs) const
 
 bool CScriptCheck::operator()() const
 {
-     const CScript &scriptSig = ptxTo->vin[nIn].scriptSig;
-     if (!VerifyScript(scriptSig, scriptPubKey, *ptxTo, nIn, nFlags, true, nHashType))
-         return error("CScriptCheck() : %s VerifySignature failed", ptxTo->GetHash().ToString().substr(0,10).c_str());
-     return true;
+    const CScript &scriptSig = ptxTo->vin[nIn].scriptSig;
+    if (!VerifyScript(scriptSig, scriptPubKey, *ptxTo, nIn, nFlags, nHashType))
+        return error("CScriptCheck() : %s VerifySignature failed", ptxTo->GetHash().ToString().c_str());
+    return true;
 }
 
-bool VerifySignatureCach(const CTransaction& txFrom, const CTransaction& txTo, unsigned int nIn, unsigned int flags, int nHashType)
+bool VerifySignature(const CTransaction& txFrom, const CTransaction& txTo, unsigned int nIn, unsigned int flags, int nHashType)
 {
-     return CScriptCheck(txFrom, txTo, nIn, flags, nHashType)();
-}
-
-bool CTransaction::ClientConnectInputs()
-{
-    if (IsCoinBase())
+    assert(nIn < txTo.vin.size());
+    if (txTo.vin[nIn].prevout.n >= txFrom.vout.size())
         return false;
 
-    // Take over previous transactions' spent pointers
-    {
-        LOCK(mempool.cs);
-        int64 nValueIn = 0;
-        for (unsigned int i = 0; i < vin.size(); i++)
-        {
-            // Get prev tx from single transactions in memory
-            COutPoint prevout = vin[i].prevout;
-            if (!mempool.exists(prevout.hash))
-                return false;
-            CTransaction& txPrev = mempool.lookup(prevout.hash);
-
-            if (prevout.n >= txPrev.vout.size())
-                return false;
-
-            // Verify signature Cach
-            if (!VerifySignatureCach(txPrev, *this, i, SCRIPT_VERIFY_NOCACHE | SCRIPT_VERIFY_P2SH, 0))
-                return error("ClientConnectInputs() : VerifySignature failed");
-
-            // Verify signature
-            if (!VerifySignature(txPrev, *this, i, true, 0))
-                return error("ConnectInputs() : VerifySignature failed");
-
-            ///// this is redundant with the mempool.mapNextTx stuff,
-            ///// not sure which I want to get rid of
-            ///// this has to go away now that posNext is gone
-            // // Check for conflicts
-            // if (!txPrev.vout[prevout.n].posNext.IsNull())
-            //     return error("ConnectInputs() : prev tx already used");
-            //
-            // // Flag outpoints as used
-            // txPrev.vout[prevout.n].posNext = posThisTx;
-
-            nValueIn += txPrev.vout[prevout.n].nValue;
-
-            if (!MoneyRange(txPrev.vout[prevout.n].nValue) || !MoneyRange(nValueIn))
-                return error("ClientConnectInputs() : txin values out of range");
-        }
-        if (GetValueOut() > nValueIn)
-            return false;
-    }
-
-    return true;
+    return CScriptCheck(txFrom, txTo, nIn, flags, nHashType)();
 }
 
 bool CBlock::DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex)
@@ -2578,21 +2521,12 @@ bool CBlock::DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex)
 }
 
 static CCheckQueue<CScriptCheck> scriptcheckqueue(128);
-
-void ThreadScriptCheck(void*)
+void ScriptCheck()
 {
-    vnThreadsRunning[THREAD_SCRIPTCHECK]++;
-    RenameThread("cachecoin-scriptch");
     scriptcheckqueue.Thread();
-    vnThreadsRunning[THREAD_SCRIPTCHECK]--;
 }
 
-void ThreadScriptCheckQuit()
-{
-    scriptcheckqueue.Quit();
-}
-
-bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
+bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck, bool fSignalFromReorganize)
 {
     // Check it again in case a previous version let a bad block in, but skip BlockSig checking
     if (!CheckBlock(state, !fJustCheck, !fJustCheck, false))
@@ -2648,6 +2582,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     unsigned int nSigOps = 0;
     for (unsigned int i=0; i<vtx.size(); i++)
     {
+        if (fShutdown) return true;
         const CTransaction &tx = vtx[i];
 
         nSigOps += tx.GetLegacySigOpCount();
@@ -2724,9 +2659,11 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     }
 
     // Watch for transactions paying to me
-    for (unsigned int i=0; i<vtx.size(); i++)
-        SyncWithWallets(GetTxHash(i), vtx[i], this, true);
-
+    if (!fSignalFromReorganize)
+    {
+        for (unsigned int i=0; i<vtx.size(); i++)
+            SyncWithWallets(GetTxHash(i), vtx[i], this, true);
+    }
     return true;
 }
 
@@ -2767,6 +2704,7 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
     BOOST_FOREACH(CBlockIndex* pindex, vDisconnect)
     {
         CBlock block;
+        if (fShutdown) return true;
         if (!block.ReadFromDisk(pindex))
             state.Invalid(error("Reorganize() : ReadFromDisk for disconnect failed"));
         if (!block.DisconnectBlock(txdb, pindex))
@@ -2779,14 +2717,19 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
     }
 
     // Connect longer branch
+    bool fGoFalse = false;
     vector<CTransaction> vDelete;
     for (unsigned int i = 0; i < vConnect.size(); i++)
     {
-        CBlockIndex* pindex = vConnect[i];
         CBlock block;
+        if (fShutdown && i < 1)
+            fGoFalse = true;
+        else
+            fGoFalse = false;
+        CBlockIndex* pindex = vConnect[i];
         if (!block.ReadFromDisk(pindex))
             state.Invalid(error("Reorganize() : ReadFromDisk for connect failed"));
-        if (!block.ConnectBlock(state, txdb, pindex))
+        if (!block.ConnectBlock(state, txdb, pindex, false, fGoFalse))
         {
             // Invalid block
             state.Invalid(error("Reorganize() : ConnectBlock %s failed", pindex->GetBlockHash().ToString().substr(0,20).c_str()));
@@ -5366,6 +5309,8 @@ void static ProcessGetData(CNode* pfrom)
         {
             it++;
 
+            if (fShutdown) return;
+
             // ppcoin: relay memory may contain blocks too
             bool found = false;
 
@@ -5760,6 +5705,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         int64 nSince = nNow - (10 * 60);
         BOOST_FOREACH(CAddress& addr, vAddr)
         {
+            if (fShutdown) return true;
             if (addr.nTime <= 100000000 || addr.nTime > nNow + 10 * 60)
                 addr.nTime = nNow - 5 * 24 * 60 * 60;
             pfrom->AddAddressKnown(addr);
@@ -5780,6 +5726,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                     multimap<uint256, CNode*> mapMix;
                     BOOST_FOREACH(CNode* pnode, vNodes)
                     {
+                        if (fShutdown) return true;
                         if (pnode->nVersion < CADDR_TIME_VERSION)
                             continue;
                         unsigned int nPointer;
@@ -5917,8 +5864,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         BOOST_FOREACH(const CInv& inv, vInv)
         {
-            if (fShutdown)
-                return true;
+            if (fShutdown) return true;
 
             if (fDebugNet || (vInv.size() == 1))
                 printf(" 'ProcessMessage()' - received getdata for: %s\n", inv.ToString().c_str());
@@ -6553,6 +6499,7 @@ bool ProcessMessages(CNode* pfrom)
               LOCK(cs_main);
               fRet = ProcessMessage(pfrom, strCommand, vRecv);
             }
+            if (fShutdown) return true;
         }
         catch (std::ios_base::failure& e)
         {
@@ -7356,13 +7303,12 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
 
     while (fGenerateBitcoins)
     {
-        if (fShutdown)
-            return;
+        if (fShutdown) return;
+
         while (vNodes.empty() || IsInitialBlockDownload())
         {
             Sleep(1000);
-            if (fShutdown)
-                return;
+            if (fShutdown) return;
             if (!fGenerateBitcoins)
                 return;
         }
@@ -7524,13 +7470,12 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
     {
         while (fProofOfStake)
         {
-            if (fShutdown)
-                return;
+            if (fShutdown) return;
 
             while (IsOtherInitialBlockDownload(false))
             {
-                if (fShutdown)
-                    return;
+                if (fShutdown) return;
+
                 printf("      'BitcoinMinerPos()' - Is Other Initial Block Download, CPUMiner sleep\n");
                 Sleep(40000);
             }
@@ -7538,8 +7483,7 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
             while (vNodes.empty() || IsInitialBlockDownload())
             {
                 Sleep(10000);
-                if (fShutdown)
-                    return;
+                if (fShutdown) return;
             }
 
             while (pwallet->IsLocked())

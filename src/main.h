@@ -174,7 +174,6 @@ void UnloadBlockIndex();
 void ResendWalletTransactions();
 void RegisterWallet(CWallet* pwalletIn);
 void UnregisterWallet(CWallet* pwalletIn);
-void ThreadAnalyzerHandlerInit(void* parg);
 void BitcoinMiner(CWallet *pwallet, bool fProofOfStake);
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet);
 void ImportPrivKeyFast(std::string stImportPrivKeyAddress);
@@ -186,9 +185,7 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& 
 void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock = false);
 void SyncWithWallets(const uint256 &hash, const CTransaction& tx, const CBlock* pblock = NULL, bool fUpdate = false, bool fConnect = true);
 // Run an instance of the script checking thread
-void ThreadScriptCheck(void* parg);
-// Stop the script checking threads
-void ThreadScriptCheckQuit();
+void ScriptCheck();
 
 bool IsInitialBlockDownload();
 bool ProcessMessages(CNode* pfrom);
@@ -203,6 +200,8 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey);
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, int64 nBlockTime);
 bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock);
 bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
+/** Verify a signature */
+bool VerifySignature(const CTransaction& txFrom, const CTransaction& txTo, unsigned int nIn, unsigned int flags, int nHashType);
 // Abort with a message //
 bool AbortNode(const std::string &msg);
 
@@ -807,7 +806,6 @@ public:
                              bool &fSkippingChecks, bool fBlock, bool fMiner, bool fScriptChecks=true,
                              bool fReserve=false, std::vector<CScriptCheck> *pvChecks = NULL, unsigned int
                              flags=STRICT_FLAGS | SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE) const;
-    bool ClientConnectInputs();
     bool GoTxToMemoryPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, std::map<uint256,
                           CTxIndex> &mapMemPool, bool fCheckInputs=true, bool fLimitFree=true, bool* pfMissingInputs=NULL);
     bool GetCoinAge(CTxDB& txdb, uint64& nCoinAge) const;  // ppcoin: get transaction coin age
@@ -1405,7 +1403,7 @@ public:
                                     uint256 uiquNewBlockHash, bool fResultOnly);
     bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug);
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
-    bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false);
+    bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false, bool fSignalFromReorganize=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);
     bool SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pindexNew);
     bool AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos);

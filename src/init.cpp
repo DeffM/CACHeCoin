@@ -72,7 +72,7 @@ void Shutdown(void* parg)
     static bool fTaken;
 
     // Make this thread recognisable as the shutdown thread
-    RenameThread("bitcoin-shutoff");
+    RenameThread("'CACHE'Project-shutoff");
 
     bool fFirstThread = false;
     {
@@ -86,22 +86,29 @@ void Shutdown(void* parg)
     static bool fExit;
     if (fFirstThread)
     {
-        fShutdown = true;
         nTransactionsUpdated++;
+        fShutdown = true;
+        Sleep(1000);
+        StopRPCThreads();
         bitdb.Flush(false);
-        StopNode();
-        bitdb.Flush(true);
-        boost::filesystem::remove(GetPidFile());
-        UnregisterWallet(pwalletMain);
-        delete pwalletMain;
-        NewThread(ExitTimeout, NULL);
-        Sleep(50);
-        printf("'CACHE'Project exited\n\n");
-        fExit = true;
+        if (StopNode())
+        {
+            LOCK(cs_main);
+            if (pwalletMain)
+                pwalletMain->SetBestChain(CBlockLocator(pindexBest));
+            NewThread(ExitTimeout, NULL);
+            Sleep(50);
+            bitdb.Flush(true);
+            boost::filesystem::remove(GetPidFile());
+            UnregisterWallet(pwalletMain);
+            delete pwalletMain;
+            printf("'CACHE'Project exited\n\n");
+            fExit = true;
 #ifndef QT_GUI
-        // ensure non-UI client gets exited here, but let cacheproject-qt reach 'return 0;' in bitcoin.cpp
-        exit(0);
+            // ensure non-UI client gets exited here, but let cacheproject-qt reach 'return 0;' in bitcoin.cpp
+            exit(0);
 #endif
+        }
     }
     else
     {
@@ -324,6 +331,8 @@ std::string HelpMessage()
 /** Initialize bitcoin.
  *  @pre Parameters should be parsed and config file should be read.
  */
+boost::thread_group* ScriptCheckThreadGroup = NULL;
+boost::thread_group* StartRpcHandlerThreadGroup = NULL;
 bool AppInit2()
 {
     // ********************************************************* Step 1: setup
@@ -433,12 +442,13 @@ bool AppInit2()
     // ********************************************************* Step 3: parameter-to-internal-flags
 
     // -par=0 means autodetect, but nScriptCheckThreads==0 means no concurrency
-    nScriptCheckThreads = (int)GetArg("-par", 0);
-    if (nScriptCheckThreads == 0)
-        nScriptCheckThreads = boost::thread::hardware_concurrency();
-    if (nScriptCheckThreads <= 1)
-        nScriptCheckThreads = 0;
-    else if (nScriptCheckThreads > MAX_SCRIPTCHECK_THREADS)
+    nScriptCheckThreads = (int)GetArg("-scriptcheckthreads", 0);
+    if (nScriptCheckThreads <= 0)
+        nScriptCheckThreads += boost::thread::hardware_concurrency();
+    if (nScriptCheckThreads < 1)
+        nScriptCheckThreads = 1;
+    else
+    if (nScriptCheckThreads > MAX_SCRIPTCHECK_THREADS)
         nScriptCheckThreads = MAX_SCRIPTCHECK_THREADS;
 
     fDebug = GetBoolArg("-debug");
@@ -483,7 +493,6 @@ bool AppInit2()
     // This can be removed eventually...
     const char* pszP2SH = "/P2SH/";
     COINBASE_FLAGS << std::vector<unsigned char>(pszP2SH, pszP2SH+strlen(pszP2SH));
-
 
     if (mapArgs.count("-paytxfee"))
     {
@@ -541,10 +550,18 @@ bool AppInit2()
     if (fDaemon)
         fprintf(stdout, "'CACHE'Project server starting\n");
 
-    if (nScriptCheckThreads) {
+    if (ScriptCheckThreadGroup == NULL)
+    {
+        ScriptCheckThreadGroup = new boost::thread_group();
+    }
+    if (ScriptCheckThreadGroup != NULL && nScriptCheckThreads)
+    {
         printf("Using %u threads for script verification\n", nScriptCheckThreads);
-        for (int i=0; i<nScriptCheckThreads-1; i++)
-            NewThread(ThreadScriptCheck, NULL);
+        for (int i = 0; i < nScriptCheckThreads; i++)
+        {
+            if (!ScriptCheckThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_SCRIPTCHECK", &ScriptCheck)))
+                printf("Error: ScriptCheckThread(ScriptCheck) failed\n");
+        }
     }
 
     int64 nStart;
@@ -983,8 +1000,6 @@ bool AppInit2()
 
     // ********************************************************* Step 11: start node
 
-    boost::thread_group StartNetThreadGroup;
-
     if (!CheckDiskSpace())
         return false;
 
@@ -1000,9 +1015,15 @@ bool AppInit2()
     if (!NewThread(StartNode, NULL))
         InitError(_("Error: could not start node"));
 
-    if (fServer)
-        if (!StartNetThreadGroup.create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_RPCHANDLER", &ThreadRPCServer)))
-             printf("Error: StartNetThreadGroup(ThreadRPCServer) failed\n");
+    if (StartRpcHandlerThreadGroup == NULL)
+    {
+        StartRpcHandlerThreadGroup = new boost::thread_group();
+    }
+    if (StartRpcHandlerThreadGroup != NULL && fServer)
+    {
+        if (!StartRpcHandlerThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_RPCHANDLER", &StartRPCThreads)))
+            printf("Error: StartRpcHandlerThreadGroup(StartRPCThreads) failed\n");
+    }
 
     // ********************************************************* Step 12: finished
 
