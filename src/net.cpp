@@ -1677,7 +1677,7 @@ void MapPort()
 
         }
         else
-        if (StartUPnPThreadGroup->size() > 0)
+        if (StartUPnPThreadGroup != NULL)
             printf("Error: StartUPnPThreadGroup(ThreadMapPort) already loaded\n");
     }
     else
@@ -1868,9 +1868,8 @@ boost::thread_group* StartNetThreadGroup = NULL;
 boost::thread_group* StartMessageHandlerThreadGroup = NULL;
 
 extern boost::thread_group* MintStakeThread;
+extern boost::thread_group* StartRPCWorkerGroup;
 extern boost::thread_group* ScriptCheckThreadGroup;
-extern boost::thread_group* StartRpcHandlerThreadGroup;
-extern boost::thread_group* rpc_worker_group;
 
 void StartNode(void* parg)
 {
@@ -1911,31 +1910,31 @@ void StartNode(void* parg)
     if (fUseUPnP)
         MapPort();
 
-    // Get addresses from IRC and advertise ours
+    // StartNetThreadGroup
     if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_ANALYZERHANDLER", &ThreadAnalyzerHandler)))
         printf("Error: StartNetThreadGroup(ThreadAnalyzerHandler) failed\n");
 
-    // Send and receive from sockets, accept connections
+    // StartNetThreadGroup
     if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_SOCKETHANDLER", &ThreadSocketHandler)))
         printf("Error: StartNetThreadGroup(ThreadSocketHandler) failed\n");
 
-    // Initiate outbound connections from -addnode
+    // StartNetThreadGroup
     if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_ADDEDCONNECTIONS", &ThreadOpenAddedConnections)))
         printf("Error: StartNetThreadGroup(ThreadOpenAddedConnections) failed\n");
 
-    // Initiate outbound connections
+    // StartNetThreadGroup
     if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_OPENCONNECTIONS", &ThreadOpenConnections)))
         printf("Error: StartNetThreadGroup(ThreadOpenConnections) failed\n");
 
-    // Process messages
+    // StartNetThreadGroup
     if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_DNS_ADDRESSSEED", &ThreadDNSAddressSeed)))
         printf("Error: StartNetThreadGroup(ThreadDNSAddressSeed) failed\n");
 
-    // Dump network addresses
+    // StartNetThreadGroup
     if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_DUMPADDRESS", &ThreadDumpAddress)))
         printf("Error: StartNetThreadGroup(ThreadDumpAddress) failed\n");
 
-    // Process messages
+    // StartMessageHandlerThreadGroup
     if (!StartMessageHandlerThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_MESSAGEHANDLER", &ThreadMessageHandler)))
         printf("Error: StartMessageHandlerThreadGroup(ThreadMessageHandler) failed\n");
 
@@ -1964,7 +1963,7 @@ bool StopNode()
     while(true);
 
     if (MintStakeThread != NULL) printf("MintStakeThread still running\n");
-    if (rpc_worker_group != NULL) printf("RpcWorkerGroup still running\n");
+    if (StartRPCWorkerGroup != NULL) printf("RpcWorkerGroup still running\n");
     if (StartNetThreadGroup != NULL) printf("StartNetThreadGroup still running\n");
     if (ScriptCheckThreadGroup != NULL) printf("ScriptCheckThread still running\n");
 #ifdef USE_UPNP
@@ -1974,10 +1973,9 @@ bool StopNode()
 
     if (vnThreadsRunning[THREAD_MINER] > 0) printf("ThreadBitcoinMiner still running\n");
 
-    while (StartMessageHandlerThreadGroup != NULL || ScriptCheckThreadGroup != NULL || rpc_worker_group != NULL)
+    while (StartMessageHandlerThreadGroup != NULL || ScriptCheckThreadGroup != NULL)
     {
         Sleep(100);
-        delete rpc_worker_group; rpc_worker_group = NULL;
         delete ScriptCheckThreadGroup; ScriptCheckThreadGroup = NULL;
         delete StartMessageHandlerThreadGroup; StartMessageHandlerThreadGroup = NULL;
     }

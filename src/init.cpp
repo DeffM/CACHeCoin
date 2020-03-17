@@ -332,7 +332,6 @@ std::string HelpMessage()
  *  @pre Parameters should be parsed and config file should be read.
  */
 boost::thread_group* ScriptCheckThreadGroup = NULL;
-boost::thread_group* StartRpcHandlerThreadGroup = NULL;
 bool AppInit2()
 {
     // ********************************************************* Step 1: setup
@@ -1015,16 +1014,10 @@ bool AppInit2()
     if (!NewThread(StartNode, NULL))
         InitError(_("Error: could not start node"));
 
-    if (StartRpcHandlerThreadGroup == NULL)
-    {
-        StartRpcHandlerThreadGroup = new boost::thread_group();
-    }
-    if (StartRpcHandlerThreadGroup != NULL && fServer)
+    if (fServer)
     {
         StartRPCThreads();
-        printf("THREAD_RPCHANDLER - started\n");
-        //if (!StartRpcHandlerThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_RPCHANDLER", &StartRPCThreads)))
-              //printf("Error: StartRpcHandlerThreadGroup(StartRPCThreads) failed\n");
+        printf("THREAD_RPCWORKERGROUP - started\n");
     }
 
     // ********************************************************* Step 12: finished

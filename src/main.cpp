@@ -2321,7 +2321,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             if (!(fBlock && (nBestHeight < Checkpoints::GetTotalBlocksEstimate())))
             {
                 // Verify signature
-                if (!VerifySignature(txPrev, *this, i, SCRIPT_VERIFY_STRICTENC || SCRIPT_VERIFY_P2SH, 0))
+                if (!VerifySignature(txPrev, *this, i, STRICT_FLAGS, 0))
                 {
                     return state.DoS(100,error("CTransaction->CheckInputsLevelTwo() : %s VerifySignature failed", GetHash().ToString().substr(0,10).c_str()));
                 }
