@@ -2153,6 +2153,8 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
     {
         for (unsigned int i = 0; i < vin.size(); i++)
         {
+            if (fShutdown) return true;
+
             COutPoint prevout = vin[i].prevout;
             if (inputsRet.count(prevout.hash))
                 continue; // Got it already
@@ -2582,7 +2584,6 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     unsigned int nSigOps = 0;
     for (unsigned int i=0; i<vtx.size(); i++)
     {
-        if (fShutdown) return true;
         const CTransaction &tx = vtx[i];
 
         nSigOps += tx.GetLegacySigOpCount();
