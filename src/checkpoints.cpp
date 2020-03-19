@@ -106,7 +106,23 @@ namespace Checkpoints
             hash = i->second;
             return true;
         }
-        return true;
+        return false;
+    }
+
+    bool GetCheckpointsHashIsMap(int& nHeight, uint256 hash)
+    {
+        bool fIsAvailable = false;
+        MapCheckpoints& checkpoints = (fTestNet ? mapCheckpointsTestnet : mapCheckpoints);
+
+        for (MapCheckpoints::const_iterator i = checkpoints.begin(); i != checkpoints.end(); ++i)
+        {
+            if (hash == i->second)
+            {
+                fIsAvailable = true;
+                nHeight = i->first;
+            }
+        }
+        return fIsAvailable;
     }
 
     int GetTotalBlocksEstimate()

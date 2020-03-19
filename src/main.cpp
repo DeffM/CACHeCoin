@@ -3265,21 +3265,10 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             }
         }
 
+        // Parallel search
         bool fLesserHash = false;
         bool fLargerHash = false;
-        uint256 checkpointhash;
-        bool fResetSyncCheckpoint = true;
-        for (int m = 0; m <= pindexBest->nHeight; m++)
-        {
-            Checkpoints::CheckMapCheckpointsHash(m, checkpointhash);
-            if (Checkpoints::hashSyncCheckpoint == checkpointhash || Checkpoints::hashSyncCheckpoint == 0)
-            {
-                fResetSyncCheckpoint = false;
-                break;
-            }
-        }
-
-        // Parallel search
+        int nHeightCheckPointMap = 0;
         for (int k = nFixPindexBestnHeight; k >= nFixHardForkOne - 100000; k--)
         {
             CBlockIndex* bestblockindex = FindBlockByHeight(k);
@@ -3329,8 +3318,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                             (nPossibleHeight > pindexBest->nHeight + nMinDepthReplacement * 2 && bestblockindex->pprev->nHeight <= pindexBest->nHeight - (nMinDepthReplacement / 2))))
                         {
                             fGoIgnoreLaterFoundBlocks = false;
-                            if (fResetSyncCheckpoint)
-                                Checkpoints::hashSyncCheckpoint = checkpointhash;
 
                             {
                                 bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
@@ -3346,8 +3333,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                         if (ResultOfChecking == "already have block" &&
                             pindexBest->nHeight >= bestblockindex->nHeight + nDepthOfTheDisputesZone)
                         {
-                            if (fResetSyncCheckpoint)
-                                Checkpoints::hashSyncCheckpoint = checkpointhash;
 
                             fOOOPS = true;
                             pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
@@ -3371,7 +3356,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                 printf("  priority has a second block, NewChainTrust=%s down\n", pindexNew->bnChainTrust.ToString().c_str());
                         }
 
-                        if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint) && fResetSyncCheckpoint)
+                        if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint) && !Checkpoints::GetCheckpointsHashIsMap(nHeightCheckPointMap, Checkpoints::hashSyncCheckpoint))
                         {
                             if (!bimapVirtualCheckPointBlockIndex.left.count(bestblockindex->pprev->GetBlockHash()))
                             {
@@ -3416,8 +3401,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                             if (nPossibleHeight > pindexBest->nHeight && !fOOPS)
                             {
                                 fTrustDown = true;
-                                if (fResetSyncCheckpoint)
-                                    Checkpoints::hashSyncCheckpoint = checkpointhash;
 
                                 {
                                     bnBestChainTrust = bestblockindex->pprev->bnChainTrust;
@@ -3431,9 +3414,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
 
                             if (!fTrustDown  && !fOOPS)
                             {
-                                if (fResetSyncCheckpoint)
-                                    Checkpoints::hashSyncCheckpoint = checkpointhash;
-
                                 pindexNew->bnChainTrust = newblockindex->pprev->bnChainTrust;
 
                                 if (fDebug)
@@ -3452,7 +3432,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
                                 printf("  priority has the first block, BestChainTrust=%s down\n", bnBestChainTrust.ToString().c_str());
                         }
 
-                        if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint) && fResetSyncCheckpoint)
+                        if (!bimapVirtualCheckPointBlockIndex.right.count(Checkpoints::hashSyncCheckpoint) && !Checkpoints::GetCheckpointsHashIsMap(nHeightCheckPointMap, Checkpoints::hashSyncCheckpoint))
                         {
                             if (!bimapVirtualCheckPointBlockIndex.left.count(bestblockindex->pprev->GetBlockHash()))
                             {
@@ -4018,7 +3998,7 @@ void ImportPrivKeyFast(std::string stImportPrivKeyAddress)
 
 bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug)
 {
-    int nDoNotCheckBlock = 364727;
+    int nDoNotCheckBlock = 0;
     bool fGoFalse = false;
     ResultOfChecking = "";
     bool fWrongTime = false;
@@ -7339,7 +7319,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfWork)
 
         IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
 
-        printf("Running BitcoinMiner with %"PRIszu" transactions in block (%u bytes)\n", pblock->vtx.size(),
+        printf("Running BitcoinMinerPow with %"PRIszu" transactions in block (%u bytes)\n", pblock->vtx.size(),
                ::GetSerializeSize(*pblock, SER_NETWORK, PROTOCOL_VERSION));
 
         // Pre-build hash buffers
@@ -7415,7 +7395,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfWork)
                         if (GetTime() - nLogTime > 30 * 60)
                         {
                             nLogTime = GetTime();
-                            printf(" 'BitcoinMiner()' - hashmeter %.0f hash/s\n", dHashesPerSec);
+                            printf(" 'BitcoinMinerPow()' - hashmeter %.0f hash/s\n", dHashesPerSec * StartMinerThreadsGroup->size());
                         }
                     }
                 }

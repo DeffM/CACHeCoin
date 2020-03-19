@@ -24,6 +24,8 @@ namespace Checkpoints
 
     bool CheckMapCheckpointsHash(int nHeight, uint256& hash);
 
+    bool GetCheckpointsHashIsMap(int& nHeight, uint256 hash);
+
     // Return conservative estimate of total number of blocks, 0 if unknown
     int GetTotalBlocksEstimate();
 

@@ -1669,7 +1669,6 @@ void MapPort()
     {
         if (StartUPnPThreadGroup == NULL)
         {
-            delete StartUPnPThreadGroup;
             StartUPnPThreadGroup = new boost::thread_group();
             StartUPnPThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_UPNP", &ThreadMapPort));
             printf("Accept: StartUPnPThreadGroup(ThreadMapPort) loaded\n");
@@ -1869,6 +1868,7 @@ boost::thread_group* StartMessageHandlerThreadGroup = NULL;
 extern boost::thread_group* MintStakeThread;
 extern boost::thread_group* StartRPCWorkerGroup;
 extern boost::thread_group* ScriptCheckThreadGroup;
+extern boost::thread_group* StartMinerThreadsGroup;
 
 void StartNode(void* parg)
 {
@@ -1968,9 +1968,8 @@ bool StopNode()
 #ifdef USE_UPNP
     if (StartUPnPThreadGroup != NULL) printf("StartUPnPThreadGroup still running\n");
 #endif
+    if (StartMinerThreadsGroup != NULL) printf("StartMinerThreadsGroup still running\n");
     if (StartMessageHandlerThreadGroup != NULL) printf("StartMessageHandlerThreadGroup still running\n");
-
-    //if (vnThreadsRunning[THREAD_MINER] > 0) printf("ThreadBitcoinMiner still running\n");
 
     while (StartMessageHandlerThreadGroup != NULL || ScriptCheckThreadGroup != NULL)
     {

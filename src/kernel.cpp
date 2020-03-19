@@ -142,8 +142,8 @@ bool ComputeNextStakeModifier(const CBlockIndex* pindexPrev, uint64& nStakeModif
     vector<pair<int64, uint256> > vSortedByTimestamp;
     if (pindexPrev->GetBlockTime() > nPowForceTimestamp)
         vSortedByTimestamp.reserve(64 * nModifierInterval / nPosTargetSpacing);
-        else
-            vSortedByTimestamp.reserve(64 * nModifierInterval / nStakeTargetSpacing);
+    else
+        vSortedByTimestamp.reserve(64 * nModifierInterval / nStakeTargetSpacing);
 
     int64 nSelectionInterval = GetStakeModifierSelectionInterval();
     int64 nSelectionIntervalStart = (pindexPrev->GetBlockTime() / nModifierInterval) * nModifierInterval - nSelectionInterval;
@@ -214,7 +214,7 @@ bool ComputeNextStakeModifier(const CBlockIndex* pindexPrev, uint64& nStakeModif
 bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& nStakeModifierHeight, int64& nStakeModifierTime, bool fPrintProofOfStake)
 {
     nStakeModifier = 0;
-    int nCountingStakeModifierHeight = (-1);
+    int nCountingStakeModifierHeight = nBestHeight - 1;
     if (!mapBlockIndex.count(hashBlockFrom))
         return error("GetKernelStakeModifier() : block not indexed");
 
@@ -223,33 +223,37 @@ bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& 
     nStakeModifierTime = pindexFrom->GetBlockTime();
     int64 nStakeModifierSelectionInterval = GetStakeModifierSelectionInterval();
     const CBlockIndex* pindex = pindexFrom;
-    const CBlockIndex* pindexSearch = pindexGenesisBlock;
+    const CBlockIndex* pindexSearch = pindexBest;
 
     // loop to find the stake modifier later by a selection interval
     while (nStakeModifierTime < pindexFrom->GetBlockTime() + nStakeModifierSelectionInterval)
     {
-        while (pindexFrom)
+        nCountingStakeModifierHeight++;
+        while (pindexSearch)
         {
-            nCountingStakeModifierHeight++;
-            if (pindexSearch->pnext && pindexSearch != pindex->pnext)
+            nCountingStakeModifierHeight--;
+            if (pindexSearch && pindexSearch != pindex)
             {
-                pindexSearch = pindexSearch->pnext;
+                pindexSearch = pindexSearch->pprev;
             }
-            if (pindexSearch && pindexSearch == pindex->pnext)
+            if (pindexSearch && pindexSearch == pindex)
             {
-                if (nCountingStakeModifierHeight == pindex->nHeight)
+                if (nCountingStakeModifierHeight == mapBlockIndex[hashBlockFrom]->nHeight)
                 {
-                    pindex = pindexSearch;
+                    if (!pindexSearch->pnext)
+                        return true;
+                    pindexSearch = pindexSearch->pnext;
                     break;
                 }
                 else
                     return error("GetKernelStakeModifier() : block inverse mismatch %s at height %d from block %s",
                                  pindex->GetBlockHash().ToString().c_str(), pindex->nHeight, hashBlockFrom.ToString().c_str());
             }
-            if (pindex == pindexBest)
-                return error("GetKernelStakeModifier() : reached best block %s at height %d from block %s",
+            if (pindex == pindexGenesisBlock)
+                return error("GetKernelStakeModifier() : reached genesis block %s at height %d from block %s",
                              pindex->GetBlockHash().ToString().c_str(), pindex->nHeight, hashBlockFrom.ToString().c_str());
         }
+        pindex = pindexSearch;
 
         if (pindex->GeneratedStakeModifier())
         {
