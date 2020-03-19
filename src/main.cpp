@@ -2193,7 +2193,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             }
 
             // Inspection summary
-            if (!txPrev.ReadFromDisk(txindex.pos))
+            if (!txPrev.ReadFromDisk(txindex.pos) && !IsOtherInitialBlockDownload(false))
                 return error("CTransaction->CheckInputsLevelTwo() : %s ReadFromDisk() prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
 
             if (fGoCheckTxDb)
@@ -6846,7 +6846,6 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
     // Add our coinbase tx as first transaction
     pblock->vtx.push_back(txNew);
 
-
     // Largest block you're willing to create:
     unsigned int nBlockMaxSize = GetArg("-blockmaxsize", MAX_BLOCK_SIZE_GEN/2);
     // Limit to betweeen 1K and MAX_BLOCK_SIZE-1K for sanity:
@@ -7160,7 +7159,7 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int& 
         hashPrevBlock = pblock->hashPrevBlock;
     }
     ++nExtraNonce;
-    unsigned int nHeight = pindexPrev->nHeight+1; // Height first in coinbase required for block.version=2
+    unsigned int nHeight = pindexPrev->nHeight + 1; // Height first in coinbase required for block.version=2
     pblock->vtx[0].vin[0].scriptSig = (CScript() << nHeight << CBigNum(nExtraNonce)) + COINBASE_FLAGS;
     assert(pblock->vtx[0].vin[0].scriptSig.size() <= 100);
 
@@ -7287,39 +7286,39 @@ bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey)
     return true;
 }
 
+boost::thread_group* MintStakeThread = NULL;
+boost::thread_group* StartMinerThreadsGroup = NULL;
 void static ThreadBitcoinMiner(void* parg);
 
-static bool fGenerateBitcoins = false;
-static bool fLimitProcessors = false;
-static int nLimitProcessors = -1;
-
-void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
+void BitcoinMiner(CWallet *pwallet, bool fProofOfWork)
 {
-    void *scratchbuf = scrypt_buffer_alloc();
 
-    if (fProofOfStake)
+    if (!fProofOfWork)
         return;
 
-    printf("      CPUMiner started for proof-of-%s\n", fProofOfStake? "stake" : "work");
+    printf("      CPUMiner started for proof-of-%s\n", fProofOfWork? "work" : "stake");
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
 
     // Make this thread recognisable as the mining thread
-    RenameThread(fProofOfStake ? "pos-miner" : "pow-miner");
+    RenameThread(fProofOfWork ? "pow-miner" : "pos-miner");
 
     // Each thread has its own key and counter
     CReserveKey reservekey(pwallet);
     unsigned int nExtraNonce = 0;
 
-    while (fGenerateBitcoins)
+    while (StartMinerThreadsGroup != NULL && MintStakeThread == NULL)
     {
-        if (fShutdown) return;
+        while (IsOtherInitialBlockDownload(false))
+        {
+            if (fShutdown) return;
+            printf("      'BitcoinMinerPow()' - Is Other Initial Block Download, CPUMiner sleep\n");
+            Sleep(20000);
+        }
 
         while (vNodes.empty() || IsInitialBlockDownload())
         {
-            Sleep(1000);
+            Sleep(10000);
             if (fShutdown) return;
-            if (!fGenerateBitcoins)
-                return;
         }
 
         while (pwallet->IsLocked())
@@ -7333,7 +7332,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
         unsigned int nTransactionsUpdatedLast = nTransactionsUpdated;
         CBlockIndex* pindexPrev = pindexBest;
 
-        auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake));
+        auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, false));
 
         if (!pblock.get())
             return;
@@ -7357,23 +7356,17 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
         int64 nStart = GetTime();
         uint256 hashTarget = CBigNum().SetCompact(pblock->nBits).getuint256();
 
-        unsigned int max_nonce = 0xffff0000;
-        block_header res_header;
         uint256 result;
+        block_header res_header;
+        unsigned int max_nonce = 0xffff0000;
 
-        while (!fShutdown)
+        while (StartMinerThreadsGroup != NULL && MintStakeThread == NULL)
         {
             unsigned int nHashesDone = 0;
             unsigned int nNonceFound;
 
-            nNonceFound = scanhash_scrypt(
-                        (block_header *)&pblock->nVersion,
-                        max_nonce,
-                        nHashesDone,
-                        UBEGIN(result),
-                        &res_header,
-                        GetNfactor(pblock->nTime)
-            );
+            nNonceFound = scanhash_scrypt((block_header *)&pblock->nVersion, max_nonce, nHashesDone,
+                                          UBEGIN(result), &res_header, GetNfactor(pblock->nTime));
 
             // Check if something found
             if (nNonceFound != (unsigned int) -1)
@@ -7385,7 +7378,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
                     assert(result == pblock->GetHash());
                     if (!pblock->SignBlock(*pwalletMain))
                     {
-                        //strMintWarning = strMintMessage;
+                        strMintWarning = strMintMessage;
                         break;
                     }
                     strMintWarning = "";
@@ -7422,7 +7415,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
                         if (GetTime() - nLogTime > 30 * 60)
                         {
                             nLogTime = GetTime();
-                            printf("hashmeter %3d CPUs %.0f hash/s\n", vnThreadsRunning[THREAD_MINER], dHashesPerSec);
+                            printf(" 'BitcoinMiner()' - hashmeter %.0f hash/s\n", dHashesPerSec);
                         }
                     }
                 }
@@ -7431,9 +7424,7 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
             // Check for stop or if block needs to be rebuilt
             if (fShutdown)
                 return;
-            if (!fGenerateBitcoins)
-                return;
-            if (fLimitProcessors && vnThreadsRunning[THREAD_MINER] > nLimitProcessors)
+            if (StartMinerThreadsGroup == NULL || MintStakeThread != NULL)
                 return;
             if (vNodes.empty())
                 break;
@@ -7445,20 +7436,22 @@ void BitcoinMiner(CWallet *pwallet, bool fProofOfStake)
                 break;
 
             // Update nTime every few seconds
-            pblock->nTime = max(pindexPrev->GetMedianTimePast()+1, pblock->GetMaxTransactionTime());
+            pblock->nTime = max(pindexPrev->GetMedianTimePast() + 1, pblock->GetMaxTransactionTime());
             pblock->nTime = max(pblock->GetBlockTime(), pindexPrev->GetBlockTime() - nMaxClockDrift);
             pblock->UpdateTime(pindexPrev);
             nBlockTime = ByteReverse(pblock->nTime);
 
             if (pblock->GetBlockTime() >= (int64)pblock->vtx[0].nTime + nMaxClockDrift)
                 break;  // need to update coinbase timestamp
+            Sleep(50);
         }
+        Sleep(50);
     }
-    scrypt_buffer_free(scratchbuf);
 }
 
 void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleBlock)
 {
+
     if (!fProofOfStake)
         return;
 
@@ -7477,81 +7470,78 @@ void BitcoinMinerPos(CWallet *pwallet, bool fProofOfStake, bool fGenerateSingleB
 
     while (fProofOfStake)
     {
-        while (fProofOfStake)
+        if (fShutdown) return;
+
+        while (IsOtherInitialBlockDownload(false))
         {
             if (fShutdown) return;
 
-            while (IsOtherInitialBlockDownload(false))
-            {
-                if (fShutdown) return;
+            printf("      'BitcoinMinerPos()' - Is Other Initial Block Download, CPUMiner sleep\n");
+            Sleep(20000);
+        }
 
-                printf("      'BitcoinMinerPos()' - Is Other Initial Block Download, CPUMiner sleep\n");
-                Sleep(40000);
-            }
+        while (vNodes.empty() || IsInitialBlockDownload())
+        {
+            Sleep(10000);
+            if (fShutdown) return;
+        }
 
-            while (vNodes.empty() || IsInitialBlockDownload())
-            {
-                Sleep(10000);
-                if (fShutdown) return;
-            }
+        while (pwallet->IsLocked())
+        {
+            strMintWarning = strMintMessage;
+            Sleep(10000);
+        }
+        strMintWarning = "";
 
-            while (pwallet->IsLocked())
+        //
+        // Create new block
+        //
+
+        CBlockIndex* pindexPrev = pindexBest;
+        auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake, fCreateCoinStakeSleep));
+
+        if (!pblock.get())
+            return;
+
+        IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
+
+        if (pblock->IsProofOfStake() && pblock->GetBlockTime() <= nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
+        {
+            printf("      'BitcoinMinerPos()' - Hash outsides the controls interval\n");
+        }
+        if (pblock->IsProofOfStake() && pblock->GetBlockTime() > nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
+        {
+            // ppcoin: if proof-of-stake block found then process block
+            if (!pblock->SignBlock(*pwalletMain))
             {
                 strMintWarning = strMintMessage;
-                Sleep(10000);
+                continue;
             }
             strMintWarning = "";
 
-            //
-            // Create new block
-            //
+            printf("      'BitcoinMinerPos()' - proof-of-stake block candidate - analysis\n");
 
-            CBlockIndex* pindexPrev = pindexBest;
-            auto_ptr<CBlock> pblock(CreateNewBlock(pwallet, fProofOfStake, fCreateCoinStakeSleep));
+            Sleep(nSetMinerSleepTrue);
 
-            if (!pblock.get())
-                return;
+            printf("      'BitcoinMinerPos()' - proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
 
-            IncrementExtraNonce(pblock.get(), pindexPrev, nExtraNonce);
-
-            if (pblock->IsProofOfStake() && pblock->GetBlockTime() <= nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
+            if (fGenerateSingleBlock)
             {
-                printf("      'BitcoinMinerPos()' - Hash outsides the controls interval\n");
-            }
-            if (pblock->IsProofOfStake() && pblock->GetBlockTime() > nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
-            {
-                // ppcoin: if proof-of-stake block found then process block
-                if (!pblock->SignBlock(*pwalletMain))
-                {
-                    strMintWarning = strMintMessage;
-                    continue;
-                }
-                strMintWarning = "";
-
-                printf("      'BitcoinMinerPos()' - proof-of-stake block candidate - analysis\n");
-
-                Sleep(nSetMinerSleepTrue);
-
-                printf("      'BitcoinMinerPos()' - proof-of-stake block found %s\n", pblock->GetHash().ToString().c_str());
-
-                if (fGenerateSingleBlock)
-                {
-                    SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                    CheckWork(pblock.get(), *pwalletMain, reservekey);
-                    SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                    if (MintStakeThread != NULL)
-                        MintStakeThread->interrupt_all();
-                    delete MintStakeThread;
-                    MintStakeThread = NULL;
-                    break;
-                }
                 SetThreadPriority(THREAD_PRIORITY_NORMAL);
                 CheckWork(pblock.get(), *pwalletMain, reservekey);
                 SetThreadPriority(THREAD_PRIORITY_LOWEST);
+                if (MintStakeThread != NULL)
+                    MintStakeThread->interrupt_all();
+                delete MintStakeThread;
+                MintStakeThread = NULL;
+                break;
             }
-            Sleep(nSetMinerSleepTrue);
-            continue;
+            SetThreadPriority(THREAD_PRIORITY_NORMAL);
+            CheckWork(pblock.get(), *pwalletMain, reservekey);
+            SetThreadPriority(THREAD_PRIORITY_LOWEST);
         }
+        Sleep(nSetMinerSleepTrue);
+        continue;
     }
 }
 
@@ -7582,72 +7572,89 @@ void static StakeMintThread(void* parg, bool fGenerateSingleBlock)
     }
 }
 
-boost::thread_group* MintStakeThread = NULL;
 // ppcoin: stake minter
-void MintStake(CWallet* pwallet, bool fGenerateSingleBlock)
+void MintStake(CWallet* pwallet, bool fGenerateSingleBlock, bool fGenerate)
 {
-     if (MintStakeThread != NULL)
-     {
-         printf(" 'THREAD_MINTER' - already loaded\n");
-     }
-     else
-     if (MintStakeThread == NULL)
-     {
-         delete MintStakeThread;
-         MintStakeThread = NULL;
-         MintStakeThread = new boost::thread_group();
-         MintStakeThread->create_thread(boost::bind(&StakeMintThread, pwallet, fGenerateSingleBlock));
-     }
+    if (fGenerate && MintStakeThread != NULL)
+    {
+        printf(" 'THREAD_MINTER' - already loaded\n");
+    }
+    else
+    if (!fGenerate && MintStakeThread != NULL)
+    {
+        MintStakeThread->interrupt_all();
+        delete MintStakeThread;
+        MintStakeThread = NULL;
+        return;
+    }
+    else
+    if (fGenerate && MintStakeThread == NULL)
+    {
+        MintStakeThread = new boost::thread_group();
+        MintStakeThread->create_thread(boost::bind(&StakeMintThread, pwallet, fGenerateSingleBlock));
+    }
+    return;
 }
 
 void static ThreadBitcoinMiner(void* parg)
 {
     CWallet* pwallet = (CWallet*)parg;
+
+    std::string s = strprintf(" 'CACHE'PROJECT_%s", "THREAD_MINER");
+    RenameThread(s.c_str());
     try
     {
-        vnThreadsRunning[THREAD_MINER]++;
-        BitcoinMiner(pwallet, false);
-        vnThreadsRunning[THREAD_MINER]--;
+        printf("%s - started\n", "THREAD_MINER");
+        BitcoinMiner(pwallet, true);
+        dHashesPerSec = 0;
+        nHPSTimerStart = 0;
+        printf("%s - exited\n", "THREAD_MINER");
+    }
+    catch (boost::thread_interrupted)
+    {
+        dHashesPerSec = 0;
+        nHPSTimerStart = 0;
+        printf("%s - interrupted\n", "THREAD_MINER");
+        throw;
     }
     catch (std::exception& e)
     {
-        vnThreadsRunning[THREAD_MINER]--;
-        PrintException(&e, "ThreadBitcoinMiner()");
+        PrintException(&e, "THREAD_MINER");
     }
     catch (...)
     {
-        vnThreadsRunning[THREAD_MINER]--;
-        PrintException(NULL, "ThreadBitcoinMiner()");
+        PrintException(NULL, "THREAD_MINER");
     }
-    nHPSTimerStart = 0;
-    if (vnThreadsRunning[THREAD_MINER] == 0)
-        dHashesPerSec = 0;
-    printf(" 'ThreadBitcoinMiner()' - exiting, %d threads remaining\n", vnThreadsRunning[THREAD_MINER]);
 }
 
 void GenerateBitcoins(bool fGenerate, CWallet* pwallet)
 {
-    fGenerateBitcoins = fGenerate;
-    nLimitProcessors = GetArg("-genproclimit", -1);
-    if (nLimitProcessors == 0)
-        fGenerateBitcoins = false;
-    fLimitProcessors = (nLimitProcessors != -1);
+    int nThreads = GetArg("-genproclimit", -1);
+    if (nThreads < 0)
+        nThreads = boost::thread::hardware_concurrency();
 
-    if (fGenerate)
+    if (fGenerate && StartMinerThreadsGroup != NULL)
     {
-        int nProcessors = boost::thread::hardware_concurrency();
-        printf(" 'GenerateBitcoins()' - %d processors\n", nProcessors);
-        if (nProcessors < 1)
-            nProcessors = 1;
-        if (fLimitProcessors && nProcessors > nLimitProcessors)
-            nProcessors = nLimitProcessors;
-        int nAddThreads = nProcessors - vnThreadsRunning[THREAD_MINER];
-        printf(" 'GenerateBitcoins()' - Starting %d BitcoinMiner threads\n", nAddThreads);
-        for (int i = 0; i < nAddThreads; i++)
+        printf(" 'THREAD_MINER' - already loaded\n");
+    }
+    else
+    if ((!fGenerate || nThreads == 0) && StartMinerThreadsGroup != NULL)
+    {
+        StartMinerThreadsGroup->interrupt_all();
+        delete StartMinerThreadsGroup;
+        StartMinerThreadsGroup = NULL;
+        return;
+    }
+    else
+    if (fGenerate && StartMinerThreadsGroup == NULL && nThreads != 0)
+    {
+        StartMinerThreadsGroup = new boost::thread_group();
+        for (int i = 0; i < nThreads; i++)
         {
-            if (!NewThread(ThreadBitcoinMiner, pwallet))
-                printf(" 'GenerateBitcoins()' - Error: NewThread(ThreadBitcoinMiner) failed\n");
-            Sleep(10);
+            StartMinerThreadsGroup->create_thread(boost::bind(&ThreadBitcoinMiner, pwallet));
         }
     }
+    return;
 }
+
+

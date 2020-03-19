@@ -211,10 +211,10 @@ Value setposgensingle(const Array& params, bool fHelp)
     if (GetBoolArg("-posgen", true))
         throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
     else
-    if (MintStakeThread != 0)
+    if (MintStakeThread != NULL)
         throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
 
-    MintStake(pwalletMain, true);
+    MintStake(pwalletMain, true, true);
     return "OK - generate a single proof of stake block";
 }
 
@@ -229,10 +229,10 @@ Value setposgenfull(const Array& params, bool fHelp)
     if (GetBoolArg("-posgen", true))
         throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
     else
-    if (MintStakeThread != 0)
+    if (MintStakeThread != NULL)
         throw JSONRPCError(-3, "Stake generation enabled. Won't start another generation.");
 
-    MintStake(pwalletMain, false);
+    MintStake(pwalletMain, false, true);
     return "OK - generate a more proof of stake blocks";
 }
 

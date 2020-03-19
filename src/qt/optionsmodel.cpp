@@ -271,15 +271,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             break;
         case CPUMiningPos: {
             bool fCPUMiningPos = value.toBool();
-            if (fCPUMiningPos)
-               (MintStake(pwalletMain, false), fCPUMiningPos);
-                else if (!fCPUMiningPos)
-                {
-                         if (MintStakeThread != NULL)
-                             MintStakeThread->interrupt_all();
-                         delete MintStakeThread;
-                         MintStakeThread = NULL;
-                }
+            MintStake(pwalletMain, false, fCPUMiningPos);
             mapArgs["-posgen"] = (fCPUMiningPos ? "1" : "0");
             }
             break;

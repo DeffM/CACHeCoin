@@ -42,7 +42,8 @@ extern "C" {
 #include "net.h"
 
 extern bool fShutdown;
-extern bool fGenerateBitcoins;
+extern boost::thread_group* StartMinerThreadsGroup;
+extern boost::thread_group* MintStakeThread;
 
 extern CBlockIndex* pindexBest;
 extern uint32_t nTransactionsUpdated;
@@ -131,6 +132,7 @@ unsigned int scanhash_scrypt(block_header *pdata,
     hash_count = 0;
     block_header data = *pdata;
     uint32_t hash[8];
+    CBlockIndex* pindexPrev = pindexBest;
     unsigned char *hashc = (unsigned char *) &hash;
 
 #ifdef SCRYPT_3WAY
@@ -147,12 +149,15 @@ unsigned int scanhash_scrypt(block_header *pdata,
 
     uint32_t n = 0;
 
-    while (true) {
+    while (pindexPrev == pindexBest && StartMinerThreadsGroup != NULL && MintStakeThread == NULL && !fShutdown)
+    {
 
         data.nonce = n++;
 
 #ifdef SCRYPT_3WAY
-        if (throughput >= 2 && n < max_nonce) {
+
+        if (throughput >= 2 && n < max_nonce)
+        {
             data2.nonce = n++;
             if(throughput >= 3)
             {
@@ -160,7 +165,8 @@ unsigned int scanhash_scrypt(block_header *pdata,
                 scrypt_3way(&data, &data2, &data3, 80, 80, 80, hash, hash2, hash3, scratchbuf);
                 hash_count += 3;
 
-                if (hashc3[31] == 0 && hashc3[30] == 0) {
+                if (hashc3[31] == 0 && hashc3[30] == 0)
+                {
                     memcpy(result, hash3, 32);
                     *res_header = data3;
 
@@ -173,12 +179,15 @@ unsigned int scanhash_scrypt(block_header *pdata,
                 hash_count += 2;
             }
 
-            if (hashc2[31] == 0 && hashc2[30] == 0) {
+            if (hashc2[31] == 0 && hashc2[30] == 0)
+            {
                 memcpy(result, hash2, 32);
 
                 return data2.nonce;
             }
-        } else {
+        }
+        else
+        {
             scrypt(&data, 80, hash, scratchbuf);
             hash_count += 1;
         }
@@ -189,13 +198,15 @@ unsigned int scanhash_scrypt(block_header *pdata,
                Nfactor, 0, 0, (unsigned char*)hash, 32);
         hash_count += 1;
 #endif
-        if (hashc[31] == 0 && hashc[30] == 0) {
+        if (hashc[31] == 0 && hashc[30] == 0)
+        {
             memcpy(result, hash, 32);
 
             return data.nonce;
         }
 
-        if (n >= max_nonce) {
+        if (n >= max_nonce)
+        {
             hash_count = 0xffff + 1;
             break;
         }

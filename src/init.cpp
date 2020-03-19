@@ -1043,7 +1043,7 @@ bool AppInit2()
 
     if (GetBoolArg("-posgen", true))
     {
-        MintStake(pwalletMain, false);
+        MintStake(pwalletMain, false, true);
     }
 
 #if !defined(QT_GUI)
