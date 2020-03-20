@@ -3069,7 +3069,7 @@ bool CBlock::CheckFork()
     if (fCheckFork) return true;
     int inanLastForkBlockHeight = 0;
     uint256 uianLastHashCheckPoint = 0;
-    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 70);
+    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 250);
     GetVirtualCheckPointHashes(inanLastForkBlockHeight, NotAsk, uianLastHashCheckPoint, NotAsk, true);
     if (inanLastForkBlockHeight >= nBestHeight - nDepthOfTheDisputesZone)
     {
@@ -3209,7 +3209,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         nFixPindexBestnHeight = pindexBest->nHeight;
     }
     CBlockIndex* newblockindex = pindexNew;
-    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 70);
+    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 250);
     if (!fHardForkOne && pindexNew->nHeight)
     {
         // Offset in a block index for parallel search
