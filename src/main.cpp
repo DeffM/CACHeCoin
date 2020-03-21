@@ -2193,7 +2193,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             }
 
             // Inspection summary
-            if (!txPrev.ReadFromDisk(txindex.pos) && !IsOtherInitialBlockDownload(false))
+            if (!txPrev.ReadFromDisk(txindex.pos))
                 return error("CTransaction->CheckInputsLevelTwo() : %s ReadFromDisk() prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
 
             if (fGoCheckTxDb)
@@ -3003,7 +3003,7 @@ bool CBlock::GetCoinAge(uint64& nCoinAge) const
 
 // check fork
 bool fCheckFork = false;
-int nDepthOfTheDisputesZone = 0;
+int nDepthOfTheDisputesZone = 240;
 bool CBlock::GetVirtualCheckPointHashes(int &inanLastForkBlockHeight, uint256 &uianLastHashCheckPointPrev, uint256 &uianLastHashCheckPoint, uint256 uiquNewBlockHash,
                                         bool fResultOnly)
 {
@@ -3069,7 +3069,7 @@ bool CBlock::CheckFork()
     if (fCheckFork) return true;
     int inanLastForkBlockHeight = 0;
     uint256 uianLastHashCheckPoint = 0;
-    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 250);
+    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 240);
     GetVirtualCheckPointHashes(inanLastForkBlockHeight, NotAsk, uianLastHashCheckPoint, NotAsk, true);
     if (inanLastForkBlockHeight >= nBestHeight - nDepthOfTheDisputesZone)
     {
@@ -3209,7 +3209,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         nFixPindexBestnHeight = pindexBest->nHeight;
     }
     CBlockIndex* newblockindex = pindexNew;
-    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 250);
+    nDepthOfTheDisputesZone = GetArg("-depthofthedisputeszone", 240);
     if (!fHardForkOne && pindexNew->nHeight)
     {
         // Offset in a block index for parallel search
