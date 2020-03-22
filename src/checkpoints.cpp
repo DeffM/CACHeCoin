@@ -277,13 +277,11 @@ namespace Checkpoints
         // to defend against 51% attack which rejects other miners block
 
         // Select the last proof-of-work block
-        const CBlockIndex *apindex = GetLastBlockIndex(pindexBest, false);
-        const CBlockIndex *bpindex = GetLastBlockIndexPow(pindexBest, false);
-        const CBlockIndex *pindex;
+        const CBlockIndex *pindex = NULL;
         if (pindexBest->GetBlockTime() > 1388949883 && pindexBest->GetBlockTime() <= nPowForceTimestamp)
-            pindex = apindex;
+            pindex = GetLastBlockIndex(pindexBest, false);
         else
-            pindex = bpindex;
+            pindex = GetLastBlockIndexPow(pindexBest, false);
 
         // Search forward for a block within max span and maturity window
         while (pindex->pnext && (pindex->GetBlockTime() + CHECKPOINT_MAX_SPAN <= pindexBest->GetBlockTime() || pindex->nHeight + std::min(6, nCoinbaseMaturity - 20) <= pindexBest->nHeight))

@@ -444,49 +444,41 @@ bool SetReload()
 
 void ThreadAnalyzerHandler()
 {
-    bool fOneSec = false;
     int64 nPrevTimeCount = 0;
     int64 nPrevTimeCount2 = 0;
+    int64 nOneSec = GetTimeMillis();
     bool fSetLocalTime = GetArg("-setlocaltime", 1);
     int64 nThresholdPow = nPowTargetSpacing / 100 * nSpamHashControl;
     int64 nThresholdPos = nPosTargetSpacing / 100 * nSpamHashControl;
 
-    int64 nOneSec = GetTimeMillis();
     while (!fShutdown)
     {
-       if (GetTimeMillis() >= nOneSec + 1000)
-       {
-           fOneSec = true;
-       }
+       Sleep((nOneSec + 1000) - GetTimeMillis());
+       nOneSec = GetTimeMillis();
 
-       while (!fShutdown && fOneSec)
+       SetReload();
+       IsOtherInitialBlockDownload(true);
+       int64 nLocalTime = GetAdjustedTime();
+       if (fSetLocalTime)
+           nLocalTime = nLocalTime + nNewTimeBlock;
+       int64 nTimeCount = nLocalTime;
+       int64 nTimeCount2 = nLocalTime;
+       int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
+       int64 nPosPrevTime = (GetLastBlockIndexPos(pindexBest, true)->GetBlockTime());
+       if (pindexBest->nHeight)
        {
-          SetReload();
-          IsOtherInitialBlockDownload(fOneSec);
-          int64 nLocalTime = GetAdjustedTime();
-          if (fSetLocalTime)
-              nLocalTime = nLocalTime + nNewTimeBlock;
-          int64 nTimeCount = nLocalTime;
-          int64 nTimeCount2 = nLocalTime;
-          int64 nPowPrevTime = (GetLastBlockIndexPow(pindexBest, false)->GetBlockTime());
-          int64 nPosPrevTime = (GetLastBlockIndexPos(pindexBest, true)->GetBlockTime());
-          if (pindexBest->nHeight)
-          {
-              if (nTimeCount != nPrevTimeCount)
-              {
-                  nPrevTimeCount = nTimeCount;
-                  uiInterface.NotifySpamHashControlPowChanged(nTimeCount - nPowPrevTime, nThresholdPow);
-                  nLastCoinWithoutPowSearchInterval = nTimeCount - nPowPrevTime;
-              }
-              if (nTimeCount2 != nPrevTimeCount2)
-              {
-                  nPrevTimeCount2 = nTimeCount2;
-                  uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - nPosPrevTime, nThresholdPos);
-                  nLastCoinWithoutPosSearchInterval = nTimeCount2 - nPosPrevTime;
-              }
-          }
-          fOneSec = false;
-          nOneSec = GetTimeMillis();
+           if (nTimeCount != nPrevTimeCount)
+           {
+               nPrevTimeCount = nTimeCount;
+               uiInterface.NotifySpamHashControlPowChanged(nTimeCount - nPowPrevTime, nThresholdPow);
+               nLastCoinWithoutPowSearchInterval = nTimeCount - nPowPrevTime;
+           }
+           if (nTimeCount2 != nPrevTimeCount2)
+           {
+               nPrevTimeCount2 = nTimeCount2;
+               uiInterface.NotifySpamHashControlPosChanged(nTimeCount2 - nPosPrevTime, nThresholdPos);
+               nLastCoinWithoutPosSearchInterval = nTimeCount2 - nPosPrevTime;
+           }
        }
     }
 }
