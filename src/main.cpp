@@ -3188,6 +3188,21 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     if (!txdb.TxnCommit())
         return false;
 
+    int nHeightCheckPointMap = 0;
+    if (GetArg("-createfullmapcheckpoint", false) && pindexNew->nHeight < (GetNumBlocksOfPeers() - (nDepthOfTheDisputesZone + 10)))
+    {
+        if (!bimapVirtualCheckPointBlockIndex.right.count(pindexNew->GetBlockHash()) && !Checkpoints::GetCheckpointsHashIsMap(nHeightCheckPointMap, pindexNew->GetBlockHash()))
+        {
+            if (!bimapVirtualCheckPointBlockIndex.left.count(pindexNew->pprev->GetBlockHash()))
+            {
+                bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash()));
+                SetVirtualCheckPointHashes(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash(), false);
+            }
+            else
+                SetVirtualCheckPointHashes(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash(), true);
+        }
+    }
+
     // Tracking and managing forks
     fCheckFork = false;
     int nFixPrev = 0;
@@ -3260,7 +3275,6 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
         // Parallel search
         bool fLesserHash = false;
         bool fLargerHash = false;
-        int nHeightCheckPointMap = 0;
         for (int k = nFixPindexBestnHeight; k >= nFixHardForkOne - 100000; k--)
         {
             CBlockIndex* bestblockindex = FindBlockByHeight(k);

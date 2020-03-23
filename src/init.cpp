@@ -829,7 +829,7 @@ bool AppInit2()
             if (fiVirtualCheckPointBlockIndex) setbuf(fiVirtualCheckPointBlockIndex, NULL);
         }
 
-        unsigned int nMaxString = 1000;
+        unsigned int nMaxString = 500000;
         for (unsigned int f = 0; f < nMaxString; f++)
         {
             bool fGoBlockIndex = true;

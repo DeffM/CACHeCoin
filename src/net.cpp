@@ -1902,7 +1902,7 @@ void StartNode(void* parg)
     //
 
     // Map ports with UPnP
-    if (GetBoolArg("-listen", true) && GetBoolArg("-upnp", true))
+    if (GetBoolArg("-listen", false) && GetBoolArg("-upnp", false))
     {
         fUseUPnP = true;
         MapPort();
