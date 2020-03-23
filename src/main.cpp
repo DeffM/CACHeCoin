@@ -1993,7 +1993,7 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
     return bnNew.GetCompact();
 }
 
-int64 GetProofOfWorkReward(unsigned int nBits)
+int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime)
 {
     CBigNum bnMinSubsidyLimit = 0;
     if  (nPowPindexPrevTime > nPowForceTimestamp + NTest)
@@ -2003,7 +2003,7 @@ int64 GetProofOfWorkReward(unsigned int nBits)
     CBigNum bnTarget;
     bnTarget.SetCompact(nBits);
     CBigNum bnTargetLimit = bnProofOfWorkLimit;
-    if (fHardForkOne)
+    if (nBlockTime >= nFixHardForkOneTime)
         bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
     bnTargetLimit.SetCompact(bnTargetLimit.GetCompact());
 
@@ -4149,15 +4149,15 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
 
     // Check coinbase reward
     double nGetValueOut = 0;
-    if (GetBlockTime() <= nPowForceTimestamp + NTest + NTest && vtx[0].GetValueOut() > (IsProofOfWork()? (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
+    if ((GetBlockTime() <= nPowForceTimestamp + NTest + NTest) && vtx[0].GetValueOut() > (IsProofOfWork()? (GetProofOfWorkReward(nBits, GetBlockTime()) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
         nGetValueOut = ((MINT_PROOF_OF_WORK / COIN * 2 - 1) * 1000000 - vtx[0].GetValueOut()) / ((double)MINT_PROOF_OF_WORK / (double)MIN_MINT_PROOF_OF_WORK);
     else
         nGetValueOut = vtx[0].GetValueOut();
 
-    if (nGetValueOut > (IsProofOfWork()? (GetProofOfWorkReward(nBits) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
+    if (nGetValueOut > (IsProofOfWork()? (GetProofOfWorkReward(nBits, GetBlockTime()) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
         return state.DoS(50, error("CBlock->CheckBlock() : coinbase reward exceeded %s > %s",
                          FormatMoney(nGetValueOut).c_str(),
-                         FormatMoney(IsProofOfWork()? GetProofOfWorkReward(nBits) : 0).c_str()));
+                         FormatMoney(IsProofOfWork()? GetProofOfWorkReward(nBits, GetBlockTime()) : 0).c_str()));
 
     // Check transactions
     BOOST_FOREACH(const CTransaction& tx, vtx)
@@ -7105,13 +7105,13 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
             printf(" 'CreateNewBlock()' - total size %"PRI64u"\n", nBlockSize);
 
         if (pblock->IsProofOfWork())
-            pblock->vtx[0].vout[0].nValue = GetProofOfWorkReward(pblock->nBits);
+            pblock->vtx[0].vout[0].nValue = GetProofOfWorkReward(pblock->nBits, max(pindexPrev->GetMedianTimePast() + 1, pblock->GetMaxTransactionTime()));
 
         // Fill in header
         pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
         if (pblock->IsProofOfStake())
             pblock->nTime      = pblock->vtx[1].nTime; //same as coinstake timestamp
-        pblock->nTime          = max(pindexPrev->GetMedianTimePast()+1, pblock->GetMaxTransactionTime());
+        pblock->nTime          = max(pindexPrev->GetMedianTimePast() + 1, pblock->GetMaxTransactionTime());
         pblock->nTime          = max(pblock->GetBlockTime(), pindexPrev->GetBlockTime() - nMaxClockDrift);
         if (pblock->IsProofOfWork())
             pblock->UpdateTime(pindexPrev);

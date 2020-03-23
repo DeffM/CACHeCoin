@@ -1194,7 +1194,8 @@ void ThreadSocketHandler()
 // The first name is used as information source for addrman.
 // The second name should resolve to a list of seed addresses.
 static const char *strDNSSeed[][2] = {
-    //{"cacheproject.net", "seed.novacoin.su"},    // WM - Umm...  FIXME
+    {"cryptoid", "145.239.189.106"},
+    {"cachecoin", "31.43.218.102"},
 };
 
 void ThreadDNSAddressSeed()
@@ -1203,7 +1204,7 @@ void ThreadDNSAddressSeed()
 
     if( !fTestNet )
     {
-        printf("Loading addresses from DNS seeds (could take a while)\n");
+        printf(" 'ThreadDNSAddressSeed()' - Loading addresses from DNS seeds (could take a while)\n");
 
         for (int seed_idx = 0; seed_idx < (int) ARRAYLEN( strDNSSeed ); seed_idx++)
         {
@@ -1219,9 +1220,9 @@ void ThreadDNSAddressSeed()
                 {
                     BOOST_FOREACH(CNetAddr& ip, vaddr)
                     {
-                        int nOneDay = 24*3600;
+                        int nOneDay = 24 * 3600;
                         CAddress addr = CAddress(CService(ip, GetDefaultPort()));
-                        addr.nTime = GetTime() - 3*nOneDay - GetRand(4*nOneDay); // use a random age between 3 and 7 days old
+                        addr.nTime = GetTime() - 3 * nOneDay - GetRand(4 * nOneDay); // use a random age between 3 and 7 days old
                         vAdd.push_back(addr);
                         found++;
                     }
@@ -1230,7 +1231,7 @@ void ThreadDNSAddressSeed()
             }
         }
     }
-    printf(" %d - addresses found from DNS seeds\n", found);
+    printf(" %d - addresses found from DNS seeds, 'ThreadDNSAddressSeed()'\n", found);
 }
 
 unsigned int pnSeed[] =
@@ -1585,16 +1586,16 @@ void ThreadMapPort()
             char externalIPAddress[40];
             r = UPNP_GetExternalIPAddress(urls.controlURL, data.first.servicetype, externalIPAddress);
             if (r != UPNPCOMMAND_SUCCESS)
-                printf("UPnP: GetExternalIPAddress() returned %d\n", r);
+                printf(" 'ThreadMapPort()' - GetExternalIPAddress() returned %d\n", r);
             else
             {
                 if (externalIPAddress[0])
                 {
-                    printf("UPnP: ExternalIPAddress = %s\n", externalIPAddress);
+                    printf(" 'ThreadMapPort()' - ExternalIPAddress = %s\n", externalIPAddress);
                     AddLocal(CNetAddr(externalIPAddress), LOCAL_UPNP);
                 }
                 else
-                    printf("UPnP: GetExternalIPAddress failed.\n");
+                    printf(" 'ThreadMapPort()' - GetExternalIPAddress failed.\n");
             }
         }
 
@@ -1610,17 +1611,17 @@ void ThreadMapPort()
 #endif
 
         if (r!=UPNPCOMMAND_SUCCESS)
-            printf("AddPortMapping(%s, %s, %s) failed with code %d (%s)\n",
+            printf(" 'ThreadMapPort()' - AddPortMapping(%s, %s, %s) failed with code %d (%s)\n",
             port.c_str(), port.c_str(), lanaddr, r, strupnperror(r));
         else
-            printf("UPnP Port Mapping successful.\n");
+            printf(" 'ThreadMapPort()' - UPnP Port Mapping successful.\n");
         int i = 1;
         loop
         {
             if (fShutdown || !fUseUPnP)
             {
                 r = UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, port.c_str(), "TCP", 0);
-                printf("UPNP_DeletePortMapping() returned : %d\n", r);
+                printf(" 'ThreadMapPort()' - UPNP_DeletePortMapping() returned : %d\n", r);
                 freeUPNPDevlist(devlist); devlist = 0;
                 FreeUPNPUrls(&urls);
                 return;
@@ -1638,10 +1639,10 @@ void ThreadMapPort()
 #endif
 
                 if (r!=UPNPCOMMAND_SUCCESS)
-                    printf("AddPortMapping(%s, %s, %s) failed with code %d (%s)\n",
+                    printf(" 'ThreadMapPort()' - AddPortMapping(%s, %s, %s) failed with code %d (%s)\n",
                         port.c_str(), port.c_str(), lanaddr, r, strupnperror(r));
                 else
-                    printf("UPnP Port Mapping successful.\n");;
+                    printf(" 'ThreadMapPort()' - UPnP Port Mapping successful.\n");;
             }
             Sleep(2000);
             i++;
@@ -1649,7 +1650,7 @@ void ThreadMapPort()
     }
     else
     {
-        printf("No valid UPnP IGDs found\n");
+        printf(" 'ThreadMapPort()' - No valid UPnP IGDs found\n");
         freeUPNPDevlist(devlist); devlist = 0;
         if (r != 0)
             FreeUPNPUrls(&urls);
@@ -1671,12 +1672,12 @@ void MapPort()
         {
             StartUPnPThreadGroup = new boost::thread_group();
             StartUPnPThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_UPNP", &ThreadMapPort));
-            printf("Accept: StartUPnPThreadGroup(ThreadMapPort) loaded\n");
+            printf(" Accept: 'MapPort()' - StartUPnPThreadGroup(ThreadMapPort) loaded\n");
 
         }
         else
         if (StartUPnPThreadGroup != NULL)
-            printf("Error: StartUPnPThreadGroup(ThreadMapPort) already loaded\n");
+            printf(" Error: 'MapPort()' - StartUPnPThreadGroup(ThreadMapPort) already loaded\n");
     }
     else
     {
@@ -1900,14 +1901,12 @@ void StartNode(void* parg)
     // Start threads
     //
 
-    if (!GetBoolArg("-dnsseed", false))
-        printf("DNS seeding disabled\n");
-    if (GetBoolArg("-dnsseed", false))
-        printf("DNS seeding NYI\n");
-
     // Map ports with UPnP
-    if (fUseUPnP)
+    if (GetBoolArg("-listen", true) && GetBoolArg("-upnp", true))
+    {
+        fUseUPnP = true;
         MapPort();
+    }
 
     // StartNetThreadGroup
     if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_ANALYZERHANDLER", &ThreadAnalyzerHandler)))
@@ -1926,8 +1925,9 @@ void StartNode(void* parg)
         printf("Error: StartNetThreadGroup(ThreadOpenConnections) failed\n");
 
     // StartNetThreadGroup
-    if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_DNS_ADDRESSSEED", &ThreadDNSAddressSeed)))
-        printf("Error: StartNetThreadGroup(ThreadDNSAddressSeed) failed\n");
+    if (GetBoolArg("-dnsseed", true))
+        if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_DNS_ADDRESSSEED", &ThreadDNSAddressSeed)))
+            printf("Error: StartNetThreadGroup(ThreadDNSAddressSeed) failed\n");
 
     // StartNetThreadGroup
     if (!StartNetThreadGroup->create_thread(boost::bind(&GoRoundThread<void (*)()>, "THREAD_DUMPADDRESS", &ThreadDumpAddress)))

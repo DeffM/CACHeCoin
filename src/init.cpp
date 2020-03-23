@@ -719,9 +719,8 @@ bool AppInit2()
         AddOneShot(strDest);
 
     // TODO: replace this by DNSseed
-    if(!fTestNet)
+    if(fTestNet)
         AddOneShot(string("31.43.218.102"));
-    //AddOneShot(string("81.17.30.114"));
 
     // ********************************************************* Step 7: load blockchain
 

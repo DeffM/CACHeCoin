@@ -131,8 +131,8 @@ Value getmininginfo(const Array& params, bool fHelp)
     obj.push_back( Pair( "N", N ) );
 
     // WM - Report current Proof-of-Work block reward.
-    obj.push_back( Pair( "powreward-before", (double)GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits) / 1000000.0 ) );
-    obj.push_back( Pair( "powreward-after", (double)GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits) / 1000000.0 ) );
+    obj.push_back( Pair( "powreward-before", (double)GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits, GetLastBlockIndex(pindexBest, false)->GetBlockTime()) / 1000000.0 ) );
+    obj.push_back( Pair( "powreward-after", (double)GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits, GetLastBlockIndexPow(pindexBest, false)->GetBlockTime()) / 1000000.0 ) );
 
     return obj;
 }

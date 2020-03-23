@@ -1373,8 +1373,8 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     else
         nStakeSplitAge = (60 * 60 * 24 * 30);
 
-    int64 nCombineThreshold = GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits) / 3;
-    int64 nNewCombineThreshold = GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits) / 3;
+    int64 nCombineThreshold = GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits, GetLastBlockIndex(pindexBest, false)->GetBlockTime()) / 3;
+    int64 nNewCombineThreshold = GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits, GetLastBlockIndexPow(pindexBest, false)->GetBlockTime()) / 3;
  
     // Keep a table of stuff to speed up POS mining
     static map<uint256, PosMiningStuff *> mapMiningStuff;

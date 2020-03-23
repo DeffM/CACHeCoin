@@ -217,7 +217,7 @@ const CBlockIndex* GetLastBlockIndexPow(const CBlockIndex* powpindex, bool fProo
 const CBlockIndex* GetLastBlockIndexPos(const CBlockIndex* pospindex, bool fProofOfStake);
 
 int64 GetProofOfStakeReward(int64 nCoinAge);
-int64 GetProofOfWorkReward(unsigned int nBits);
+int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime);
 
 uint256 WantedByOrphan(const CBlock* pblockOrphan);
 

@@ -251,8 +251,8 @@ Value getprofitestimate(const Array& params, bool fHelp)
      double difficulty = GetDifficulty();
      double timeperblock = 0;
      double timeperblocknew = 0;
-     double coinsperblock = (double)GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits) / 1000000.0 ;
-     double coinsperblocknew = (double)GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits) / 1000000.0 ;
+     double coinsperblock = (double)GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits, GetLastBlockIndex(pindexBest, false)->GetBlockTime()) / 1000000.0 ;
+     double coinsperblocknew = (double)GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits, GetLastBlockIndexPow(pindexBest, false)->GetBlockTime()) / 1000000.0 ;
      if(speed > 0)
      {
          timeperblock = (difficulty * constant) / speed;
