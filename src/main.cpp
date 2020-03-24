@@ -549,7 +549,7 @@ bool CTransaction::IsStandard(string& strReason) const
     }
     BOOST_FOREACH(const CTxOut& txout, vout)
     {
-        if (!::IsStandardCach(txout.scriptPubKey, whichType))
+        if (!::IsStandard(txout.scriptPubKey, whichType))
         {
             strReason = "scriptpubkey";
             return false;
@@ -2538,8 +2538,8 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     // Now that the whole chain is irreversibly beyond that time it is applied to all blocks except the
     // two in the chain that violate it. This prevents exploiting the issue against nodes in their
     // initial block download.
-    bool fEnforceBIP30 = true; // Always active in NovaCoin
-    bool fStrictPayToScriptHash = true; // Always active in NovaCoin
+    bool fEnforceBIP30 = true;
+    bool fStrictPayToScriptHash = true;
     bool fScriptChecks = pindex->nHeight >= Checkpoints::GetTotalBlocksEstimate();
 
     for (unsigned int i=0; i<vtx.size(); i++)
@@ -2567,7 +2567,6 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
         nTxPos = pindex->nBlockPos + ::GetSerializeSize(CBlock(), SER_DISK, CLIENT_VERSION) - (2 * GetSizeOfCompactSize(0)) + GetSizeOfCompactSize(vtx.size());
 
     map<uint256, CTxIndex> mapQueuedChanges;
-
     CCheckQueueControl<CScriptCheck> control(fScriptChecks && nScriptCheckThreads ? &scriptcheckqueue : NULL);
 
     int64 nFees = 0;
@@ -2583,6 +2582,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
             return state.DoS(100, error("CBlock->ConnectBlock() : too many sigops"));
 
         CDiskTxPos posThisTx(pindex->nFile, pindex->nBlockPos, nTxPos);
+
         if (!fJustCheck)
             nTxPos += ::GetSerializeSize(tx, SER_DISK, CLIENT_VERSION);
 
@@ -6161,7 +6161,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             else
             if (fBadProcessBlock && pfrom->fSuccessfullyConnected)
             {
-                pfrom->fStartSync = true;
+                //pfrom->fStartSync = true;
                 mapAlreadyAskedFor.erase(inv);
             }
 
