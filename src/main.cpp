@@ -2201,7 +2201,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
     // fBlock is true when this is called from AcceptBlock when a new best-block is added to the blockchain
     // fMiner is true when called from the internal bitcoin miner
     // ... both are false when called from CTransaction::AcceptToMemoryPool
-    if (!IsCoinBase())
+    if (!IsCoinBase() && !fReserve)
     {
         if (pvChecks)
             pvChecks->reserve(vin.size());
@@ -2520,10 +2520,11 @@ void ScriptCheck()
     scriptcheckqueue.Thread();
 }
 
-bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck, bool fSignalFromReorganize)
+bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck, bool fSignalFromReorganize,
+                          bool fSkippingChecksRelyingOnCheckPoints)
 {
     // Check it again in case a previous version let a bad block in, but skip BlockSig checking
-    if (!CheckBlock(state, !fJustCheck, !fJustCheck, false))
+    if ((!fSkippingChecksRelyingOnCheckPoints) && !CheckBlock(state, !fJustCheck, !fJustCheck, false))
         return false;
 
     // Do not allow blocks that contain transactions which 'overwrite' older transactions,
@@ -2542,17 +2543,20 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     bool fStrictPayToScriptHash = true;
     bool fScriptChecks = pindex->nHeight >= Checkpoints::GetTotalBlocksEstimate();
 
-    for (unsigned int i=0; i<vtx.size(); i++)
+    if (!fSkippingChecksRelyingOnCheckPoints)
     {
-        uint256 hash = GetTxHash(i);
-        if (fEnforceBIP30)
+        for (unsigned int i=0; i<vtx.size(); i++)
         {
-            CTxIndex txindexOld;
-            if (txdb.ReadTxIndex(hash, txindexOld))
+            uint256 hash = GetTxHash(i);
+            if (fEnforceBIP30)
             {
-                BOOST_FOREACH(CDiskTxPos &pos, txindexOld.vSpent)
-                    if (pos.IsNull())
-                        return false;
+                CTxIndex txindexOld;
+                if (txdb.ReadTxIndex(hash, txindexOld))
+                {
+                    BOOST_FOREACH(CDiskTxPos &pos, txindexOld.vSpent)
+                        if (pos.IsNull())
+                            return false;
+                }
             }
         }
     }
@@ -2594,12 +2598,13 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
         else
         {
             bool fSkippingChecks = false;
-            if (!tx.CheckInputsLevelTwo(state, txdb, mapInputs, mapQueuedChanges, posThisTx, pindex, fSkippingChecks,
-                                        true, false, true, false, nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS |
-                                        SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE))
+            if (!tx.CheckInputsLevelTwo(state, txdb, mapInputs, mapQueuedChanges, posThisTx, pindex,
+                                        fSkippingChecks, true, false, true, fSkippingChecksRelyingOnCheckPoints,
+                                        nScriptCheckThreads ? &vChecks : NULL, STRICT_FLAGS | SCRIPT_VERIFY_P2SH |
+                                        SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE))
                 return false;
 
-            if (fStrictPayToScriptHash)
+            if (!fSkippingChecksRelyingOnCheckPoints && fStrictPayToScriptHash)
             {
                 // Add in sigops done by pay-to-script-hash inputs;
                 // this is to prevent a "rogue miner" from creating
@@ -2722,7 +2727,7 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
         CBlockIndex* pindex = vConnect[i];
         if (!block.ReadFromDisk(pindex))
             state.Invalid(error("Reorganize() : ReadFromDisk for connect failed"));
-        if (!block.ConnectBlock(state, txdb, pindex, false, fGoFalse))
+        if (!block.ConnectBlock(state, txdb, pindex, false, fGoFalse, false))
         {
             // Invalid block
             state.Invalid(error("Reorganize() : ConnectBlock %s failed", pindex->GetBlockHash().ToString().substr(0,20).c_str()));
@@ -2774,12 +2779,13 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
 }
 
 // Called from inside SetBestChain: attaches a block to the new best chain being built
-bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex *pindexNew)
+bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex *pindexNew,
+                               bool fSkippingChecksRelyingOnCheckPoints)
 {
     uint256 hash = GetHash();
 
     // Adding to current best branch
-    if (!ConnectBlock(state, txdb, pindexNew) || !txdb.WriteHashBestChain(hash))
+    if (!ConnectBlock(state, txdb, pindexNew, false, false, fSkippingChecksRelyingOnCheckPoints) || !txdb.WriteHashBestChain(hash))
     {
         txdb.TxnAbort();
         InvalidChainFound(pindexNew);
@@ -2803,7 +2809,8 @@ bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex
     return true;
 }
 
-bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pindexNew)
+bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pindexNew,
+                          bool fSkippingChecksRelyingOnCheckPoints)
 {
     uint256 hash = GetHash();
 
@@ -2820,7 +2827,7 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     else
     if (hashPrevBlock == hashBestChain)
     {
-        if (!SetBestChainInner(state, txdb, pindexNew))
+        if (!SetBestChainInner(state, txdb, pindexNew, fSkippingChecksRelyingOnCheckPoints))
             state.Invalid(error("CBlock->SetBestChain() : SetBestChainInner failed"));
     }
     else
@@ -2864,7 +2871,7 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
                 break;
             }
             // errors now are not fatal, we still did a reorganisation to a new chain in a valid way
-            if (!block.SetBestChainInner(state, txdb, pindex))
+            if (!block.SetBestChainInner(state, txdb, pindex, false))
                 break;
         }
     }
@@ -3129,7 +3136,8 @@ bool CBlock::SetVirtualCheckPointHashes(uint256 uiHashLeft, uint256 uiHashRight,
 
 int nMinDepthReplacement = 2;
 int nMaxDepthReplacement = 3;
-bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos)
+bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos,
+                             bool fSkippingChecksRelyingOnCheckPoints)
 {
     // Check for duplicate
     uint256 hash = GetHash();
@@ -3462,7 +3470,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     // New best
     if (pindexNew->bnChainTrust > bnBestChainTrust)
     {
-        if (!SetBestChain(state, txdb, pindexNew))
+        if (!SetBestChain(state, txdb, pindexNew, fSkippingChecksRelyingOnCheckPoints))
             return false;
     }
     else
@@ -3474,7 +3482,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             pindexBest->GetBlockHash()) : (hash > pindexBest->GetBlockHash())))
         {
             printf(" 'CBlock->AddToBlockIndex()' - Block accepted\n");
-            if (!SetBestChain(state, txdb, pindexNew))
+            if (!SetBestChain(state, txdb, pindexNew, fSkippingChecksRelyingOnCheckPoints))
             {
                 return false;
             }
@@ -3491,7 +3499,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             pindexBest->GetBlockHash()) : (hash < pindexBest->GetBlockHash())))
         {
             printf(" 'CBlock->AddToBlockIndex()' - Block accepted\n");
-            if (!SetBestChain(state, txdb, pindexNew))
+            if (!SetBestChain(state, txdb, pindexNew, fSkippingChecksRelyingOnCheckPoints))
             {
                 return false;
             }
@@ -4215,9 +4223,15 @@ bool CBlock::CheckBlock(CValidationState &state, bool fCheckPOW, bool fCheckMerk
 
 bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 {
-    // Check for duplicate
+    bool fSkippingChecksRelyingOnCheckPoints = false;
+
+    // Skipping checks relying on check points
     uint256 hash = GetHash();
-    if (mapBlockIndex.count(hash))
+    if (bimapVirtualCheckPointBlockIndex.right.count(hash) && IsOtherInitialBlockDownload(false))
+        fSkippingChecksRelyingOnCheckPoints = true;
+
+    // Check for duplicate
+    if ((!fSkippingChecksRelyingOnCheckPoints) && mapBlockIndex.count(hash))
         return state.Invalid(error("CBlock->AcceptBlock() : block already in mapBlockIndex"));
 
     // Get prev block index
@@ -4229,88 +4243,91 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
 
         // Check proof-of-work or proof-of-stake
         CBlockIndex* pindexPrev = (*mi).second;
-        int nHeight = pindexPrev->nHeight+1;
+        int nHeight = pindexPrev->nHeight + 1;
         uint256 pindexPrevBlockHash = pindexPrev->GetBlockHash();
 
-        int64 nNewTimeBlockA = 0;
-        int64 nNewTimeBlockB = 0;
-        int64 nLastCoinWithoutInterval = GetAdjustedTime() - GetBlockTime();
-        if (nLastCoinWithoutInterval < 0)
+        if (!fSkippingChecksRelyingOnCheckPoints)
         {
-            nNewTimeBlockA = nLastCoinWithoutInterval * (-1);
-            nNewTimeBlockB = 0;
-        }
-        else
-        if (nLastCoinWithoutInterval >= 0)
-        {
-            nNewTimeBlockB = nLastCoinWithoutInterval;
-            nNewTimeBlockA = 0;
-        }
-        nNewTimeBlock = nNewTimeBlockA - nNewTimeBlockB;
-
-        if (pindexPrev->GetBlockTime() > nPowForceTimestamp && IsProofOfWork())
-        {
-            if (nBits != GetNextTargetRequiredPow(pindexPrev, IsProofOfStake()))
+            int64 nNewTimeBlockA = 0;
+            int64 nNewTimeBlockB = 0;
+            int64 nLastCoinWithoutInterval = GetAdjustedTime() - GetBlockTime();
+            if (nLastCoinWithoutInterval < 0)
             {
-                return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-work"));
+                nNewTimeBlockA = nLastCoinWithoutInterval * (-1);
+                nNewTimeBlockB = 0;
             }
-        }
-
-        if (pindexPrev->GetBlockTime() > nPowForceTimestamp && IsProofOfStake() && !fHardForkOne)
-        {
-            if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake(), false) && false)
+            else
+            if (nLastCoinWithoutInterval >= 0)
             {
-                return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
+                nNewTimeBlockB = nLastCoinWithoutInterval;
+                nNewTimeBlockA = 0;
             }
-        }
+            nNewTimeBlock = nNewTimeBlockA - nNewTimeBlockB;
 
-        if (IsProofOfStake() && fHardForkOne)
-        {
-            if (nBits != GetNextTargetRequiredPos(pindexPrev, true, true))
+            if (pindexPrev->GetBlockTime() > nPowForceTimestamp && IsProofOfWork())
             {
-               return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
+                if (nBits != GetNextTargetRequiredPow(pindexPrev, IsProofOfStake()))
+                {
+                    return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-work"));
+                }
             }
-        }
 
-        if (pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() <= nPowForceTimestamp)
-        {
-            if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()) && pindexBest->nHeight >= GetNumBlocksOfPeers())
+            if (pindexPrev->GetBlockTime() > nPowForceTimestamp && IsProofOfStake() && !fHardForkOne)
             {
-                return state.DoS(5, error("CBlock->AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
+                if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake(), false) && false)
+                {
+                    return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
+                }
             }
-        }
 
-        // Hash spam control
-        if (pindexPrev->GetBlockTime() > nPowForceTimestamp + NTest)
-        {
-            if (IsProofOfWork() && GetBlockTime() < nPowPindexPrevTime + (nPowTargetSpacing / 100 * nSpamHashControl))
+            if (IsProofOfStake() && fHardForkOne)
             {
-                printf(" WARNING: 'CBlock->AcceptBlock()' - block's stopped by hash spam control - proof-of-work\n");
-                return false;
+                if (nBits != GetNextTargetRequiredPos(pindexPrev, true, true))
+                {
+                   return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
+                }
             }
-            if (IsProofOfStake() && GetBlockTime() < nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
+
+            if (pindexPrev->GetBlockTime() > 1388949883 && pindexPrev->GetBlockTime() <= nPowForceTimestamp)
             {
-                printf(" WARNING: 'CBlock->AcceptBlock()' - block's stopped by hash spam control - proof-of-stake\n");
-                return false;
+                if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()) && pindexBest->nHeight >= GetNumBlocksOfPeers())
+                {
+                    return state.DoS(5, error("CBlock->AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
+                }
             }
+
+            // Hash spam control
+            if (pindexPrev->GetBlockTime() > nPowForceTimestamp + NTest)
+            {
+                if (IsProofOfWork() && GetBlockTime() < nPowPindexPrevTime + (nPowTargetSpacing / 100 * nSpamHashControl))
+                {
+                    printf(" WARNING: 'CBlock->AcceptBlock()' - block's stopped by hash spam control - proof-of-work\n");
+                    return false;
+                }
+                if (IsProofOfStake() && GetBlockTime() < nPosPindexPrevTime + (nPosTargetSpacing / 100 * nSpamHashControl))
+                {
+                    printf(" WARNING: 'CBlock->AcceptBlock()' - block's stopped by hash spam control - proof-of-stake\n");
+                    return false;
+                }
+            }
+
+            // Check timestamp against prev
+            if (GetBlockTime() <= pindexPrev->GetMedianTimePast() || GetBlockTime() + nMaxClockDrift < pindexPrev->GetBlockTime())
+                return state.Invalid(error("CBlock->AcceptBlock() : block's timestamp is too early"));
+
+            // Check that all transactions are finalized
+            BOOST_FOREACH(const CTransaction& tx, vtx)
+                if (!tx.IsFinal(nHeight, GetBlockTime()))
+                    return state.DoS(10, error("CBlock->AcceptBlock() : contains a non-final transaction"));
+
+            // Check that the block chain matches the known block chain up to a checkpoint
+            if (!Checkpoints::CheckHardened(nHeight, hash))
+                return state.DoS(100, error("CBlock->AcceptBlock() : rejected by hardened checkpoint lock-in at %d", nHeight));
+
+            // ppcoin: check that the block satisfies synchronized checkpoint
+            if (!Checkpoints::CheckSync(hash, pindexPrev))
+                return state.Invalid(error("CBlock->AcceptBlock() : rejected by synchronized checkpoint"));
         }
-
-        // Check timestamp against prev
-        if (GetBlockTime() <= pindexPrev->GetMedianTimePast() || GetBlockTime() + nMaxClockDrift < pindexPrev->GetBlockTime())
-            return state.Invalid(error("CBlock->AcceptBlock() : block's timestamp is too early"));
-
-        // Check that all transactions are finalized
-        BOOST_FOREACH(const CTransaction& tx, vtx)
-            if (!tx.IsFinal(nHeight, GetBlockTime()))
-                return state.DoS(10, error("CBlock->AcceptBlock() : contains a non-final transaction"));
-
-        // Check that the block chain matches the known block chain up to a checkpoint
-        if (!Checkpoints::CheckHardened(nHeight, hash))
-            return state.DoS(100, error("CBlock->AcceptBlock() : rejected by hardened checkpoint lock-in at %d", nHeight));
-
-        // ppcoin: check that the block satisfies synchronized checkpoint
-        if (!Checkpoints::CheckSync(hash, pindexPrev))
-            return state.Invalid(error("CBlock->AcceptBlock() : rejected by synchronized checkpoint"));
 
         int inanLastForkBlockHeight = 0;
         uint256 uianLastHashCheckPoint = 0;
@@ -4334,16 +4351,19 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
             }
         }
 
-        // Reject block.nVersion < 3 blocks since 95% threshold on mainNet and always on testNet:
-        // DIFF: will use only nVersion > 3
-        if (nVersion < 3)
-            return state.Invalid(error("CBlock->AcceptBlock() : rejected nVersion < 3 block"));
+        if (!fSkippingChecksRelyingOnCheckPoints)
+        {
+            // Reject block.nVersion < 3 blocks since 95% threshold on mainNet and always on testNet:
+            // DIFF: will use only nVersion > 3
+            if (nVersion < 3)
+                return state.Invalid(error("CBlock->AcceptBlock() : rejected nVersion < 3 block"));
 
-        // Enforce rule that the coinbase starts with serialized block height
-        CScript expect = CScript() << nHeight;
-        if (vtx[0].vin[0].scriptSig.size() < expect.size() ||
-            !std::equal(expect.begin(), expect.end(), vtx[0].vin[0].scriptSig.begin()))
-            return state.DoS(100, error("CBlock->AcceptBlock() : block height mismatch in coinbase"));
+            // Enforce rule that the coinbase starts with serialized block height
+            CScript expect = CScript() << nHeight;
+            if (vtx[0].vin[0].scriptSig.size() < expect.size() ||
+                !std::equal(expect.begin(), expect.end(), vtx[0].vin[0].scriptSig.begin()))
+                return state.DoS(100, error("CBlock->AcceptBlock() : block height mismatch in coinbase"));
+        }
     }
 
     // Write block to history file
@@ -4355,7 +4375,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp)
     if (!WriteToDisk(nFile, nBlockPos))
         return state.Invalid(error("CBlock->AcceptBlock() : CBlock->WriteToDisk() failed"));
 
-    if (!AddToBlockIndex(state, nFile, nBlockPos))
+    if (!AddToBlockIndex(state, nFile, nBlockPos, fSkippingChecksRelyingOnCheckPoints))
         return state.Invalid(error("CBlock->AcceptBlock() : CBlock->AddToBlockIndex() failed"));
 
     // Relay inventory, but don't relay old inventory during initial block download
@@ -4494,7 +4514,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         mapBlockIndex.erase(hash); // Remove from the list of immediate candidates for the best chain
         InvalidChainFound(pindexBest);
         CValidationState stateDummy;
-        if (!pblock->SetBestChain(stateDummy, txdb, pindexBest->pprev))
+        if (!pblock->SetBestChain(stateDummy, txdb, pindexBest->pprev, false))
             return state.Invalid(error("ProcessBlock() : SetBestChain on previous best block failed"));
 
         return false;
@@ -5015,7 +5035,7 @@ bool LoadBlockIndex(bool fAllowNew)
         unsigned int nBlockPos;
         if (!block.WriteToDisk(nFile, nBlockPos))
             return error("LoadBlockIndex() : writing genesis block to disk failed");
-        if (!block.AddToBlockIndex(state, nFile, nBlockPos))
+        if (!block.AddToBlockIndex(state, nFile, nBlockPos, false))
             return error("LoadBlockIndex() : genesis block not accepted");
 
         // initialize synchronized checkpoint

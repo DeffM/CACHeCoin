@@ -1403,10 +1403,11 @@ public:
                                     uint256 uiquNewBlockHash, bool fResultOnly);
     bool ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug);
     bool DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex);
-    bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false, bool fSignalFromReorganize=false);
+    bool ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck=false,
+                      bool fSignalFromReorganize=false, bool fSkippingChecksRelyingOnCheckPoints=false);
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);
-    bool SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pindexNew);
-    bool AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos);
+    bool SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pindexNew, bool fSkippingChecksRelyingOnCheckPoints);
+    bool AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos, bool fSkippingChecksRelyingOnCheckPoints);
     bool CheckBlock(CValidationState &state, bool fCheckPOW=true, bool fCheckMerkleRoot=true, bool fCheckSig=true) const;
     bool AcceptBlock(CValidationState &state, CDiskBlockPos *dbp);
     bool GetCoinAge(uint64& nCoinAge) const; // ppcoin: calculate total coin age spent in block
@@ -1414,7 +1415,7 @@ public:
     bool CheckBlockSignature() const;
 
 private:
-    bool SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex *pindexNew);
+    bool SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex *pindexNew, bool fSkippingChecksRelyingOnCheckPoints);
 };
 
 
