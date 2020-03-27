@@ -60,7 +60,6 @@ static const unsigned int LOCKTIME_THRESHOLD = 500000000; // Tue Nov  5 00:53:20
 static const int64 nMaxClockDrift = 2 * 60 * 60; // two hours
 // Settings PowForceGlobal
 static const int64 nPowForceTimestamp = 1524837600;
-static const int64 nCorrectedTimestamp = 9999999999;
 
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64 nMinDiskSpace = 52428800;
@@ -163,6 +162,7 @@ class CScriptCheck;
 struct CDiskBlockPos;
 
 int GetNumBlocksOfPeers();
+int GetOtherNumBlocksOfPeers();
 
 unsigned int ComputeMinWork(unsigned int nBase, int64 nTime, int64 nBlockTime);
 unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake);
@@ -193,12 +193,12 @@ bool LoadBlockIndex(bool fAllowNew=true);
 bool CheckDiskSpace(uint64 nAdditionalBytes=0);
 bool IsOtherInitialBlockDownload(bool fOneSec);
 bool SendMessages(CNode* pto, bool fSendTrickle);
-bool IsUntilFullCompleteOneHundredFortyFourBlocks();
 bool GetWalletFile(CWallet* pwallet, std::string &strWalletFileOut);
 bool LoadExternalBlockFile(FILE* fileIn, CDiskBlockPos *dbp = NULL);
 bool CheckWork(CBlock* pblock, CWallet& wallet, CReserveKey& reservekey);
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, int64 nBlockTime);
 bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock);
+bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, int& nNumBlocksOfPeer, bool fInFunction);
 bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBlockPos *dbp = NULL);
 /** Verify a signature */
 bool VerifySignature(const CTransaction& txFrom, const CTransaction& txTo, unsigned int nIn, unsigned int flags, int nHashType);

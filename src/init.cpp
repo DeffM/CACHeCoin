@@ -442,7 +442,7 @@ bool AppInit2()
 
     // -par=0 means autodetect, but nScriptCheckThreads==0 means no concurrency
     nScriptCheckThreads = (int)GetArg("-scriptcheckthreads", 0);
-    if (nScriptCheckThreads <= 0)
+    if (nScriptCheckThreads < 0)
         nScriptCheckThreads += boost::thread::hardware_concurrency();
     if (nScriptCheckThreads < 1)
         nScriptCheckThreads = 1;
@@ -475,6 +475,7 @@ bool AppInit2()
 #if !defined(QT_GUI)
     fServer = true;
 #endif
+
     fPrintToConsole = GetBoolArg("-printtoconsole");
     fPrintToDebugger = GetBoolArg("-printtodebugger");
     fDebugDisabled = GetBoolArg("-debugdisabled");
@@ -661,6 +662,8 @@ bool AppInit2()
 
     // see Step 2: parameter interactions for more information about these
     fNoListen = !GetBoolArg("-listen", true);
+    if (GetBoolArg("-useonepeertosync", false) && IsOtherInitialBlockDownload(false))
+        fNoListen = true;
     fDiscover = GetBoolArg("-discover", true);
     fNameLookup = GetBoolArg("-dns", true);
 

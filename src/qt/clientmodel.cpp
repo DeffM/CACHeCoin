@@ -125,7 +125,7 @@ bool ClientModel::inInitialBlockDownload() const
 
 int ClientModel::getNumBlocksOfPeers() const
 {
-    return GetNumBlocksOfPeers();
+    return std::max(GetOtherNumBlocksOfPeers(), GetNumBlocksOfPeers());
 }
 
 QString ClientModel::getStatusBarWarnings() const

@@ -35,6 +35,8 @@ map<uint256, uint256> mapProofOfStake;
 map<uint256, CBlockIndex*> mapBlockIndex;
 int nNumberOfHashValues = 50;
 map<uint256, int64> setIgnoredBlockHashes;
+int nMaxString = 512;
+map<CAddress, int> mapBlocksHeightByPeers;
 map<uint256, CBlock*> mapDuplicateStakeBlocks;
 map<uint256, CTransaction> mapOrphanTransactions;
 map<uint256, set<uint256> > mapOrphanTransactionsByPrev;
@@ -2335,23 +2337,61 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
 }
 
 // Return maximum amount of blocks that other nodes claim to have
+bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, int& nNumBlocksOfPeer, bool fInFunction)
+{
+    bool fOk = true;
+    bool fErase = false;
+    std::map<CAddress, int>::iterator in = mapBlocksHeightByPeers.find(caPeersAddr);
+    if ((fInFunction && in != mapBlocksHeightByPeers.end()) && nNumBlocksOfPeer > in->second)
+    {
+        mapBlocksHeightByPeers.erase(caPeersAddr);
+        mapBlocksHeightByPeers.insert(make_pair(caPeersAddr, nNumBlocksOfPeer));
+    }
+    if (fInFunction && in == mapBlocksHeightByPeers.end())
+    {
+        nMaxString--;
+        fErase = true;
+        mapBlocksHeightByPeers.insert(make_pair(caPeersAddr, nNumBlocksOfPeer));
+    }
+    CAddress addr;
+    nNumBlocksOfPeer = 0;
+    int nMinBlockOfPeers = 0;
+    for (map<CAddress, int>::iterator out = mapBlocksHeightByPeers.begin(); out != mapBlocksHeightByPeers.end(); ++out)
+    {
+        if (out->second > nNumBlocksOfPeer)
+        {
+            caPeersAddr = out->first;
+            nNumBlocksOfPeer = out->second;
+        }
+        if (nMinBlockOfPeers == 0 || out->second < nMinBlockOfPeers)
+        {
+            addr = out->first;
+            nMinBlockOfPeers = out->second;
+        }
+    }
+
+    if (fErase && nMaxString <= 0)
+        mapBlocksHeightByPeers.erase(addr);
+
+    if (nNumBlocksOfPeer < Checkpoints::GetTotalBlocksEstimate())
+        nNumBlocksOfPeer = Checkpoints::GetTotalBlocksEstimate();
+
+    return fOk;
+}
+
+int GetOtherNumBlocksOfPeers()
+{
+    CAddress caPeersAddr;
+    int nNumBlocksOfPeer = 0;
+    if (!GetOtherNumBlocksOfPeers(caPeersAddr, nNumBlocksOfPeer, false))
+        printf(" 'GetOtherNumBlocksOfPeers()' - error requesting heights from peers\n");
+
+    return nNumBlocksOfPeer;
+}
+
 int GetNumBlocksOfPeers()
 {
     return std::max(cPeerBlockCounts.median(), Checkpoints::GetTotalBlocksEstimate());
-}
-
-int nFullCompleteBlocks = 0;
-int GetFullCompleteBlocks()
-{
-    return std::max(nFullCompleteBlocks, cPeerBlockCounts.median());
-}
-
-bool IsUntilFullCompleteOneHundredFortyFourBlocks()
-{
-    if (nBestHeight < GetFullCompleteBlocks() - 30)
-        return true;
-    else
-        return false;
 }
 
 bool IsInitialBlockDownload()
@@ -3196,18 +3236,24 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     if (!txdb.TxnCommit())
         return false;
 
+    CAddress caPeersAddr;
+    int nNumBlocksOfPeer = 0;
     int nHeightCheckPointMap = 0;
-    if (GetArg("-createfullmapcheckpoint", false) && pindexNew->nHeight < (GetNumBlocksOfPeers() - (nDepthOfTheDisputesZone + 10)))
+    if (GetOtherNumBlocksOfPeers(caPeersAddr, nNumBlocksOfPeer, false))
     {
-        if (!bimapVirtualCheckPointBlockIndex.right.count(pindexNew->GetBlockHash()) && !Checkpoints::GetCheckpointsHashIsMap(nHeightCheckPointMap, pindexNew->GetBlockHash()))
+        if (GetArg("-createfullmapcheckpoint", false))
         {
-            if (!bimapVirtualCheckPointBlockIndex.left.count(pindexNew->pprev->GetBlockHash()))
+            if (!bimapVirtualCheckPointBlockIndex.right.count(pindexNew->GetBlockHash()) &&
+                !Checkpoints::GetCheckpointsHashIsMap(nHeightCheckPointMap, pindexNew->GetBlockHash()))
             {
-                bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash()));
-                SetVirtualCheckPointHashes(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash(), false);
+                if (!bimapVirtualCheckPointBlockIndex.left.count(pindexNew->pprev->GetBlockHash()))
+                {
+                    bimapVirtualCheckPointBlockIndex.insert(setbimap::value_type(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash()));
+                    SetVirtualCheckPointHashes(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash(), false);
+                }
+                else
+                    SetVirtualCheckPointHashes(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash(), true);
             }
-            else
-                SetVirtualCheckPointHashes(pindexNew->pprev->GetBlockHash(), pindexNew->GetBlockHash(), true);
         }
     }
 
@@ -3341,7 +3387,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
 
                             if (fDebug)
                                 printf(" 'CBlock->AddToBlockIndex()' - This fork has an earlyer timestamp, but the information was spread late - switching to longer branch, the height of the blocks is %d, the maximum height of the blocks is %d\n",
-                                pindexBest->nHeight, nFullCompleteBlocks);
+                                pindexBest->nHeight, nNumBlocksOfPeer);
                         }
                         else
                         if (ResultOfChecking == "already have block" &&
@@ -5326,6 +5372,13 @@ void static ProcessGetData(CNode* pfrom)
 
             if (fShutdown) return;
 
+            if (pfrom->fAbortMessage)
+            {
+                pfrom->fAbortMessage = false;
+                mapAlreadyAskedFor.erase(inv);
+                return;
+            }
+
             // ppcoin: relay memory may contain blocks too
             bool found = false;
 
@@ -5481,9 +5534,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         printf(" 'ProcessMessage()' - dropmessagestest DROPPING RECV MESSAGE\n");
         return true;
     }
-
-    if (nFullCompleteBlocks < nBestHeight)
-        nFullCompleteBlocks = nBestHeight;
 
     if (!fHardForkOne)
     {
@@ -5671,12 +5721,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         nControlTimeStartCync = 0;
         nControlTimeRestartCync = 0;
+
         pfrom->fSuccessfullyConnected = true;
 
-        if (pfrom->nStartingHeight > nFullCompleteBlocks)
-            nFullCompleteBlocks = pfrom->nStartingHeight;
-
         cPeerBlockCounts.input(pfrom->nStartingHeight);
+
+        GetOtherNumBlocksOfPeers(addrFrom, pfrom->nStartingHeight, true);
 
         printf(" 'ProcessMessage()' - receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
 
@@ -5871,83 +5921,17 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (vInv.size() > MAX_INV_SZ)
         {
             pfrom->Misbehaving(20);
-            return error(" 'ProcessMessage()' - message getdata size() = %" PRIszu"", vInv.size());
+            return error("ProcessMessage() : message getdata size() = %" PRIszu"", vInv.size());
         }
 
         if (fDebugNet || (vInv.size() != 1))
             printf(" 'ProcessMessage()' - received getdata (%" PRIszu" invsz)\n", vInv.size());
 
-        BOOST_FOREACH(const CInv& inv, vInv)
-        {
-            if (fShutdown) return true;
+        if ((fDebugNet && vInv.size() > 0) || (vInv.size() == 1))
+            printf(" 'ProcessMessage()' - received getdata for: %s\n", vInv[0].ToString().c_str());
 
-            if (fDebugNet || (vInv.size() == 1))
-                printf(" 'ProcessMessage()' - received getdata for: %s\n", inv.ToString().c_str());
-
-            if (pfrom->fAbortMessage)
-            {
-                pfrom->fAbortMessage = false;
-                mapAlreadyAskedFor.erase(inv);
-                return true;
-            }
-
-            if (inv.type == MSG_BLOCK)
-            {
-                if (IsOtherInitialBlockDownload(false))
-                    if (vInv.size() > 30 && vInv.size() == 1)
-                        break;
-
-                // Send block from disk
-                map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(inv.hash);
-                if (mi != mapBlockIndex.end())
-                {
-                    CBlock block;
-                    block.ReadFromDisk((*mi).second);
-                    pfrom->PushMessage("block", block);
-
-                    // Trigger them to send a getblocks request for the next batch of inventory
-                    if (inv.hash == pfrom->hashContinue)
-                    {
-                        // ppcoin: send latest proof-of-work block to allow the
-                        // download node to accept as orphan (proof-of-stake
-                        // block might be rejected by stake connection check)
-                        vector<CInv> vInv;
-                        vInv.push_back(CInv(MSG_BLOCK, GetLastBlockIndex(pindexBest, false)->GetBlockHash()));
-                        pfrom->PushMessage("inv", vInv);
-                        pfrom->hashContinue = 0;
-                    }
-                }
-            }
-            else
-            if (inv.IsKnownType())
-            {
-                // Send stream from relay memory
-                bool pushed = false;
-                {
-                    LOCK(cs_mapRelay);
-                    map<CInv, CDataStream>::iterator mi = mapRelay.find(inv);
-                    if (mi != mapRelay.end())
-                    {
-                        pfrom->PushMessage(inv.GetCommand(), (*mi).second);
-                        pushed = true;
-                    }
-                }
-                if (!pushed && inv.type == MSG_TX)
-                {
-                    LOCK(mempool.cs);
-                    if (mempool.exists(inv.hash))
-                    {
-                        CTransaction tx = mempool.lookup(inv.hash);
-                        CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
-                        ss.reserve(1000);
-                        ss << tx;
-                        pfrom->PushMessage("tx", ss);
-                    }
-                }
-            }
-            // Track requests for our stuff
-            Inventory(inv.hash);
-        }
+        pfrom->vRecvGetData.insert(pfrom->vRecvGetData.end(), vInv.begin(), vInv.end());
+        ProcessGetData(pfrom);
     }
 
     else
@@ -5966,11 +5950,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         int nLimit = 500;
         if ((pindex ? pindex->nHeight : -1) > 150000)
-            nLimit = 125;
+            nLimit = 250;
         if (fLimitGetblocks)
-            nLimit = 50;
+            nLimit = 75;
         if (IsOtherInitialBlockDownload(false))
-            nLimit = 30;
+            nLimit = 50;
 
         printf(" 'ProcessMessage()' - getblocks %d to %s limit %d\n", (pindex ? pindex->nHeight : -1), hashStop.ToString().substr(0,20).c_str(), nLimit);
 
@@ -5990,7 +5974,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             {
                 // When this block is requested, we'll send an inv that'll make them
                 // getblocks the next batch of inventory.
-                printf("  getblocks stopping at limit %d %s\n", pindex->nHeight, pindex->GetBlockHash().ToString().substr(0,20).c_str());
+                printf(" 'ProcessMessage()' - getblocks stopping at limit %d %s\n", pindex->nHeight, pindex->GetBlockHash().ToString().substr(0,20).c_str());
                 pfrom->hashContinue = pindex->GetBlockHash();
                 break;
             }

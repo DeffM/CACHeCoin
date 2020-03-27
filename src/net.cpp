@@ -113,6 +113,9 @@ int GetMaxConnections()
     count = max( count, MIN_CONNECTIONS );
     count = min( count, MAX_CONNECTIONS );
 
+    if (GetBoolArg("-useonepeertosync", false) && IsOtherInitialBlockDownload(false))
+        count = 1;
+
     return count;
 }
 
@@ -127,6 +130,9 @@ int GetMaxOutboundConnections()
     count = max( count, MIN_OUTBOUND_CONNECTIONS );
     count = min( count, MAX_OUTBOUND_CONNECTIONS );
     count = min( count, GetMaxConnections() );
+
+    if (GetBoolArg("-useonepeertosync", false) && IsOtherInitialBlockDownload(false))
+        count = 1;
 
     return count;
 }
