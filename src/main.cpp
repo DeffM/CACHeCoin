@@ -2337,22 +2337,36 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
 }
 
 // Return maximum amount of blocks that other nodes claim to have
-bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, int& nNumBlocksOfPeer, bool fInFunction)
+bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, CAddress& caAddrMe, int& nNumBlocksOfPeer, bool fInFunction)
 {
     bool fOk = true;
     bool fErase = false;
+    int inThreshold = 5;
+    static int inNumBlocks;
+    if (caPeersAddr == caAddrMe)
+        mapBlocksHeightByPeers.erase(caPeersAddr);
+
+    if (inNumBlocks + inThreshold < nBestHeight)
+    {
+        fInFunction = true;
+        caPeersAddr = caAddrMe;
+        nNumBlocksOfPeer = nBestHeight;
+    }
+
     std::map<CAddress, int>::iterator in = mapBlocksHeightByPeers.find(caPeersAddr);
     if ((fInFunction && in != mapBlocksHeightByPeers.end()) && nNumBlocksOfPeer > in->second)
     {
         mapBlocksHeightByPeers.erase(caPeersAddr);
         mapBlocksHeightByPeers.insert(make_pair(caPeersAddr, nNumBlocksOfPeer));
     }
+
     if (fInFunction && in == mapBlocksHeightByPeers.end())
     {
         nMaxString--;
         fErase = true;
         mapBlocksHeightByPeers.insert(make_pair(caPeersAddr, nNumBlocksOfPeer));
     }
+
     CAddress addr;
     nNumBlocksOfPeer = 0;
     int nMinBlockOfPeers = 0;
@@ -2376,14 +2390,17 @@ bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, int& nNumBlocksOfPeer, bool
     if (nNumBlocksOfPeer < Checkpoints::GetTotalBlocksEstimate())
         nNumBlocksOfPeer = Checkpoints::GetTotalBlocksEstimate();
 
+    inNumBlocks = nNumBlocksOfPeer;
+
     return fOk;
 }
 
 int GetOtherNumBlocksOfPeers()
 {
+    CAddress caAddrMe;
     CAddress caPeersAddr;
     int nNumBlocksOfPeer = 0;
-    if (!GetOtherNumBlocksOfPeers(caPeersAddr, nNumBlocksOfPeer, false))
+    if (!GetOtherNumBlocksOfPeers(caPeersAddr, caAddrMe, nNumBlocksOfPeer, false))
         printf(" 'GetOtherNumBlocksOfPeers()' - error requesting heights from peers\n");
 
     return nNumBlocksOfPeer;
@@ -3236,10 +3253,11 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     if (!txdb.TxnCommit())
         return false;
 
+    CAddress caAddrMe;
     CAddress caPeersAddr;
     int nNumBlocksOfPeer = 0;
     int nHeightCheckPointMap = 0;
-    if (GetOtherNumBlocksOfPeers(caPeersAddr, nNumBlocksOfPeer, false))
+    if (GetOtherNumBlocksOfPeers(caPeersAddr, caAddrMe, nNumBlocksOfPeer, false))
     {
         if (GetArg("-createfullmapcheckpoint", false))
         {
@@ -5726,7 +5744,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         cPeerBlockCounts.input(pfrom->nStartingHeight);
 
-        GetOtherNumBlocksOfPeers(addrFrom, pfrom->nStartingHeight, true);
+        GetOtherNumBlocksOfPeers(addrFrom, addrMe, pfrom->nStartingHeight, true);
 
         printf(" 'ProcessMessage()' - receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
 
