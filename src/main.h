@@ -1408,8 +1408,8 @@ public:
     bool ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions=true);
     bool SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pindexNew, bool fSkippingChecksRelyingOnCheckPoints);
     bool AddToBlockIndex(CValidationState &state, unsigned int nFile, unsigned int nBlockPos, bool fSkippingChecksRelyingOnCheckPoints);
-    bool CheckBlock(CValidationState &state, bool fCheckPOW=true, bool fCheckMerkleRoot=true, bool fCheckSig=true) const;
-    bool AcceptBlock(CValidationState &state, CDiskBlockPos *dbp);
+    bool CheckBlock(CValidationState &state, bool fSkippingChecksRelyingOnCheckPointsbool, bool fCheckPOW=true, bool fCheckMerkleRoot=true, bool fCheckSig=true) const;
+    bool AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkippingChecksRelyingOnCheckPoints);
     bool GetCoinAge(uint64& nCoinAge) const; // ppcoin: calculate total coin age spent in block
     bool SignBlock(const CKeyStore& keystore);
     bool CheckBlockSignature() const;

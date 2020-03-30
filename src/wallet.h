@@ -202,8 +202,9 @@ public:
 
     int64 GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit=false, bool fDebit=false,
                                   bool fCoinStake=false, bool fCoinBase=false, bool fAllAddresses=false,
-                                  bool fConfirmed=false);
+                                  bool fConfirmed=false) const;
     std::set< std::set<CTxDestination> > GetAddressGroupings();
+    std::map<CTxDestination, int64> GetAddressBalances();
     std::map<CTxDestination, int64> GetAddressBalances(CBitcoinAddress addressing);
 
     bool IsMine(const CTxIn& txin) const;

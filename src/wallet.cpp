@@ -638,12 +638,12 @@ int CWalletTx::GetRequestCount() const
     return nRequests;
 }
 
-void CWalletTx::GetAmounts(list<pair<CTxDestination, int64> >& listReceived,
-                           list<pair<CTxDestination, int64> >& listSent, int64& nFee, string& strSentAccount) const
+void CWalletTx::GetAmounts(list<pair<CTxDestination, int64> >& listReceived, list<pair<CTxDestination,
+                           int64> >& listSent, int64& nFee, string& strSentAccount) const
 {
     nFee = 0;
-    listReceived.clear();
     listSent.clear();
+    listReceived.clear();
     strSentAccount = strFromAccount;
 
     // Compute fee:
@@ -668,7 +668,8 @@ void CWalletTx::GetAmounts(list<pair<CTxDestination, int64> >& listReceived,
                 continue;
             fIsMine = pwallet->IsMine(txout);
         }
-        else if (!(fIsMine = pwallet->IsMine(txout)))
+        else
+        if (!(fIsMine = pwallet->IsMine(txout)))
             continue;
 
         // In either case, we need to get the destination address
@@ -698,19 +699,19 @@ void CWalletTx::GetAccountAmounts(const string& strAccount, int64& nReceived,
 
     int64 allFee;
     string strSentAccount;
-    list<pair<CTxDestination, int64> > listReceived;
     list<pair<CTxDestination, int64> > listSent;
+    list<pair<CTxDestination, int64> > listReceived;
     GetAmounts(listReceived, listSent, allFee, strSentAccount);
 
     if (strAccount == strSentAccount)
     {
-        BOOST_FOREACH(const PAIRTYPE(CTxDestination,int64)& s, listSent)
+        BOOST_FOREACH(const PAIRTYPE(CTxDestination, int64)& s, listSent)
             nSent += s.second;
         nFee = allFee;
     }
     {
         LOCK(pwallet->cs_wallet);
-        BOOST_FOREACH(const PAIRTYPE(CTxDestination,int64)& r, listReceived)
+        BOOST_FOREACH(const PAIRTYPE(CTxDestination, int64)& r, listReceived)
         {
             if (pwallet->mapAddressBook.count(r.first))
             {
@@ -718,10 +719,9 @@ void CWalletTx::GetAccountAmounts(const string& strAccount, int64& nReceived,
                 if (mi != pwallet->mapAddressBook.end() && (*mi).second == strAccount)
                     nReceived += r.second;
             }
-            else if (strAccount.empty())
-            {
+            else
+            if (strAccount.empty())
                 nReceived += r.second;
-            }
         }
     }
 }
@@ -2029,6 +2029,45 @@ int64 CWallet::GetOldestKeyPoolTime()
     return keypool.nTime;
 }
 
+std::map<CTxDestination, int64> CWallet::GetAddressBalances()
+{
+    map<CTxDestination, int64> balances;
+
+    {
+        LOCK(cs_wallet);
+        BOOST_FOREACH(PAIRTYPE(uint256, CWalletTx) walletEntry, mapWallet)
+        {
+            CWalletTx *pcoin = &walletEntry.second;
+
+            if (!pcoin->IsFinal() || !pcoin->IsConfirmed())
+                continue;
+
+            if (pcoin->IsCoinBase() && pcoin->GetBlocksToMaturity() > 0)
+                continue;
+
+            int nDepth = pcoin->GetDepthInMainChain();
+            if (nDepth < (pcoin->IsFromMe() ? 0 : 1))
+                continue;
+
+            for (unsigned int i = 0; i < pcoin->vout.size(); i++)
+            {
+                CTxDestination addr;
+                if (!IsMine(pcoin->vout[i]))
+                    continue;
+                if(!ExtractDestination(pcoin->vout[i].scriptPubKey, addr))
+                    continue;
+
+                int64 n = pcoin->IsSpent(i) ? 0 : pcoin->vout[i].nValue;
+
+                if (!balances.count(addr))
+                    balances[addr] = 0;
+                balances[addr] += n;
+            }
+        }
+    }
+    return balances;
+}
+
 std::map<CTxDestination, int64> CWallet::GetAddressBalances(CBitcoinAddress addressing)
 {
     int nMinDepth = 1;
@@ -2071,7 +2110,7 @@ std::map<CTxDestination, int64> CWallet::GetAddressBalances(CBitcoinAddress addr
 }
 
 int64 CWallet::GetAllAddressesBalances(CBitcoinAddress addressing, bool fCredit, bool fDebit,
-                                       bool fCoinStake, bool fCoinBase, bool fAllAddresses, bool fConfirmed)
+                                       bool fCoinStake, bool fCoinBase, bool fAllAddresses, bool fConfirmed) const
 {
     bool fGo = false;
     int nMinDepth = 1;
