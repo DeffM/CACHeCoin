@@ -2344,14 +2344,17 @@ bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, CAddress& caAddrMe, int& nN
     bool fErase = false;
     int inThreshold = 5;
     static int inNumBlocks;
-    if (nNumBlocksOfPeer == (-1))
+    vector<CNode*> vNodesCopy = vNodes;
+    if (nNumBlocksOfPeer != (-1) && caPeersAddr == caAddrMe)
         mapBlocksHeightByPeers.erase(caPeersAddr);
 
     if (inNumBlocks + inThreshold < nBestHeight)
     {
         fInFunction = true;
+        BOOST_FOREACH(CNode* pnode, vNodesCopy)
+        caAddrMe = GetLocalAddress(&pnode->addr);
         caPeersAddr = caAddrMe;
-        nNumBlocksOfPeer = nBestHeight;
+        inNumBlocks = nNumBlocksOfPeer = nBestHeight;
     }
 
     std::map<CAddress, int>::iterator in = mapBlocksHeightByPeers.find(caPeersAddr);
@@ -2385,13 +2388,11 @@ bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, CAddress& caAddrMe, int& nN
         }
     }
 
-    if (fErase && nMaxString <= 0)
+    if ((fErase && nMaxString <= 0) || (nNumBlocksOfPeer == (-1) && caPeersAddr == caAddrMe))
         mapBlocksHeightByPeers.erase(addr);
 
     if (nNumBlocksOfPeer < Checkpoints::GetTotalBlocksEstimate())
         nNumBlocksOfPeer = Checkpoints::GetTotalBlocksEstimate();
-
-    inNumBlocks = nNumBlocksOfPeer;
 
     return fOk;
 }
@@ -4274,15 +4275,15 @@ bool CBlock::CheckBlock(CValidationState &state, bool fSkippingChecksRelyingOnCh
         }
         if (nSigOps > MAX_BLOCK_SIGOPS)
             return state.DoS(100, error("CBlock->CheckBlock() : out-of-bounds SigOpCount"));
+
+        // ppcoin: check block signature
+        if (!CheckBlockSignature())
+            return state.DoS(100, error("CBlock->CheckBlock() : bad block signature"));
     }
 
     // Check merkle root
     if (fCheckMerkleRoot && hashMerkleRoot != BuildMerkleTree())
         return state.DoS(100, error("CBlock->CheckBlock() : hashMerkleRoot mismatch"));
-
-    // ppcoin: check block signature
-    if (!CheckBlockSignature())
-        return state.DoS(100, error("CBlock->CheckBlock() : bad block signature"));
 
     return true;
 }
@@ -4531,7 +4532,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         fDuplicateStakeOfBestBlock = true;
 
     // Preliminary checks
-    if (ResultOfChecking != "do not check block" && !pblock->CheckBlock(state, fSkippingChecksRelyingOnCheckPoints))
+    if (!pblock->CheckBlock(state, fSkippingChecksRelyingOnCheckPoints))
         return state.Invalid(error("ProcessBlock() : CheckBlock - FAILED"));
 
     // ppcoin: verify hash target and signature of coinstake tx
@@ -4743,53 +4744,24 @@ bool CBlock::SignBlock(const CKeyStore& keystore)
 // ppcoin: check block signature
 bool CBlock::CheckBlockSignature() const
 {
-    if (GetHash() == hashGenesisBlock || GetHash() == hashGenesisBlockTestNet)
+    if (GetHash() == hashGenesisBlock)
         return vchBlockSig.empty();
 
     vector<valtype> vSolutions;
     txnouttype whichType;
+    const CTxOut& txout = IsProofOfStake()? vtx[1].vout[1] : vtx[0].vout[0];
 
-    if (IsProofOfStake())
+    if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+        return false;
+    if (whichType == TX_PUBKEY)
     {
-        const CTxOut& txout = vtx[1].vout[1];
-        if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+        const valtype& vchPubKey = vSolutions[0];
+        CKey key;
+        if (!key.SetPubKey(vchPubKey))
             return false;
-
-        if (whichType == TX_PUBKEY)
-        {
-            valtype& vchPubKey = vSolutions[0];
-            CKey key;
-            if (!key.SetPubKey(vchPubKey))
-                return false;
-            if (vchBlockSig.empty())
-                return false;
-            return key.Verify(GetHash(), vchBlockSig);
-        }
-    }
-    else
-    {
-        for (unsigned int i = 0; i < vtx[0].vout.size(); i++)
-        {
-            const CTxOut& txout = vtx[0].vout[i];
-
-            if (!Solver(txout.scriptPubKey, whichType, vSolutions))
-                return false;
-
-            if (whichType == TX_PUBKEY)
-            {
-                // Verify
-                valtype& vchPubKey = vSolutions[0];
-                CKey key;
-                if (!key.SetPubKey(vchPubKey))
-                    continue;
-                if (vchBlockSig.empty())
-                    continue;
-                if (!key.Verify(GetHash(), vchBlockSig))
-                    continue;
-
-                return true;
-            }
-        }
+        if (vchBlockSig.empty())
+            return false;
+        return key.Verify(GetHash(), vchBlockSig);
     }
     return false;
 }
@@ -5610,6 +5582,15 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         }
         else nInvMakeSureSpam++;
     }
+
+    CAddress addrClear(pfrom->addr);
+    int nModeControl = (-1);
+    if (vNodes.empty())
+        GetOtherNumBlocksOfPeers(addrClear, addrClear, nModeControl, false);
+
+    nModeControl = nBestHeight;
+    if (pfrom->fDisconnect)
+        GetOtherNumBlocksOfPeers(addrClear, addrClear, nModeControl, false);
 
     if (strCommand != "inv")
     {
