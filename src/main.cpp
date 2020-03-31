@@ -2347,6 +2347,8 @@ bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, CAddress& caAddrMe, int& nN
     vector<CNode*> vNodesCopy = vNodes;
     if (nNumBlocksOfPeer != (-1) && caPeersAddr == caAddrMe)
         mapBlocksHeightByPeers.erase(caPeersAddr);
+    if (nNumBlocksOfPeer == (-1) && caPeersAddr == caAddrMe)
+        fErase = true;
 
     if (inNumBlocks + inThreshold < nBestHeight)
     {
@@ -2388,7 +2390,7 @@ bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, CAddress& caAddrMe, int& nN
         }
     }
 
-    if ((fErase && nMaxString <= 0) || (nNumBlocksOfPeer == (-1) && caPeersAddr == caAddrMe))
+    if ((fErase && nMaxString <= 0) || fErase)
         mapBlocksHeightByPeers.erase(addr);
 
     if (nNumBlocksOfPeer < Checkpoints::GetTotalBlocksEstimate())
@@ -4744,24 +4746,53 @@ bool CBlock::SignBlock(const CKeyStore& keystore)
 // ppcoin: check block signature
 bool CBlock::CheckBlockSignature() const
 {
-    if (GetHash() == hashGenesisBlock)
+    if (GetHash() == hashGenesisBlock || GetHash() == hashGenesisBlockTestNet)
         return vchBlockSig.empty();
 
     vector<valtype> vSolutions;
     txnouttype whichType;
-    const CTxOut& txout = IsProofOfStake()? vtx[1].vout[1] : vtx[0].vout[0];
 
-    if (!Solver(txout.scriptPubKey, whichType, vSolutions))
-        return false;
-    if (whichType == TX_PUBKEY)
+    if(IsProofOfStake())
     {
-        const valtype& vchPubKey = vSolutions[0];
-        CKey key;
-        if (!key.SetPubKey(vchPubKey))
+        const CTxOut& txout = vtx[1].vout[1];
+
+        if (!Solver(txout.scriptPubKey, whichType, vSolutions))
             return false;
-        if (vchBlockSig.empty())
-            return false;
-        return key.Verify(GetHash(), vchBlockSig);
+        if (whichType == TX_PUBKEY)
+        {
+            valtype& vchPubKey = vSolutions[0];
+            CKey key;
+            if (!key.SetPubKey(vchPubKey))
+                return false;
+            if (vchBlockSig.empty())
+                return false;
+            return key.Verify(GetHash(), vchBlockSig);
+        }
+    }
+    else
+    {
+        for(unsigned int i = 0; i < vtx[0].vout.size(); i++)
+        {
+            const CTxOut& txout = vtx[0].vout[i];
+
+            if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+                return false;
+
+            if (whichType == TX_PUBKEY)
+            {
+                // Verify
+                valtype& vchPubKey = vSolutions[0];
+                CKey key;
+                if (!key.SetPubKey(vchPubKey))
+                    continue;
+                if (vchBlockSig.empty())
+                    continue;
+                if(!key.Verify(GetHash(), vchBlockSig))
+                    continue;
+
+                return true;
+            }
+        }
     }
     return false;
 }
@@ -5583,14 +5614,18 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         else nInvMakeSureSpam++;
     }
 
-    CAddress addrClear(pfrom->addr);
-    int nModeControl = (-1);
-    if (vNodes.empty())
-        GetOtherNumBlocksOfPeers(addrClear, addrClear, nModeControl, false);
 
-    nModeControl = nBestHeight;
+    int nModeControl = (-1);
+    CAddress caAddrMe = GetLocalAddress(&pfrom->addr);
+    if (vNodes.empty())
+        GetOtherNumBlocksOfPeers(caAddrMe, caAddrMe, nModeControl, false);
+
     if (pfrom->fDisconnect)
+    {
+        nModeControl = nBestHeight;
+        CAddress addrClear(pfrom->addr);
         GetOtherNumBlocksOfPeers(addrClear, addrClear, nModeControl, false);
+    }
 
     if (strCommand != "inv")
     {
