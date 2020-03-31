@@ -2348,7 +2348,7 @@ bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, CAddress& caAddrMe, int& nN
     if (nNumBlocksOfPeer != (-1) && caPeersAddr == caAddrMe)
         mapBlocksHeightByPeers.erase(caPeersAddr);
     if (nNumBlocksOfPeer == (-1) && caPeersAddr == caAddrMe)
-        fErase = true;
+        fOk = false;
 
     if (inNumBlocks + inThreshold < nBestHeight)
     {
@@ -2390,8 +2390,11 @@ bool GetOtherNumBlocksOfPeers(CAddress& caPeersAddr, CAddress& caAddrMe, int& nN
         }
     }
 
-    if ((fErase && nMaxString <= 0) || fErase)
+    if ((fErase && nMaxString <= 0) || !fOk)
+    {
+        fOk = true;
         mapBlocksHeightByPeers.erase(addr);
+    }
 
     if (nNumBlocksOfPeer < Checkpoints::GetTotalBlocksEstimate())
         nNumBlocksOfPeer = Checkpoints::GetTotalBlocksEstimate();
