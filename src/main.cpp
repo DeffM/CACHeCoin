@@ -991,8 +991,8 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
             // Read txPrev
             CTransaction& txPrev = TxMemPoolInputs[prevout.hash].second;
             bool fOkCheckIndex = true;
-            bool fGoCheckIndexDb = true;
             bool fGoCheckTxDb = false;
+            bool fGoCheckIndexDb = true;
             if (mapMemPool.count(prevout.hash))
             {
                 // Get txindex from current proposed changes
@@ -1009,31 +1009,36 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
             if (!fOkCheckIndex || txindex.pos == CDiskTxPos(1,1,1))
             {
                 // Get prev tx from single transactions in memory
-                {
-                    LOCK(mempool.cs);
-                    if (!mempool.exists(prevout.hash))
-                    {
-                        fGoCheckTxDb = true;
-                        if (fDebug)
-                            printf(" WARNING: 'CTxMemPool->CheckTxMemPool()' - %s mempool Tx prev not found %s, verification continues\n", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-                    }
+                LOCK(mempool.cs);
+                if (mempool.exists(prevout.hash))
                     txPrev = mempool.lookup(prevout.hash);
+                else
+                {
+                    fGoCheckTxDb = true;
+                    if (fDebug)
+                        printf(" WARNING: 'CTxMemPool->CheckTxMemPool()' - %s Prev Tx from single transactions in memory not found %s, verification continues\n", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
                 }
-                if (!fOkCheckIndex)
+
+                if (!fOkCheckIndex && !fGoCheckTxDb)
                     txindex.vSpent.resize(txPrev.vout.size());
             }
 
             // Inspection summary
-            if (!txPrev.ReadFromDisk(txindex.pos))
+            if ((!fGoCheckTxDb) && !txPrev.ReadFromDisk(txindex.pos))
             {
-                if (fGoCheckTxDb)
-                {
-                    mempool.inremove(tx, prevout.hash, true);
-                    return error("'CTxMemPool->CheckTxMemPool()' : %s ReadFromDisk prev tx end mempool Tx prev %s not found", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
-                }
+                mempool.inremove(tx, prevout.hash, true);
+                return error("CTransaction->CheckInputsLevelTwo() : %s ReadFromDisk() prev tx %s failed", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+            }
+            if (fGoCheckTxDb)
+            {
+                mempool.inremove(tx, prevout.hash, true);
+                return error("CTransaction->CheckInputsLevelTwo() : %s Prev Tx from single transactions in memory not found %s", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
             }
             if (!fOkCheckIndex)
-                return error("'CTxMemPool->CheckTxMemPool()' : %s prev tx %s index entry not found", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+            {
+                mempool.inremove(tx, prevout.hash, true);
+                return error("CTransaction->CheckInputsLevelTwo() : %s prev tx %s index entry not found", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+            }
         }
 
         bool fInvalid = false;
@@ -2158,9 +2163,9 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             CTxIndex& txindex = inputsRet[prevout.hash].first;
             // Read txPrev
             CTransaction& txPrev = inputsRet[prevout.hash].second;
+            bool fGoCheckTxDb = false;
             bool fOkCheckIndex = true;
             bool fGoCheckIndexDb = true;
-            bool fGoCheckTxDb = false;
             if (mapTestPool.count(prevout.hash))
             {
                 // Get txindex from current proposed changes
@@ -2168,27 +2173,23 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                 txindex = mapTestPool.find(prevout.hash)->second;
             }
             if (fGoCheckIndexDb && !txdb.ReadTxIndex(prevout.hash, txindex))
-            {
                 fOkCheckIndex = false;
-            }
 
             if (!fOkCheckIndex || txindex.pos == CDiskTxPos(1,1,1))
             {
                 // Get prev tx from single transactions in memory
-                {
-                    LOCK(mempool.cs);
-                    if (!mempool.exists(prevout.hash))
-                    {
-                        fGoCheckTxDb = true;
-                    }
+                LOCK(mempool.cs);
+                if (mempool.exists(prevout.hash))
                     txPrev = mempool.lookup(prevout.hash);
-                }
-                if (!fOkCheckIndex)
+                else
+                    fGoCheckTxDb = true;
+
+                if (!fOkCheckIndex && !fGoCheckTxDb)
                     txindex.vSpent.resize(txPrev.vout.size());
             }
 
             // Inspection summary
-            if (!txPrev.ReadFromDisk(txindex.pos))
+            if ((!fGoCheckTxDb) && !txPrev.ReadFromDisk(txindex.pos))
                 return error("CTransaction->CheckInputsLevelTwo() : %s ReadFromDisk() prev tx %s failed", GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
 
             if (fGoCheckTxDb)
