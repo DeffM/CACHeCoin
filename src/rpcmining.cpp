@@ -12,6 +12,8 @@
 using namespace json_spirit;
 using namespace std;
 
+extern unsigned int NTest;
+
 //
 // uint64_t GetNetworkHashPS( int lookup )
 //
@@ -124,15 +126,22 @@ Value getmininginfo(const Array& params, bool fHelp)
     obj.push_back(Pair("testnet",       fTestNet));
 
     // WM - Tweaks to report current Nfactor and N.
-    Nfactor = GetNfactor( nBestHeightTime );
-    N = 1 << ( Nfactor + 1 );
+    Nfactor = GetNfactor(nBestHeightTime);
+    N = 1 << (Nfactor + 1);
 
-    obj.push_back( Pair( "Nfactor", Nfactor ) );
-    obj.push_back( Pair( "N", N ) );
+    obj.push_back( Pair("Nfactor", Nfactor));
+    obj.push_back( Pair("N", N));
 
     // WM - Report current Proof-of-Work block reward.
-    obj.push_back( Pair( "powreward-before", (double)GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits, GetLastBlockIndex(pindexBest, false)->GetBlockTime()) / 1000000.0 ) );
-    obj.push_back( Pair( "powreward-after", (double)GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits, GetLastBlockIndexPow(pindexBest, false)->GetBlockTime()) / 1000000.0 ) );
+    double dounBits = (double)GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits, GetLastBlockIndex(pindexBest, false)->GetBlockTime());
+    if (pindexBest->GetBlockTime() > nPowForceTimestamp + NTest)
+    {
+        obj.push_back(Pair("powreward-new", dounBits / 1000000.0));
+        dounBits = MINT_PROOF_OF_WORK / (dounBits / MIN_MINT_PROOF_OF_WORK);
+        obj.push_back(Pair("powreward-old", dounBits / 1000000.0));
+    }
+    else
+        obj.push_back(Pair("powreward-old", dounBits / 1000000.0));
 
     return obj;
 }
