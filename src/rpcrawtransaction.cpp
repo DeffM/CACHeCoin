@@ -118,8 +118,9 @@ Value getrawtransaction(const Array& params, bool fHelp)
         fVerbose = (params[1].get_int() != 0);
 
     CTransaction tx;
+    CTxIndex txindex;
     uint256 hashBlock = 0;
-    if (!GetTransaction(hash, tx, hashBlock))
+    if (!GetTransaction(hash, tx, hashBlock, txindex))
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available about transaction");
 
     CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
@@ -515,9 +516,10 @@ Value sendrawtransaction(const Array& params, bool fHelp)
 
     // See if the transaction is already in a block
     // or in the memory pool:
-    CTransaction existingTx;
+    CTxIndex txindex;
     uint256 hashBlock = 0;
-    if (GetTransaction(hashTx, existingTx, hashBlock))
+    CTransaction existingTx;
+    if (GetTransaction(hashTx, existingTx, hashBlock, txindex))
     {
         if (hashBlock != 0)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, string("transaction already in block ")+hashBlock.GetHex());

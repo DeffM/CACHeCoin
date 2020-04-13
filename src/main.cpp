@@ -63,6 +63,7 @@ int nScriptCheckThreads = 0;
 
 unsigned int NTest = 176500;
 unsigned int nTransactionsUpdated = 0;
+unsigned int nUseScriptChecksBlockHeight = 379800;
 unsigned int nStakeMinAge = 60 * 60 * 24 * 7; // minimum age for coin age
 unsigned int nStakeMaxAge = 60 * 60 * 24 * 30; // stake age of full weight
 unsigned int nStakeTargetSpacing = 1 * 60 * 15; // DIFF: 15-minute block spacing
@@ -72,6 +73,7 @@ unsigned int nPosTargetSpacing = 1 * 60 * 10; // DIFF: 10-minute block spacing
 const int SCRYPT_SCRATCHPAD_SIZE = 131072 + 63;
 
 int64 nNewTimeBlock = 0;
+int64 nSynTimerStart = 0;
 int64 nHPSTimerStart = 0;
 int64 nBestHeightTime = 0; // WM - Keep track of timestamp of block at best height.
 int64 nSpamHashControl = 30; // % from (nPos)nPowTargetSpacing
@@ -1027,17 +1029,17 @@ bool CTxMemPool::CheckTxMemPool(CValidationState &state, CTxDB& txdb, MapPrevTx 
             if ((!fGoCheckTxDb) && !txPrev.ReadFromDisk(txindex.pos))
             {
                 mempool.inremove(tx, prevout.hash, true);
-                return error("CTransaction->CheckInputsLevelTwo() : %s ReadFromDisk() prev tx %s failed", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                return error("CTxMemPool->CheckTxMemPool() : %s ReadFromDisk() prev tx %s failed", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
             }
             if (fGoCheckTxDb)
             {
                 mempool.inremove(tx, prevout.hash, true);
-                return error("CTransaction->CheckInputsLevelTwo() : %s Prev Tx from single transactions in memory not found %s", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                return error("CTxMemPool->CheckTxMemPool() : %s Prev Tx from single transactions in memory not found %s", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
             }
             if (!fOkCheckIndex)
             {
                 mempool.inremove(tx, prevout.hash, true);
-                return error("CTransaction->CheckInputsLevelTwo() : %s prev tx %s index entry not found", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
+                return error("CTxMemPool->CheckTxMemPool() : %s prev tx %s index entry not found", tx.GetHash().ToString().substr(0,10).c_str(),  prevout.hash.ToString().substr(0,10).c_str());
             }
         }
 
@@ -1419,20 +1421,22 @@ int CTxIndex::GetDepthInMainChain() const
 }
 
 // Return transaction in tx, and if it was found inside a block, its hash is placed in hashBlock
-bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock)
+bool GetTransaction(const uint256 &hash, CTransaction &tx, uint256 &hashBlock, CTxIndex& txindex, bool fGoTxDb)
 {
     {
-        LOCK(cs_main);
+        if (fGoTxDb)
         {
-            LOCK(mempool.cs);
-            if (mempool.exists(hash))
+            LOCK(cs_main);
             {
-                tx = mempool.lookup(hash);
-                return true;
+                LOCK(mempool.cs);
+                if (mempool.exists(hash))
+                {
+                    tx = mempool.lookup(hash);
+                    return true;
+                }
             }
         }
         CTxDB txdb("r");
-        CTxIndex txindex;
         if (tx.ReadFromDisk(txdb, COutPoint(hash, 0), txindex))
         {
             CBlock block;
@@ -2011,7 +2015,7 @@ int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime)
     CBigNum bnTarget;
     bnTarget.SetCompact(nBits);
     CBigNum bnTargetLimit = bnProofOfWorkLimit;
-    if (nBlockTime > nFixHardForkOneTime)
+    if (nBlockTime >= nFixHardForkOneTime)
         bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
     bnTargetLimit.SetCompact(bnTargetLimit.GetCompact());
 
@@ -2098,10 +2102,10 @@ int64 GetProofOfStakeReward(int64 nCoinAge)
 unsigned int ComputeMinWork(unsigned int nBase, int64 nTime, int64 nBlockTime)
 {
     CBigNum bnTargetLimit;
-    if (nBlockTime <= nFixHardForkOneTime)
+    if (nBlockTime < nFixHardForkOneTime)
         bnTargetLimit = bnProofOfWorkLimit;
     else
-    if (nBlockTime > nFixHardForkOneTime)
+    if (nBlockTime >= nFixHardForkOneTime)
         bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
 
     CBigNum bnResult;
@@ -2130,7 +2134,7 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, int64 nBlockTime)
             return error("CheckProofOfWork() : nBits below minimum work");
     }
 
-    if (nBlockTime > nFixHardForkOneTime + 5 * 60 * 60)
+    if (nBlockTime >= nFixHardForkOneTime + 5 * 60 * 60)
     {
         if (bnTarget > bnProofOfWorkAdaptedJaneLimit || bnTarget <= 0)
             return error("CheckProofOfWork() : nBits below minimum work");
@@ -2205,7 +2209,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
     // fBlock is true when this is called from AcceptBlock when a new best-block is added to the blockchain
     // fMiner is true when called from the internal bitcoin miner
     // ... both are false when called from CTransaction::AcceptToMemoryPool
-    if (!IsCoinBase() && !fReserve)
+    if (!IsCoinBase())
     {
         if (pvChecks)
             pvChecks->reserve(vin.size());
@@ -2589,7 +2593,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
                           bool fSkippingChecksRelyingOnCheckPoints)
 {
     // Check it again in case a previous version let a bad block in, but skip BlockSig checking
-    if ((!fSkippingChecksRelyingOnCheckPoints) && !CheckBlock(state, false, !fJustCheck, !fJustCheck, false))
+    if (!CheckBlock(state, fSkippingChecksRelyingOnCheckPoints, !fJustCheck, !fJustCheck, false))
         return false;
 
     // Do not allow blocks that contain transactions which 'overwrite' older transactions,
@@ -2606,7 +2610,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     // initial block download.
     bool fEnforceBIP30 = true;
     bool fStrictPayToScriptHash = true;
-    bool fScriptChecks = pindex->nHeight >= Checkpoints::GetTotalBlocksEstimate();
+    bool fScriptChecks = pindex->nHeight >= (signed)nUseScriptChecksBlockHeight;
 
     if (!fSkippingChecksRelyingOnCheckPoints)
     {
@@ -2669,7 +2673,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
                                         SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_NOCACHE))
                 return false;
 
-            if (!fSkippingChecksRelyingOnCheckPoints && fStrictPayToScriptHash)
+            if (fStrictPayToScriptHash)
             {
                 // Add in sigops done by pay-to-script-hash inputs;
                 // this is to prevent a "rogue miner" from creating
@@ -2962,9 +2966,7 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
       hashBestChain.ToString().substr(0,20).c_str(), nBestHeight, bnBestChainTrust.ToString().c_str(),
       DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str());
 
-    nControlTimeStartCync = 0;
-    nControlTimeRestartCync = 0;
-    nControlTimeBeforeSwitching = 0;
+    nControlTimeStartCync = nControlTimeRestartCync = nControlTimeBeforeSwitching = 0;
 
     if  (IsOtherInitialBlockDownload(false)){
          if (fDebug) printf("IsOtherInitialBlockDownload\n");}
@@ -4200,15 +4202,29 @@ bool CBlock::CheckBlock(CValidationState &state, bool fSkippingChecksRelyingOnCh
 {
     // These are checks that are independent of context
     // that can be verified before saving an orphan block.
+
+    // ppcoin: only the second transaction can be the optional coinstake
+    for (unsigned int i = 2; i < vtx.size(); i++)
+        if (vtx[i].IsCoinStake())
+            return state.DoS(100, error("CBlock->CheckBlock() : coinstake in wrong position"));
+
+    // ppcoin: coinbase output should be empty if proof-of-stake block
+    if (IsProofOfStake() && (vtx[0].vout.size() != 1 || !vtx[0].vout[0].IsEmpty()))
+        return error("CBlock->CheckBlock() : coinbase output not empty for proof-of-stake block");
+
+    // Check coinstake timestamp
+    if (IsProofOfStake() && !CheckCoinStakeTimestamp(GetBlockTime(), (int64)vtx[1].nTime))
+        return state.DoS(50, error("CBlock->CheckBlock() : coinstake timestamp violation nTimeBlock=%"PRI64d" nTimeTx=%u", GetBlockTime(), vtx[1].nTime));
+
     if (!fSkippingChecksRelyingOnCheckPoints)
     {
-        // Size limits
-        if (vtx.empty() || vtx.size() > MAX_BLOCK_SIZE || ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
-            return state.DoS(100, error("CBlock->CheckBlock() : size limits failed"));
-
         // Check proof of work matches claimed amount
         if (fCheckPOW && IsProofOfWork() && !CheckProofOfWork(GetHash(), nBits, GetBlockTime()))
             return state.DoS(50, error("CBlock->CheckBlock() : proof of work failed"));
+
+        // Size limits
+        if (vtx.empty() || vtx.size() > MAX_BLOCK_SIZE || ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
+            return state.DoS(100, error("CBlock->CheckBlock() : size limits failed"));
 
         // Check timestamp
         if (GetBlockTime() > GetAdjustedTime() + nMaxClockDrift)
@@ -4221,22 +4237,9 @@ bool CBlock::CheckBlock(CValidationState &state, bool fSkippingChecksRelyingOnCh
             if (vtx[i].IsCoinBase())
                 return state.DoS(100, error("CBlock->CheckBlock() : more than one coinbase"));
 
-        // ppcoin: only the second transaction can be the optional coinstake
-        for (unsigned int i = 2; i < vtx.size(); i++)
-            if (vtx[i].IsCoinStake())
-                return state.DoS(100, error("CBlock->CheckBlock() : coinstake in wrong position"));
-
-        // ppcoin: coinbase output should be empty if proof-of-stake block
-        if (IsProofOfStake() && (vtx[0].vout.size() != 1 || !vtx[0].vout[0].IsEmpty()))
-            return error("CBlock->CheckBlock() : coinbase output not empty for proof-of-stake block");
-
         // Check coinbase timestamp
         if (GetBlockTime() > (int64)vtx[0].nTime + nMaxClockDrift)
             return state.DoS(50, error("CBlock->CheckBlock() : coinbase timestamp is too early"));
-
-        // Check coinstake timestamp
-        if (IsProofOfStake() && !CheckCoinStakeTimestamp(GetBlockTime(), (int64)vtx[1].nTime))
-            return state.DoS(50, error("CBlock->CheckBlock() : coinstake timestamp violation nTimeBlock=%"PRI64d" nTimeTx=%u", GetBlockTime(), vtx[1].nTime));
 
         // Check coinbase reward
         double nGetValueOut = 0;
@@ -4244,6 +4247,9 @@ bool CBlock::CheckBlock(CValidationState &state, bool fSkippingChecksRelyingOnCh
             nGetValueOut = ((MINT_PROOF_OF_WORK / COIN * 2 - 1) * 1000000 - vtx[0].GetValueOut()) / ((double)MINT_PROOF_OF_WORK / (double)MIN_MINT_PROOF_OF_WORK);
         else
             nGetValueOut = vtx[0].GetValueOut();
+
+        if (GetBlockTime() == nFixHardForkOneTime)
+            nGetValueOut = (IsProofOfWork()? (GetProofOfWorkReward(nBits, GetBlockTime()) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0);
 
         if (nGetValueOut > (IsProofOfWork()? (GetProofOfWorkReward(nBits, GetBlockTime()) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
         {
@@ -4300,7 +4306,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkip
     uint256 hash = GetHash();
 
     // Check for duplicate
-    if ((!fSkippingChecksRelyingOnCheckPoints) && mapBlockIndex.count(hash))
+    if (mapBlockIndex.count(hash))
         return state.Invalid(error("CBlock->AcceptBlock() : block already in mapBlockIndex"));
 
     // Get prev block index
@@ -4508,6 +4514,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
 
     MapPrevTx NotAsk;
     std::string ResultOfChecking;
+    nSynTimerStart = GetTimeMillis();
     uint256 hash = pblock->GetHash();
     bool fDuplicateStakeOfBestBlock = false;
     bool fSkippingChecksRelyingOnCheckPoints = false;
@@ -4544,14 +4551,13 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     // ppcoin: verify hash target and signature of coinstake tx
     if (pblock->IsProofOfStake())
     {
-        uint256 hashProofOfStake = 0;
-        if (!CheckProofOfStake(pblock->vtx[1], pblock->nBits, hashProofOfStake))
+        if (!CheckProofOfStake(pblock->vtx[1], pblock->nBits, hash, fSkippingChecksRelyingOnCheckPoints))
         {
+            if (mapProofOfStake.count(hash))
+                mapProofOfStake.erase(hash);
             printf(" WARNING: 'ProcessBlock()' - check proof-of-stake failed for block %s\n", hash.ToString().c_str());
             return false; // do not error here as we expect this during initial block download
         }
-        if (!mapProofOfStake.count(hash)) // add to mapProofOfStake
-            mapProofOfStake.insert(make_pair(hash, hashProofOfStake));
     }
 
     CBigNum bnNewBlock;
@@ -4676,14 +4682,11 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         mapOrphanBlocksByPrev.erase(hashPrev);
     }
 
-    nControlTimeStartCync = 0;
-    nControlTimeRestartCync = 0;
-    nControlTimeBeforeSwitching = 0;
-    printf(" 'ProcessBlock()' - ACCEPTED %s BLOCK\n", pblock->IsProofOfStake() ? "POS" : "POW");
+    nControlTimeBeforeSwitching = nControlTimeRestartCync = nControlTimeStartCync = 0;
+    printf(" 'ProcessBlock()' - ACCEPTED %s BLOCK, %"PRI64d" Millis() for processing one block\n", pblock->IsProofOfStake() ? "POS" : "POW", GetTimeMillis() - nSynTimerStart);
 
     // ppcoin: if responsible for sync-checkpoint send it
-    if (pfrom && !CSyncCheckpoint::strMasterPrivKey.empty() &&
-        (int)GetArg("-checkpointdepth", -1) >= 0)
+    if (pfrom && !CSyncCheckpoint::strMasterPrivKey.empty() && (int)GetArg("-checkpointdepth", -1) >= 0)
         Checkpoints::SendSyncCheckpoint(Checkpoints::AutoSelectSyncCheckpoint());
 
     return true;

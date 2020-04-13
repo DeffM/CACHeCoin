@@ -1624,8 +1624,9 @@ Value gettransaction(const Array& params, bool fHelp)
     else
     {
         CTransaction tx;
+        CTxIndex txindex;
         uint256 hashBlock = 0;
-        if (GetTransaction(hash, tx, hashBlock))
+        if (GetTransaction(hash, tx, hashBlock, txindex))
         {
             entry.push_back(Pair("txid", hash.GetHex()));
             TxToJSON(tx, 0, entry);
