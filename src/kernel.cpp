@@ -27,6 +27,30 @@ static std::map<int, unsigned int> mapStakeModifierCheckpoints =
     ( 0, 0x0e00670b )
     ;
 
+static std::map<int64, unsigned int> mapProtocolSwitchingThresholds =
+    boost::assign::map_list_of
+    (int64(1587476876), 1)
+    ;
+
+bool ProtocolSwitchingThresholds(uint256 hash, unsigned int& nThresholds)
+{
+    nThresholds = 0;
+    int64 nThresholdsTime = 0;
+    CBlockIndex* pindex = pindexBest;
+    for (map<int64, unsigned int>::iterator i = mapProtocolSwitchingThresholds.begin(); i != mapProtocolSwitchingThresholds.end(); ++i)
+    {
+        if ((*i).first > nThresholdsTime && pindex->GetBlockTime() > (*i).first)
+        {
+            nThresholdsTime = (*i).first;
+        }
+    }
+
+    if (nThresholdsTime > 0)
+        nThresholds = mapProtocolSwitchingThresholds.find(nThresholdsTime)->second;
+
+    return true;
+}
+
 // Get the last stake modifier and its generation time from a given block
 static bool GetLastStakeModifier(const CBlockIndex* pindex, uint64& nStakeModifier, int64& nModifierTime)
 {
@@ -51,7 +75,7 @@ static int64 GetStakeModifierSelectionIntervalSection(int nSection)
 // Get stake modifier selection interval (in seconds)
 static int64 GetStakeModifierSelectionInterval()
 {
-    if(fTestNet)
+    if (fTestNet)
         return nStakeMinAge;
     int64 nSelectionInterval = 0;
     for (int nSection=0; nSection<64; nSection++)
@@ -216,16 +240,22 @@ bool ComputeNextStakeModifier(const CBlockIndex* pindexPrev, uint64& nStakeModif
 
 // The stake modifier used to hash for a stake kernel is chosen as the stake
 // modifier about a selection interval later than the coin generating the kernel
-bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& nStakeModifierHeight, int64& nStakeModifierTime, bool fPrintProofOfStake)
+bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& nStakeModifierHeight, int64& nStakeModifierTime,
+                            uint256 hash, bool& fWithoutReturnFalse, bool fPrintProofOfStake)
 {
     if (!mapBlockIndex.count(hashBlockFrom))
         return error("GetKernelStakeModifier() : block not indexed");
 
     nStakeModifier = 0;
+    bool fThresholds = false;
+    fWithoutReturnFalse = false;
+    unsigned int nThresholds = 0;
     int nCountingStakeModifierHeight = nBestHeight - 1;
     const CBlockIndex* pindexFrom = mapBlockIndex[hashBlockFrom];
     nStakeModifierHeight = pindexFrom->nHeight;
     nStakeModifierTime = pindexFrom->GetBlockTime();
+    if (ProtocolSwitchingThresholds(hash, nThresholds) && nThresholds > 0)
+        fThresholds = true;
     int64 nStakeModifierSelectionInterval = GetStakeModifierSelectionInterval();
     const CBlockIndex* pindex = pindexFrom;
     const CBlockIndex* pindexSearch = pindexBest;
@@ -246,7 +276,11 @@ bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& 
                 if (nCountingStakeModifierHeight == mapBlockIndex[hashBlockFrom]->nHeight)
                 {
                     if (!pindexSearch->pnext)
+                    {
+                        if (fThresholds)
+                            fWithoutReturnFalse = true;
                         return true;
+                    }
                     pindexSearch = pindexSearch->pnext;
                     break;
                 }
@@ -254,7 +288,7 @@ bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& 
                     return error("GetKernelStakeModifier() : block inverse mismatch %s at height %d from block %s",
                                  pindex->GetBlockHash().ToString().c_str(), pindex->nHeight, hashBlockFrom.ToString().c_str());
             }
-            if (pindex == pindexGenesisBlock)
+            if (pindexSearch == pindexGenesisBlock)
                 return error("GetKernelStakeModifier() : reached genesis block %s at height %d from block %s",
                              pindex->GetBlockHash().ToString().c_str(), pindex->nHeight, hashBlockFrom.ToString().c_str());
         }
@@ -317,6 +351,9 @@ bool CheckStakeKernelHash(unsigned int nBits, uint256 uiBlockHash, unsigned int 
     uint64 nStakeModifier = 0;
     int nStakeModifierHeight = 0;
     int64 nStakeModifierTime = 0;
+
+    bool fWithoutReturnFalse = false;
+
     if (miningStuff)
     {
         nStakeModifier = miningStuff->nStakeModifier;
@@ -325,7 +362,7 @@ bool CheckStakeKernelHash(unsigned int nBits, uint256 uiBlockHash, unsigned int 
     }
     else
     {
-        if (!GetKernelStakeModifier(uiBlockHash, nStakeModifier, nStakeModifierHeight, nStakeModifierTime, fPrintProofOfStake))
+        if ((!GetKernelStakeModifier(uiBlockHash, nStakeModifier, nStakeModifierHeight, nStakeModifierTime, hash, fWithoutReturnFalse, fPrintProofOfStake)) || fWithoutReturnFalse)
             return false;
     }
 

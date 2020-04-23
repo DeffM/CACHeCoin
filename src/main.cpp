@@ -5639,7 +5639,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         if (fDebug)
         {
             printf("%s ", DateTimeStrFormat(GetTime()).c_str());
-            printf("received: %s (%" PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
+            printf("received: %s (%" PRIszu" bytes), sent a peer %s\n", strCommand.c_str(), vRecv.size(), pfrom->addr.ToString().c_str());
         }
     }
 
@@ -5764,14 +5764,16 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 Checkpoints::checkpointMessage.RelayTo(pfrom);
         }
 
-        nControlTimeStartCync = 0;
-        nControlTimeRestartCync = 0;
+        CAddress cAddrMe(addrMe);
+        CAddress cAddrFrom(addrFrom);
+        int intStartingHeight = pfrom->nStartingHeight;
+        nControlTimeStartCync = nControlTimeRestartCync = 0;
 
         pfrom->fSuccessfullyConnected = true;
 
         cPeerBlockCounts.input(pfrom->nStartingHeight);
 
-        GetOtherNumBlocksOfPeers(addrFrom, addrMe, pfrom->nStartingHeight, true);
+        GetOtherNumBlocksOfPeers(cAddrFrom, cAddrMe, intStartingHeight, true);
 
         printf(" 'ProcessMessage()' - receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str());
 

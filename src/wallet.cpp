@@ -1377,7 +1377,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     int64 nNewCombineThreshold = GetProofOfWorkReward(GetLastBlockIndexPow(pindexBest, false)->nBits, GetLastBlockIndexPow(pindexBest, false)->GetBlockTime()) / 3;
  
     // Keep a table of stuff to speed up POS mining
-    static map<uint256, PosMiningStuff *> mapMiningStuff;
+    static map<uint256, PosMiningStuff*> mapMiningStuff;
     
     CBigNum bnTargetPerCoinDay;
     bnTargetPerCoinDay.SetCompact(nBits);
@@ -1442,16 +1442,18 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         else
         {
             // All this takes quite a long time, and only needs to be done once for each input.
+            uint256 NoAsk;
+            uint256 hashBlockFrom;
             uint64 nStakeModifier = 0;
             int nStakeModifierHeight = 0;
             int64 nStakeModifierTime = 0;
-            uint256 hashBlockFrom;
+            bool fWithoutReturnFalse = false;
 
             // Calculate the block header hash
             hashBlockFrom = block.GetHash();
 
             // Calculate the kernel stake modifiers
-            if (GetKernelStakeModifier(hashBlockFrom, nStakeModifier, nStakeModifierHeight, nStakeModifierTime))
+            if (GetKernelStakeModifier(hashBlockFrom, nStakeModifier, nStakeModifierHeight, nStakeModifierTime, NoAsk, fWithoutReturnFalse) && !fWithoutReturnFalse)
             {
                 miningStuff = (PosMiningStuff *)malloc(sizeof(PosMiningStuff));
     

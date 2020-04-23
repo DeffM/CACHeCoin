@@ -128,6 +128,11 @@ int ClientModel::getNumBlocksOfPeers() const
     return GetOtherNumBlocksOfPeers();
 }
 
+int ClientModel::getOtherNumBlocksOfPeers() const
+{
+    return GetOtherNumBlocksOfPeers();
+}
+
 QString ClientModel::getStatusBarWarnings() const
 {
     return QString::fromStdString(GetWarnings("statusbar"));

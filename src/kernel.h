@@ -30,7 +30,7 @@ bool CheckStakeKernelHash(unsigned int nBits, uint256 uiBlockHash, unsigned int 
 
 // The stake modifier used to hash for a stake kernel is chosen as the stake
 // modifier about a selection interval later than the coin generating the kernel
-bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& nStakeModifierHeight, int64& nStakeModifierTime, bool fPrintProofOfStake=false);
+bool GetKernelStakeModifier(uint256 hashBlockFrom, uint64& nStakeModifier, int& nStakeModifierHeight, int64& nStakeModifierTime, uint256 hash, bool& fWithoutReturnFalse, bool fPrintProofOfStake=false);
   
 // Check kernel hash target and coinstake signature
 // Sets hashProofOfStake on success return
