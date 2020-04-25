@@ -117,8 +117,6 @@ bool fStakeUsePooledKeys = false;
 int nFixHardForkOne = 364000;
 int64 nFixHardForkOneTime = 1579174023;
 bool fHardForkOne = false;
-bool fHardForkTwo = false;
-bool fHardForkThree = false;
 
 // cacheproject: Spam Hash List
 std::string waitTxSpam = " Spam is missing now";
@@ -2008,7 +2006,8 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
 int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime)
 {
     CBigNum bnMinSubsidyLimit = 0;
-    if  (nPowPindexPrevTime > nPowForceTimestamp + NTest)
+    if  ((nPowPindexPrevTime > nPowForceTimestamp + NTest) ||
+         (nPowPindexPrevTime == 0 && nBlockTime > nPowForceTimestamp + NTest))
          bnMinSubsidyLimit = MIN_MINT_PROOF_OF_WORK;
     else bnMinSubsidyLimit = MINT_PROOF_OF_WORK;
     CBigNum bnMaxSubsidyLimit = MAX_MINT_PROOF_OF_WORK;
@@ -2033,7 +2032,8 @@ int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime)
             bnLowerBound = bnMidValue;
     }
 
-    if (nPowPindexPrevTime > nPowForceTimestamp + NTest)
+    if ((nPowPindexPrevTime > nPowForceTimestamp + NTest) ||
+        (nPowPindexPrevTime == 0 && nBlockTime > nPowForceTimestamp + NTest))
     {
         bnUpperBound = bnMaxSubsidyLimit - bnUpperBound;
         bnLowerBound = bnMaxSubsidyLimit - bnLowerBound;
@@ -2044,7 +2044,8 @@ int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime)
     if (fDebug && GetBoolArg("-printcreation"))
         printf("GetProofOfWorkReward() : create=%s nBits=0x%08x nSubsidy=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nBits, nSubsidy);
 
-    if  (nPowPindexPrevTime > nPowForceTimestamp + NTest)
+    if  ((nPowPindexPrevTime > nPowForceTimestamp + NTest) ||
+         (nPowPindexPrevTime == 0 && nBlockTime > nPowForceTimestamp + NTest))
          return max(nSubsidy, MIN_MINT_PROOF_OF_WORK);
     else return min(nSubsidy, MINT_PROOF_OF_WORK);
 }
@@ -3548,7 +3549,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             return false;
     }
     else
-    if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() >=
+    if (fHardForkOne && pindexNew->bnChainTrust == bnBestChainTrust && pindexPrevPos->GetBlockHash() >=
         pindexPrevPrevPos->GetBlockHash())
     {
         printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust = %s, NewChainTrust = %s\n", bnBestChainTrust.ToString().c_str(), pindexNew->bnChainTrust.ToString().c_str());
@@ -3565,7 +3566,7 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
             printf(" 'CBlock->AddToBlockIndex()' - Block not accepted\n");
     }
     else
-    if (pindexNew->bnChainTrust == bnBestChainTrust && fHardForkOne && pindexPrevPos->GetBlockHash() <
+    if (fHardForkOne && pindexNew->bnChainTrust == bnBestChainTrust && pindexPrevPos->GetBlockHash() <
         pindexPrevPrevPos->GetBlockHash())
     {
         printf(" 'CBlock->AddToBlockIndex()' - BestChainTrust = %s, NewChainTrust = %s\n", bnBestChainTrust.ToString().c_str(), pindexNew->bnChainTrust.ToString().c_str());
@@ -4347,7 +4348,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkip
                 }
             }
 
-            if (pindexPrev->GetBlockTime() > nPowForceTimestamp && IsProofOfStake() && !fHardForkOne)
+            if (!fHardForkOne && pindexPrev->GetBlockTime() > nPowForceTimestamp && IsProofOfStake())
             {
                 if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake(), false) && false)
                 {
@@ -4355,7 +4356,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkip
                 }
             }
 
-            if (IsProofOfStake() && fHardForkOne)
+            if (fHardForkOne && IsProofOfStake())
             {
                 if (nBits != GetNextTargetRequiredPos(pindexPrev, true, true))
                 {
@@ -5700,7 +5701,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             return true;
         }
 
-        if (pfrom->nVersion < 91004 && fHardForkOne)
+        if (fHardForkOne && pfrom->nVersion < 91004)
         {
             printf(" 'ProcessMessage()' - partner %s using a buggy client %d, disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion);
             pfrom->fDisconnect = true;
