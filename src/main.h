@@ -784,6 +784,7 @@ public:
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout);
     bool BasicCheckTransaction(CValidationState &state) const;
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout, CTxIndex& txindexRet);
+    bool AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTxOut voutNew, const CTxOut vout, bool fResultOnly);
 
     /** Sanity check previous transactions, then, if all checks succeed,
         mark them as spent by this transaction.

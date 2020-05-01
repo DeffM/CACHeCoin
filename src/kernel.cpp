@@ -16,6 +16,7 @@ extern int nStakeTargetSpacing;
 extern int64 nSynTimerStart;
 
 extern map<uint256, uint256> mapProofOfStake;
+extern map<COutPoint, CTxOut> mapPrevoutStakeTx;
 
 // Modifier interval: time to elapse before new modifier is computed
 // Set to 6-hour for production network and 20-minute for test network
@@ -437,6 +438,38 @@ bool CheckProofOfStake(const CTransaction& tx, unsigned int nBits, uint256 hash,
     if (!CheckStakeKernelHash(nBits, uiBlockHash, pindex->GetBlockTime(), txindex.pos.nTxPos - txindex.pos.nBlockPos, txPrev, txin.prevout, tx.nTime, hash, fDebug))
         return tx.DoS(1, error("CheckProofOfStake() : INFO: check kernel failed on coinstake %s, hashProof=%s", tx.GetHash().ToString().c_str(), hash.ToString().c_str())); // may occur during initial download or if behind on block chain sync
 
+    pindex = pindexBest;
+    int64 nOneDay = 60 * 60 * 24;
+    int64 nOneYear = nOneDay * 366;
+    const CTxOut &voutNew = txPrev.vout[txin.prevout.n];
+    int64 nStopScan = pindex->GetBlockTime() - nOneYear;
+    if (!voutNew.IsEmpty())
+    {
+        if (!mapPrevoutStakeTx.count(txin.prevout))
+            mapPrevoutStakeTx.insert(make_pair(txin.prevout, voutNew));
+    }
+
+    while (pindex)
+    {
+        if (pindex == pindexGenesisBlock)
+            break;
+        if (!pindex->IsProofOfStake())
+        {
+            pindex = pindex->pprev;
+            continue;
+        }
+
+        std::map<COutPoint, CTxOut>::iterator it = mapPrevoutStakeTx.find(pindex->prevoutStake);
+        if (it != mapPrevoutStakeTx.end())
+        {
+            const CTxOut &vout = (*it).second;
+            txPrev.AnalysisProofOfStakeReward(pindex, voutNew, vout, false);
+        }
+        if (false && pindex->GetBlockTime() <= nStopScan)
+            break;
+        pindex = pindex->pprev;
+    }
+    txPrev.AnalysisProofOfStakeReward(pindex, voutNew, voutNew, true);
     return true;
 }
 
