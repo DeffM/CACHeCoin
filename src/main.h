@@ -221,6 +221,8 @@ int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime);
 
 uint256 WantedByOrphan(const CBlock* pblockOrphan);
 
+double AnalysisProofOfStakeRewards(int64 nCoinAge);
+
 std::string GetWarnings(std::string strFor);
 
 // cacheproject: calculate Nfactor using timestamp
@@ -784,7 +786,8 @@ public:
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout);
     bool BasicCheckTransaction(CValidationState &state) const;
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout, CTxIndex& txindexRet);
-    bool AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTxOut voutNew, const CTxOut vout, bool fResultOnly);
+    bool AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTxOut voutNew,
+                                    double& dRewardCoinYearNew, bool fResultOnly);
 
     /** Sanity check previous transactions, then, if all checks succeed,
         mark them as spent by this transaction.
