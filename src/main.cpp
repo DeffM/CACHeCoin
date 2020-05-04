@@ -33,7 +33,6 @@ CCriticalSection cs_setpwalletRegistered;
 
 map<uint256, CBlock*> mapOrphanBlocks;
 map<uint256, uint256> mapProofOfStake;
-map<COutPoint, CTxOut> mapPrevoutStakeTx;
 map<uint256, CBlockIndex*> mapBlockIndex;
 int nNumberOfHashValues = 50;
 map<uint256, int64> setIgnoredBlockHashes;
@@ -41,6 +40,7 @@ int nMaxString = 512;
 map<CAddress, int> mapBlocksHeightByPeers;
 map<uint256, CBlock*> mapDuplicateStakeBlocks;
 map<uint256, CTransaction> mapOrphanTransactions;
+map<COutPoint, CTxDestination> mapPrevoutStakeAddress;
 map<uint256, set<uint256> > mapOrphanTransactionsByPrev;
 
 typedef boost::bimap<uint256, uint256> setbimap;
@@ -2263,8 +2263,8 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             if (!GetCoinAge(txdb, nCoinAge))
                 return state.Invalid(error("CTransaction->CheckInputsLevelTwo() : %s unable to get coin age for coinstake", GetHash().ToString().substr(0,10).c_str()));
 
-            int64 nStakeNewReward = AnalysisProofOfStakeRewards(nCoinAge) - GetMinFee() + MIN_TX_FEE;
             int64 nStakeReward = GetValueOut() - nValueIn;
+            int64 nStakeNewReward = GetAnalysisProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE;
             if (nStakeReward > GetProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE)
                 return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s stake reward exceeded", GetHash().ToString().substr(0,10).c_str()));
             if (9999999999999999 > nStakeNewReward)
@@ -4112,7 +4112,6 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     //double nOneYear = nOneDay * 366;
     double nOneYear = 86400; //fast test
 
-    CTxDestination address;
     CTxDestination addressNew;
     static int64 nTotalMintInOneYear = 0;
     static int64 nTotalMintInOneYearTemp = 0;
@@ -4141,11 +4140,11 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 continue;
             }
 
-            std::map<COutPoint, CTxOut>::iterator it = mapPrevoutStakeTx.find(pindex->prevoutStake);
-            if (it != mapPrevoutStakeTx.end())
+            std::map<COutPoint, CTxDestination>::iterator it = mapPrevoutStakeAddress.find(pindex->prevoutStake);
+            if (it != mapPrevoutStakeAddress.end())
             {
-                const CTxOut &vout = (*it).second;
-                if (ExtractDestination(vout.scriptPubKey, address) && ExtractDestination(voutNew.scriptPubKey, addressNew))
+                CTxDestination& address((*it).second);
+                if (ExtractDestination(voutNew.scriptPubKey, addressNew))
                 {
                     nTotalGenerateBlocksInOneYearTemp++;
                     nTotalMintInOneYearTemp += pindex->nMint;
@@ -4230,8 +4229,8 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - RewardCoinYear Old %"PRI64d"\n", nRewardCoinYear);
 
-            double dMaximumRewardReduction = 4.5 / nOneHundredPercent * dExcellenceMintingCoins;
-            dRewardCoinYearNew = (5 - dMaximumRewardReduction) * CENT;
+            double dMaximumRewardReduction = 2.7 / nOneHundredPercent * dExcellenceMintingCoins;
+            dRewardCoinYearNew = (3.3 - dMaximumRewardReduction) * CENT;
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - RewardCoinYear New %"PRI64d"\n", (int64)dRewardCoinYearNew);
         }
@@ -4239,15 +4238,29 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     return true;
 }
 
-double AnalysisProofOfStakeRewards(int64 nCoinAge)
+double GetAnalysisProofOfStakeReward(int64 nCoinAge)
 {
     CTxOut voutNew;
     CTransaction tx;
     double nSubsidy = 0;
     double dRewardCoinYearNew;
     CBlockIndex* pindex = NULL;
+
+    int nDaysInYear = 365;
+    int nYear = atol(DateTimeStrFormat("%G", GetTime()).c_str());
+    while (nYear%4 == 0)
+    {
+        if (nYear%100 == 0 && nYear%400 != 0)
+            break;
+        nDaysInYear += 1;
+        break;
+    }
+
+    if (GetBoolArg("-analysisproofofstakedebug", 1))
+        printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Now %d year, is %d days\n", nYear, nDaysInYear);
+
     if (tx.AnalysisProofOfStakeReward(pindex, voutNew, dRewardCoinYearNew, true))
-        nSubsidy = nCoinAge * 33 * dRewardCoinYearNew / (365 * 33 + 8);
+        nSubsidy = nCoinAge / nDaysInYear * dRewardCoinYearNew;
 
     return nSubsidy;
 }

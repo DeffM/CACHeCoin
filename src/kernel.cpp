@@ -16,7 +16,7 @@ extern int nStakeTargetSpacing;
 extern int64 nSynTimerStart;
 
 extern map<uint256, uint256> mapProofOfStake;
-extern map<COutPoint, CTxOut> mapPrevoutStakeTx;
+extern map<COutPoint, CTxDestination> mapPrevoutStakeAddress;
 
 // Modifier interval: time to elapse before new modifier is computed
 // Set to 6-hour for production network and 20-minute for test network
@@ -439,12 +439,13 @@ bool CheckProofOfStake(const CTransaction& tx, unsigned int nBits, uint256 hash,
         return tx.DoS(1, error("CheckProofOfStake() : INFO: check kernel failed on coinstake %s, hashProof=%s", tx.GetHash().ToString().c_str(), hash.ToString().c_str())); // may occur during initial download or if behind on block chain sync
 
     pindex = pindexBest;
+    CTxDestination address;
     double dRewardCoinYearNew;
     const CTxOut &voutNew = txPrev.vout[txin.prevout.n];
-    if (!voutNew.IsEmpty())
+    if (!voutNew.IsEmpty() && ExtractDestination(voutNew.scriptPubKey, address))
     {
-        if (!mapPrevoutStakeTx.count(txin.prevout))
-            mapPrevoutStakeTx.insert(make_pair(txin.prevout, voutNew));
+        if (!mapPrevoutStakeAddress.count(txin.prevout))
+            mapPrevoutStakeAddress.insert(make_pair(txin.prevout, address));
         txPrev.AnalysisProofOfStakeReward(pindex, voutNew, dRewardCoinYearNew, false);
     }
     return true;

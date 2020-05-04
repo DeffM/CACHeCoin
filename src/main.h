@@ -221,7 +221,7 @@ int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime);
 
 uint256 WantedByOrphan(const CBlock* pblockOrphan);
 
-double AnalysisProofOfStakeRewards(int64 nCoinAge);
+double GetAnalysisProofOfStakeReward(int64 nCoinAge);
 
 std::string GetWarnings(std::string strFor);
 
