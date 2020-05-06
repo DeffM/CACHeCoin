@@ -2264,11 +2264,13 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
                 return state.Invalid(error("CTransaction->CheckInputsLevelTwo() : %s unable to get coin age for coinstake", GetHash().ToString().substr(0,10).c_str()));
 
             int64 nStakeReward = GetValueOut() - nValueIn;
-            int64 nStakeNewReward = GetAnalysisProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE;
+            int64 nStakeAnalysisReward = GetAnalysisProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE;
             if (nStakeReward > GetProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE)
                 return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s stake reward exceeded", GetHash().ToString().substr(0,10).c_str()));
-            if (9999999999999999 > nStakeNewReward)
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Reward New Value %"PRI64d"\n", nStakeNewReward);
+
+            if (nStakeReward != nStakeAnalysisReward)
+                printf("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward);
+                //return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward));
         }
         else
         {
@@ -4112,7 +4114,6 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     //double nOneYear = nOneDay * 366;
     double nOneYear = 86400; //fast test
 
-    CTxDestination addressNew;
     static int64 nTotalMintInOneYear = 0;
     static int64 nTotalMintInOneYearTemp = 0;
     static int64 nAnalysisTotalMintInOneYear = 0;
@@ -4121,6 +4122,7 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     static int nAnalysisTotalGenerateBlocksInOneYear = 0;
 
     static CTxOut voutNewTemp;
+    CTxDestination addressNew;
 
     if (!fResultOnly)
     {
@@ -4183,11 +4185,11 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Total minted during the study period(Analysis) %g\n", (double)nAnalysisTotalMintInOneYear / (double)COIN);
             }
 
-            dProfitabilityGen = dProfitabilityGen / nTotalGenerateBlocksInOneYear * nAnalysisTotalGenerateBlocksInOneYear;
+            dProfitabilityGen = (dProfitabilityGen / nTotalGenerateBlocksInOneYear * nAnalysisTotalGenerateBlocksInOneYear);
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - ProfitabilityGen %g\n", dProfitabilityGen);
 
-            dProfitabilityMint = dProfitabilityMint / nTotalMintInOneYear * nAnalysisTotalMintInOneYear;
+            dProfitabilityMint = (dProfitabilityMint / nTotalMintInOneYear * nAnalysisTotalMintInOneYear);
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - ProfitabilityMint %g\n", dProfitabilityMint);
 
@@ -4211,7 +4213,10 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                     if (mapBlockIndex[(*mi).first]->GetBlockTime() > pindexBest->GetBlockTime() - (int64)nOneYear)
                         dExcellenceMintingCoins += ((*mi).second - (dExcellenceMintingCoins + (dPosTargetSpacingAdjustedTolerance * 1))); //fast test
                 if (GetBoolArg("-analysisproofofstakedebug", 1))
+                {
                     printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Graphics builder %g\n", dExcellenceMintingCoins);
+                    printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Graphics builder %"PRI64d"\n", (*mi).second);
+                }
             }
 
             if (dExcellenceMintingCoins > nOneYear)
@@ -4221,7 +4226,7 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Excellence Minting Coins, as a percentage(100) %g\n", dExcellenceMintingCoins);
 
-            dExcellenceMintingCoins = dExcellenceMintingCoins / nOneHundredPercent * dProfitabilityTotal;
+            dExcellenceMintingCoins = (dExcellenceMintingCoins / nOneHundredPercent * dProfitabilityTotal);
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Excellence Minting Coins, as a percentage(ProfitabilityTotal) %g\n", dExcellenceMintingCoins);
 

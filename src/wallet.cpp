@@ -14,6 +14,8 @@
 using namespace std;
 extern int nStakeMaxAge;
 
+extern map<COutPoint, CTxDestination> mapPrevoutStakeAddress;
+
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -1580,6 +1582,15 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             txNew.vin.push_back(CTxIn(pcoin.first->GetHash(), pcoin.second));
             nCredit += pcoin.first->vout[pcoin.second].nValue;
             vwtxPrev.push_back(pcoin.first);
+
+            CTxDestination address;
+            double dRewardCoinYearNew;
+            if (!txNew.vout[txNew.vin[0].prevout.n].IsEmpty() && ExtractDestination(txNew.vout[txNew.vin[0].prevout.n].scriptPubKey, address))
+            {
+                if (!mapPrevoutStakeAddress.count(txNew.vin[0].prevout))
+                    mapPrevoutStakeAddress.insert(make_pair(txNew.vin[0].prevout, address));
+                txNew.AnalysisProofOfStakeReward(pindexBest, txNew.vout[txNew.vin[0].prevout.n], dRewardCoinYearNew, false);
+            }
         }
     }
 
@@ -1587,9 +1598,20 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     {
         uint64 nCoinAge;
         CTxDB txdb("r");
+        int64 nCreditNew = nCredit;
         if (!txNew.GetCoinAge(txdb, nCoinAge))
             return error("'CWallet->CreateCoinStake' : failed to calculate coin age");
+
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+            printf(" 'CWallet->CreateTransaction()' - Generate the base %"PRI64d"\n", nCredit);
+
         nCredit += GetProofOfStakeReward(nCoinAge);
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+            printf(" 'CWallet->CreateTransaction()' - Generate CreditOld %"PRI64d"\n", nCredit);
+
+        nCreditNew += GetAnalysisProofOfStakeReward(nCoinAge);
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+            printf(" 'CWallet->CreateTransaction()' - Generate CreditNew %"PRI64d"\n", nCreditNew);
     }
 
     int64 nMinFee = 0;
