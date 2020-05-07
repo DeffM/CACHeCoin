@@ -163,6 +163,7 @@ struct CDiskBlockPos;
 
 int GetNumBlocksOfPeers();
 int GetOtherNumBlocksOfPeers();
+int nProtocolSwitchingThresholds();
 
 unsigned int ComputeMinWork(unsigned int nBase, int64 nTime, int64 nBlockTime);
 unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake);
@@ -1433,13 +1434,13 @@ private:
 class CBlockIndex : public CBlockHeader
 {
 public:
-    const uint256* phashBlock;
+    int nHeight;
     CBlockIndex* pprev;
     CBlockIndex* pnext;
     unsigned int nFile;
-    unsigned int nBlockPos;
     CBigNum bnChainTrust; // ppcoin: trust score of block chain
-    int nHeight;
+    unsigned int nBlockPos;
+    const uint256* phashBlock;
 
     int64 nMint;
     int64 nMoneySupply;
@@ -1456,61 +1457,61 @@ public:
     unsigned int nStakeModifierChecksum; // checksum of index; in-memeory only
 
     // proof-of-stake specific fields
+    CTxOut txPrevOutStake;
     COutPoint prevoutStake;
     unsigned int nStakeTime;
     uint256 hashProofOfStake;
 
-
     CBlockIndex()
     {
-        phashBlock = NULL;
-        fHashed = false;
-        CBlockHeader::SetNull();
+        nFile = 0;
+        nMint = 0;
+        nFlags = 0;
+        nHeight = 0;
         pprev = NULL;
         pnext = NULL;
-        nFile = 0;
         nBlockPos = 0;
-        nHeight = 0;
+        nStakeTime = 0;
+        fHashed = false;
         bnChainTrust = 0;
-        nMint = 0;
         nMoneySupply = 0;
-        nFlags = 0;
+        phashBlock = NULL;
         nStakeModifier = 0;
-        nStakeModifierChecksum = 0;
         hashProofOfStake = 0;
         prevoutStake.SetNull();
-        nStakeTime = 0;
-
+        CBlockHeader::SetNull();
+        txPrevOutStake.SetNull();
+        nStakeModifierChecksum = 0;
     }
 
     CBlockIndex(unsigned int nFileIn, unsigned int nBlockPosIn, CBlock& block)
         : CBlockHeader(block)
     {
-        phashBlock = NULL;
+        nMint = 0;
+        nFlags = 0;
+        nHeight = 0;
         pprev = NULL;
         pnext = NULL;
         nFile = nFileIn;
-        nBlockPos = nBlockPosIn;
-        nHeight = 0;
         bnChainTrust = 0;
-        nMint = 0;
         nMoneySupply = 0;
-        nFlags = 0;
+        phashBlock = NULL;
         nStakeModifier = 0;
-        nStakeModifierChecksum = 0;
         hashProofOfStake = 0;
+        nBlockPos = nBlockPosIn;
+        nStakeModifierChecksum = 0;
+
         if (block.IsProofOfStake())
         {
             SetProofOfStake();
-            prevoutStake = block.vtx[1].vin[0].prevout;
             nStakeTime = block.vtx[1].nTime;
+            prevoutStake = block.vtx[1].vin[0].prevout;
         }
         else
         {
-            prevoutStake.SetNull();
             nStakeTime = 0;
+            prevoutStake.SetNull();
         }
-        
     }
 
     const CBlockHeader & GetBlockHeader() const
@@ -1576,7 +1577,6 @@ public:
      */
     static bool IsSuperMajority(int minVersion, const CBlockIndex* pstart,
                                 unsigned int nRequired, unsigned int nToCheck);
-
 
     bool IsProofOfWork() const
     {
@@ -1662,43 +1662,45 @@ public:
     (
         if (!(nType & SER_GETHASH))
             READWRITE(nVersion);
-        READWRITE(hashCached);
+        READWRITE(nMint);
+        READWRITE(nFile);
+        READWRITE(nFlags);
+        READWRITE(nHeight);
         SetHash(hashCached); // sets the hash if reading from disk; does nothing if writing
         READWRITE(hashNext);
-        READWRITE(nFile);
         READWRITE(nBlockPos);
-        READWRITE(nHeight);
-        READWRITE(nMint);
+        READWRITE(hashCached);
         READWRITE(nMoneySupply);
-        READWRITE(nFlags);
         READWRITE(nStakeModifier);
         if (IsProofOfStake())
         {
-            READWRITE(prevoutStake);
             READWRITE(nStakeTime);
+            READWRITE(prevoutStake);
+            READWRITE(txPrevOutStake);
             READWRITE(hashProofOfStake);
         }
-        else if (fRead)
+        else
+        if (fRead)
         {
-            const_cast<CDiskBlockIndex*>(this)->prevoutStake.SetNull();
             const_cast<CDiskBlockIndex*>(this)->nStakeTime = 0;
             const_cast<CDiskBlockIndex*>(this)->hashProofOfStake = 0;
+            const_cast<CDiskBlockIndex*>(this)->prevoutStake.SetNull();
+            const_cast<CDiskBlockIndex*>(this)->txPrevOutStake.SetNull();
         }
 
         // block header
-        READWRITE(this->nVersion);
-        READWRITE(hashPrev);
-        READWRITE(hashMerkleRoot);
         READWRITE(nTime);
         READWRITE(nBits);
         READWRITE(nNonce);
+        READWRITE(hashPrev);
+        READWRITE(this->nVersion);
+        READWRITE(hashMerkleRoot);
     )
 
     uint256 GetBlockHash() const
     {
         return GetHash();
     }
-
 
     std::string ToString() const
     {

@@ -16,7 +16,7 @@ extern int nStakeTargetSpacing;
 extern int64 nSynTimerStart;
 
 extern map<uint256, uint256> mapProofOfStake;
-extern map<COutPoint, CTxDestination> mapPrevoutStakeAddress;
+extern map<COutPoint, CTxOut> mapPrevoutStakeOut;
 
 // Modifier interval: time to elapse before new modifier is computed
 // Set to 6-hour for production network and 20-minute for test network
@@ -31,6 +31,7 @@ static std::map<int, unsigned int> mapStakeModifierCheckpoints =
 static std::map<int64, unsigned int> mapProtocolSwitchingThresholds =
     boost::assign::map_list_of
     (int64(1587476876), 1)
+    (int64(9587476876), 2)
     ;
 
 bool ProtocolSwitchingThresholds(uint256 hash, unsigned int& nThresholds)
@@ -50,6 +51,16 @@ bool ProtocolSwitchingThresholds(uint256 hash, unsigned int& nThresholds)
         nThresholds = mapProtocolSwitchingThresholds.find(nThresholdsTime)->second;
 
     return true;
+}
+
+int nProtocolSwitchingThresholds()
+{
+    uint256 hash = 0;
+    unsigned int nThresholds = 0;
+    if (ProtocolSwitchingThresholds(hash, nThresholds))
+        nThresholds += 0;
+
+    return nThresholds;
 }
 
 // Get the last stake modifier and its generation time from a given block
@@ -442,10 +453,10 @@ bool CheckProofOfStake(const CTransaction& tx, unsigned int nBits, uint256 hash,
     CTxDestination address;
     double dRewardCoinYearNew;
     const CTxOut &voutNew = txPrev.vout[txin.prevout.n];
-    if (!voutNew.IsEmpty() && ExtractDestination(voutNew.scriptPubKey, address))
+    if (!voutNew.IsEmpty() && pindex)
     {
-        if (!mapPrevoutStakeAddress.count(txin.prevout))
-            mapPrevoutStakeAddress.insert(make_pair(txin.prevout, address));
+        if (!mapPrevoutStakeOut.count(txin.prevout))
+            mapPrevoutStakeOut.insert(make_pair(txin.prevout, voutNew));
         txPrev.AnalysisProofOfStakeReward(pindex, voutNew, dRewardCoinYearNew, false);
     }
     return true;

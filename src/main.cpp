@@ -38,9 +38,9 @@ int nNumberOfHashValues = 50;
 map<uint256, int64> setIgnoredBlockHashes;
 int nMaxString = 512;
 map<CAddress, int> mapBlocksHeightByPeers;
+map<COutPoint, CTxOut> mapPrevoutStakeOut;
 map<uint256, CBlock*> mapDuplicateStakeBlocks;
 map<uint256, CTransaction> mapOrphanTransactions;
-map<COutPoint, CTxDestination> mapPrevoutStakeAddress;
 map<uint256, set<uint256> > mapOrphanTransactionsByPrev;
 
 typedef boost::bimap<uint256, uint256> setbimap;
@@ -3259,7 +3259,13 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     // Add to mapBlockIndex
     map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.insert(make_pair(hash, pindexNew)).first;
     if (pindexNew->IsProofOfStake())
+    {
+        std::map<COutPoint, CTxOut>::iterator it = mapPrevoutStakeOut.find(pindexNew->prevoutStake);
+        if (it != mapPrevoutStakeOut.end())
+            pindexNew->txPrevOutStake = (*it).second;
+
         setStakeSeen.insert(make_pair(pindexNew->prevoutStake, pindexNew->nStakeTime));
+    }
     pindexNew->phashBlock = &((*mi).first);
 
     // Write to disk block index
@@ -4122,6 +4128,8 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     static int nAnalysisTotalGenerateBlocksInOneYear = 0;
 
     static CTxOut voutNewTemp;
+
+    CTxDestination address;
     CTxDestination addressNew;
 
     if (!fResultOnly)
@@ -4142,11 +4150,11 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 continue;
             }
 
-            std::map<COutPoint, CTxDestination>::iterator it = mapPrevoutStakeAddress.find(pindex->prevoutStake);
-            if (it != mapPrevoutStakeAddress.end())
+            std::map<COutPoint, CTxOut>::iterator it = mapPrevoutStakeOut.find(pindex->prevoutStake);
+            if (it != mapPrevoutStakeOut.end())
             {
-                CTxDestination& address((*it).second);
-                if (ExtractDestination(voutNew.scriptPubKey, addressNew))
+                const CTxOut &vout = (*it).second;
+                if (ExtractDestination(vout.scriptPubKey, address) && ExtractDestination(voutNew.scriptPubKey, addressNew))
                 {
                     nTotalGenerateBlocksInOneYearTemp++;
                     nTotalMintInOneYearTemp += pindex->nMint;
@@ -4249,7 +4257,7 @@ double GetAnalysisProofOfStakeReward(int64 nCoinAge)
     CTransaction tx;
     double nSubsidy = 0;
     double dRewardCoinYearNew;
-    CBlockIndex* pindex = NULL;
+    CBlockIndex* pindex = pindexBest;
 
     int nDaysInYear = 365;
     int nYear = atol(DateTimeStrFormat("%G", GetTime()).c_str());

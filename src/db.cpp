@@ -24,6 +24,9 @@ using namespace boost;
 
 unsigned int nWalletDBUpdated;
 
+extern map<COutPoint, CTxOut> mapPrevoutStakeOut;
+
+
 
 
 //
@@ -855,24 +858,25 @@ bool CTxDB::LoadBlockIndexGuts()
             ssValue >> diskindex;
 
             // Construct block index object
-            CBlockIndex* pindexNew = InsertBlockIndex(diskindex.GetBlockHash());
-            pindexNew->pprev          = InsertBlockIndex(diskindex.hashPrev);
-            pindexNew->pnext          = InsertBlockIndex(diskindex.hashNext);
-            pindexNew->nFile          = diskindex.nFile;
-            pindexNew->nBlockPos      = diskindex.nBlockPos;
-            pindexNew->nHeight        = diskindex.nHeight;
-            pindexNew->nMint          = diskindex.nMint;
-            pindexNew->nMoneySupply   = diskindex.nMoneySupply;
-            pindexNew->nFlags         = diskindex.nFlags;
-            pindexNew->nStakeModifier = diskindex.nStakeModifier;
-            pindexNew->prevoutStake   = diskindex.prevoutStake;
-            pindexNew->nStakeTime     = diskindex.nStakeTime;
-            pindexNew->hashProofOfStake = diskindex.hashProofOfStake;
-            pindexNew->nVersion       = diskindex.nVersion;
-            pindexNew->hashMerkleRoot = diskindex.hashMerkleRoot;
-            pindexNew->nTime          = diskindex.nTime;
-            pindexNew->nBits          = diskindex.nBits;
-            pindexNew->nNonce         = diskindex.nNonce;
+            CBlockIndex* pindexNew         = InsertBlockIndex(diskindex.GetBlockHash());
+            pindexNew->pprev               = InsertBlockIndex(diskindex.hashPrev);
+            pindexNew->pnext               = InsertBlockIndex(diskindex.hashNext);
+            pindexNew->nFile               = diskindex.nFile;
+            pindexNew->nBlockPos           = diskindex.nBlockPos;
+            pindexNew->nHeight             = diskindex.nHeight;
+            pindexNew->nMint               = diskindex.nMint;
+            pindexNew->nMoneySupply        = diskindex.nMoneySupply;
+            pindexNew->nFlags              = diskindex.nFlags;
+            pindexNew->nStakeModifier      = diskindex.nStakeModifier;
+            pindexNew->prevoutStake        = diskindex.prevoutStake;
+            pindexNew->txPrevOutStake      = diskindex.txPrevOutStake;
+            pindexNew->nStakeTime          = diskindex.nStakeTime;
+            pindexNew->hashProofOfStake    = diskindex.hashProofOfStake;
+            pindexNew->nVersion            = diskindex.nVersion;
+            pindexNew->hashMerkleRoot      = diskindex.hashMerkleRoot;
+            pindexNew->nTime               = diskindex.nTime;
+            pindexNew->nBits               = diskindex.nBits;
+            pindexNew->nNonce              = diskindex.nNonce;
 
             // Watch for genesis block
             if (pindexGenesisBlock == NULL && diskindex.GetBlockHash() == hashGenesisBlock)
@@ -883,7 +887,10 @@ bool CTxDB::LoadBlockIndexGuts()
 
             // ppcoin: build setStakeSeen
             if (pindexNew->IsProofOfStake())
+            {
                 setStakeSeen.insert(make_pair(pindexNew->prevoutStake, pindexNew->nStakeTime));
+                mapPrevoutStakeOut.insert(make_pair(pindexNew->prevoutStake, pindexNew->txPrevOutStake));
+            }
         }
         else
         {
