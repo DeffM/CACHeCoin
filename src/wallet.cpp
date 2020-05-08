@@ -1399,7 +1399,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     int64 nBalance = GetBalance();
     int64 nReserveBalance = 0;
     if (mapArgs.count("-reservebalance") && !ParseMoney(mapArgs["-reservebalance"], nReserveBalance))
-        return error("'CWallet->CreateCoinStake' : invalid reserve balance amount");
+        return error("'CWallet->CreateCoinStake()' : invalid reserve balance amount");
 
     if (nBalance <= nReserveBalance)
         return false;
@@ -1489,7 +1489,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             {
                 // Found a kernel
                 if (fDebug && GetBoolArg("-printcoinstake"))
-                    printf("'CWallet->CreateCoinStake' : kernel found\n");
+                    printf("'CWallet->CreateCoinStake()' : kernel found\n");
 
                 vector<valtype> vSolutions;
                 txnouttype whichType;
@@ -1498,17 +1498,17 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
                 if (!Solver(scriptPubKeyKernel, whichType, vSolutions))
                 {
                     if (fDebug && GetBoolArg("-printcoinstake"))
-                        printf("'CWallet->CreateCoinStake' : failed to parse kernel\n");
+                        printf("'CWallet->CreateCoinStake()' : failed to parse kernel\n");
                     break;
                 }
 
                 if (fDebug && GetBoolArg("-printcoinstake"))
-                    printf("'CWallet->CreateCoinStake' : parsed kernel type=%d\n", whichType);
+                    printf("'CWallet->CreateCoinStake()' : parsed kernel type=%d\n", whichType);
 
                 if (whichType != TX_PUBKEY && whichType != TX_PUBKEYHASH)
                 {
                     if (fDebug && GetBoolArg("-printcoinstake"))
-                        printf("'CWallet->CreateCoinStake' : no support for kernel type=%d\n", whichType);
+                        printf("'CWallet->CreateCoinStake()' : no support for kernel type=%d\n", whichType);
                     break;  // only support pay to public key and pay to address
                 }
 
@@ -1519,7 +1519,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
                     if (!keystore.GetKey(uint160(vSolutions[0]), key))
                     {
                         if (fDebug && GetBoolArg("-printcoinstake"))
-                            printf("'CWallet->CreateCoinStake' : failed to get key for kernel type=%d\n", whichType);
+                            printf("'CWallet->CreateCoinStake()' : failed to get key for kernel type=%d\n", whichType);
                         break;  // unable to find corresponding public key
                     }
                     scriptPubKeyOut << key.GetPubKey() << OP_CHECKSIG;
@@ -1537,7 +1537,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
                     txNew.vout.push_back(CTxOut(0, scriptPubKeyOut)); //split stake
 
                 if (fDebug && GetBoolArg("-printcoinstake"))
-                    printf("'CWallet->CreateCoinStake' : added kernel type=%d\n", whichType);
+                    printf("'CWallet->CreateCoinStake()' : added kernel type=%d\n", whichType);
                 fGoSleep = true;
                 fKernelFound = true;
                 break;
@@ -1582,17 +1582,18 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             if (pcoin.first->nTime + nStakeMaxAge > txNew.nTime)
                 continue;
 
-            txNew.vin.push_back(CTxIn(pcoin.first->GetHash(), pcoin.second));
-            nCredit += pcoin.first->vout[pcoin.second].nValue;
-            vwtxPrev.push_back(pcoin.first);
-
             double dRewardCoinYearNew;
             if (!txNew.vout[txNew.vin[0].prevout.n].IsEmpty() && pindexBest)
             {
+                if (!txNew.AnalysisProofOfStakeReward(pindexBest, txNew.vout[txNew.vin[0].prevout.n], dRewardCoinYearNew, false))
+                    continue;
                 if (!mapPrevoutStakeOut.count(txNew.vin[0].prevout))
                     mapPrevoutStakeOut.insert(make_pair(txNew.vin[0].prevout, txNew.vout[txNew.vin[0].prevout.n]));
-                txNew.AnalysisProofOfStakeReward(pindexBest, txNew.vout[txNew.vin[0].prevout.n], dRewardCoinYearNew, false);
             }
+
+            txNew.vin.push_back(CTxIn(pcoin.first->GetHash(), pcoin.second));
+            nCredit += pcoin.first->vout[pcoin.second].nValue;
+            vwtxPrev.push_back(pcoin.first);
         }
     }
 
@@ -1600,20 +1601,20 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     {
         uint64 nCoinAge;
         CTxDB txdb("r");
-        int64 nStakeAnalysisReward = nCredit;
+        int64 nStakeAnalysisCredit = nCredit;
         if (!txNew.GetCoinAge(txdb, nCoinAge))
-            return error("'CWallet->CreateCoinStake' : failed to calculate coin age");
+            return error("'CWallet->CreateCoinStake()' : failed to calculate coin age");
 
         if (GetBoolArg("-analysisproofofstakedebug", 1))
-            printf(" 'CWallet->CreateTransaction()' - Generate the base %"PRI64d"\n", nCredit);
+            printf(" 'CWallet->CreateCoinStake()' - Generate the base %"PRI64d"\n", nCredit);
 
         nCredit += GetProofOfStakeReward(nCoinAge);
         if (GetBoolArg("-analysisproofofstakedebug", 1))
-            printf(" 'CWallet->CreateTransaction()' - Generate CreditOld %"PRI64d"\n", nCredit);
+            printf(" 'CWallet->CreateCoinStake()' - Generate CreditOld %"PRI64d"\n", nCredit);
 
-        nStakeAnalysisReward += GetAnalysisProofOfStakeReward(nCoinAge);
+        nStakeAnalysisCredit += GetAnalysisProofOfStakeReward(nCoinAge);
         if (GetBoolArg("-analysisproofofstakedebug", 1))
-            printf(" 'CWallet->CreateTransaction()' - Generate CreditNew %"PRI64d"\n", nStakeAnalysisReward);
+            printf(" 'CWallet->CreateCoinStake()' - Generate CreditNew %"PRI64d"\n", nStakeAnalysisCredit);
     }
 
     int64 nMinFee = 0;
@@ -1633,13 +1634,13 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         BOOST_FOREACH(const CWalletTx* pcoin, vwtxPrev)
         {
             if (!SignSignature(*this, *pcoin, txNew, nIn++))
-                return error("'CWallet->CreateCoinStake' : failed to sign coinstake");
+                return error("'CWallet->CreateCoinStake()' : failed to sign coinstake");
         }
 
         // Limit size
         unsigned int nBytes = ::GetSerializeSize(txNew, SER_NETWORK, PROTOCOL_VERSION);
         if (nBytes >= MAX_BLOCK_SIZE_GEN/5)
-            return error("'CWallet->CreateCoinStake' : exceeded coinstake size limit");
+            return error("'CWallet->CreateCoinStake()' : exceeded coinstake size limit");
 
         // Check enough fee is paid
         if (nMinFee < txNew.GetMinFee() - MIN_TX_FEE)
@@ -1650,7 +1651,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         else
         {
             if (fDebug && GetBoolArg("-printfee"))
-                printf("'CWallet->CreateCoinStake' : fee for coinstake %s\n", FormatMoney(nMinFee).c_str());
+                printf("'CWallet->CreateCoinStake()' : fee for coinstake %s\n", FormatMoney(nMinFee).c_str());
             break;
         }
     }
