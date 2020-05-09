@@ -4117,9 +4117,9 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     double dPosTargetSpacingCalculated = 0;
     double dPosTargetSpacingAdjustedTolerance = 0;
 
-    //double nOneDay = 60 * 60 * 24;
-    //double nOneYear = nOneDay * 366;
-    double nOneYear = 86400; //fast test
+    double nOneDay = 60 * 60 * 24;
+    double nOneYear = nOneDay * 366;
+    //double nHalfYear = nOneYear / 2;
 
     static int64 nTotalMintInOneYear = 0;
     static int64 nTotalMintInOneYearTemp = 0;
@@ -4217,13 +4217,13 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(Analysis) %g\n", dPosTargetSpacingAdjustedTolerance);
 
-            nOneYear += (dPosTargetSpacingAdjustedTolerance * 1); //fast test
+            nOneYear += (dPosTargetSpacingAdjustedTolerance * 3);
 
             for (map<uint256, int64>::iterator mi = mapTimeIntervalBlocks.begin(); mi != mapTimeIntervalBlocks.end(); ++mi)
             {
-                if ((*mi).second > dExcellenceMintingCoins + (dPosTargetSpacingAdjustedTolerance * 1)) //fast test
+                if ((*mi).second > dExcellenceMintingCoins + (dPosTargetSpacingAdjustedTolerance * 3))
                     if (mapBlockIndex[(*mi).first]->GetBlockTime() > pindexBest->GetBlockTime() - (int64)nOneYear)
-                        dExcellenceMintingCoins += ((*mi).second - (dExcellenceMintingCoins + (dPosTargetSpacingAdjustedTolerance * 1))); //fast test
+                        dExcellenceMintingCoins += ((*mi).second - (dExcellenceMintingCoins + (dPosTargetSpacingAdjustedTolerance * 3)));
                 if (GetBoolArg("-analysisproofofstakedebug", 1))
                 {
                     printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Graphics builder %g\n", dExcellenceMintingCoins);
