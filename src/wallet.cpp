@@ -14,8 +14,6 @@
 using namespace std;
 extern int nStakeMaxAge;
 
-extern map<COutPoint, CTxOut> mapPrevoutStakeOut;
-
 
 
 
@@ -1585,10 +1583,8 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             double dRewardCoinYearNew;
             if (!txNew.vout[txNew.vin[0].prevout.n].IsEmpty() && pindexBest)
             {
-                if (!txNew.AnalysisProofOfStakeReward(pindexBest, txNew.vout[txNew.vin[0].prevout.n], dRewardCoinYearNew, false))
+                if (!txNew.AnalysisProofOfStakeReward(pindexBest, txNew.vout[txNew.vin[0].prevout.n], txNew.vin[0].prevout, dRewardCoinYearNew, false))
                     continue;
-                if (!mapPrevoutStakeOut.count(txNew.vin[0].prevout))
-                    mapPrevoutStakeOut.insert(make_pair(txNew.vin[0].prevout, txNew.vout[txNew.vin[0].prevout.n]));
             }
 
             txNew.vin.push_back(CTxIn(pcoin.first->GetHash(), pcoin.second));

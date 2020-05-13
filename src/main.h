@@ -787,7 +787,7 @@ public:
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout);
     bool BasicCheckTransaction(CValidationState &state) const;
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout, CTxIndex& txindexRet);
-    bool AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTxOut voutNew,
+    bool AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTxOut voutNew, const COutPoint prevout,
                                     double& dRewardCoinYearNew, bool fResultOnly);
 
     /** Sanity check previous transactions, then, if all checks succeed,
@@ -1457,10 +1457,10 @@ public:
     unsigned int nStakeModifierChecksum; // checksum of index; in-memeory only
 
     // proof-of-stake specific fields
-    CTxOut txPrevOutStake;
     COutPoint prevoutStake;
     unsigned int nStakeTime;
     uint256 hashProofOfStake;
+    std::string prevOutStakeAddress;
 
     CBlockIndex()
     {
@@ -1480,7 +1480,7 @@ public:
         hashProofOfStake = 0;
         prevoutStake.SetNull();
         CBlockHeader::SetNull();
-        txPrevOutStake.SetNull();
+        prevOutStakeAddress = "";
         nStakeModifierChecksum = 0;
     }
 
@@ -1676,8 +1676,8 @@ public:
         {
             READWRITE(nStakeTime);
             READWRITE(prevoutStake);
-            READWRITE(txPrevOutStake);
             READWRITE(hashProofOfStake);
+            READWRITE(prevOutStakeAddress);
         }
         else
         if (fRead)
@@ -1685,7 +1685,7 @@ public:
             const_cast<CDiskBlockIndex*>(this)->nStakeTime = 0;
             const_cast<CDiskBlockIndex*>(this)->hashProofOfStake = 0;
             const_cast<CDiskBlockIndex*>(this)->prevoutStake.SetNull();
-            const_cast<CDiskBlockIndex*>(this)->txPrevOutStake.SetNull();
+            const_cast<CDiskBlockIndex*>(this)->prevOutStakeAddress = "";
         }
 
         // block header

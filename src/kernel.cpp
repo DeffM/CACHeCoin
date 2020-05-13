@@ -16,7 +16,6 @@ extern int nStakeTargetSpacing;
 extern int64 nSynTimerStart;
 
 extern map<uint256, uint256> mapProofOfStake;
-extern map<COutPoint, CTxOut> mapPrevoutStakeOut;
 
 // Modifier interval: time to elapse before new modifier is computed
 // Set to 6-hour for production network and 20-minute for test network
@@ -454,9 +453,7 @@ bool CheckProofOfStake(const CTransaction& tx, unsigned int nBits, uint256 hash,
     const CTxOut &voutNew = txPrev.vout[txin.prevout.n];
     if (!voutNew.IsEmpty() && pindex)
     {
-        if (!mapPrevoutStakeOut.count(txin.prevout))
-            mapPrevoutStakeOut.insert(make_pair(txin.prevout, voutNew));
-        if (!txPrev.AnalysisProofOfStakeReward(pindex, voutNew, dRewardCoinYearNew, false))
+        if (!txPrev.AnalysisProofOfStakeReward(pindex, voutNew, txin.prevout, dRewardCoinYearNew, false))
             return true;
     }
     return true;
