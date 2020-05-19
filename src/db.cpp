@@ -24,7 +24,7 @@ using namespace boost;
 
 unsigned int nWalletDBUpdated;
 
-extern map<COutPoint, std::string> mapPrevoutStakeAddress;
+extern map<COutPoint, std::string> mapPreVoutStakeAddress;
 
 
 
@@ -889,7 +889,7 @@ bool CTxDB::LoadBlockIndexGuts()
             if (pindexNew->IsProofOfStake())
             {
                 setStakeSeen.insert(make_pair(pindexNew->prevoutStake, pindexNew->nStakeTime));
-                mapPrevoutStakeAddress.insert(make_pair(pindexNew->prevoutStake, pindexNew->prevOutStakeAddress));
+                mapPreVoutStakeAddress.insert(make_pair(pindexNew->prevoutStake, pindexNew->prevOutStakeAddress));
             }
         }
         else

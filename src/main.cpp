@@ -40,7 +40,7 @@ int nMaxString = 512;
 map<CAddress, int> mapBlocksHeightByPeers;
 map<uint256, CBlock*> mapDuplicateStakeBlocks;
 map<uint256, CTransaction> mapOrphanTransactions;
-map<COutPoint, std::string> mapPrevoutStakeAddress;
+map<COutPoint, std::string> mapPreVoutStakeAddress;
 map<uint256, set<uint256> > mapOrphanTransactionsByPrev;
 
 typedef boost::bimap<uint256, uint256> setbimap;
@@ -2092,7 +2092,7 @@ int64 GetProofOfStakeReward(int64 nCoinAge)
         nSubsidy = nCoinAge * 33 / (365 * 33 + 8) * nRewardCoinYear;
 
     if (fDebug && GetBoolArg("-printcreation"))
-        printf("GetProofOfStakeReward(): create=%s nCoinAge=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nCoinAge);
+        printf(" 'GetProofOfStakeReward()' - create=%s nCoinAge=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nCoinAge);
 
     return nSubsidy;
 }
@@ -2265,10 +2265,7 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
 
             int64 nStakeReward = GetValueOut() - nValueIn;
             int64 nStakeAnalysisReward = GetAnalysisProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE;
-            if (nProtocolSwitchingThresholds() < 2 && nStakeReward > GetProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE)
-                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : %s stake reward exceeded", GetHash().ToString().substr(0,10).c_str()));
-
-            if (nProtocolSwitchingThresholds() < 2 && nStakeReward != nStakeAnalysisReward)
+            if (true || nStakeReward > nStakeAnalysisReward)
                 printf("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward);
                 //return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward));
         }
@@ -3260,8 +3257,8 @@ bool CBlock::AddToBlockIndex(CValidationState &state, unsigned int nFile, unsign
     map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.insert(make_pair(hash, pindexNew)).first;
     if (pindexNew->IsProofOfStake())
     {
-        std::map<COutPoint, std::string>::iterator it = mapPrevoutStakeAddress.find(pindexNew->prevoutStake);
-        if (it != mapPrevoutStakeAddress.end())
+        std::map<COutPoint, std::string>::iterator it = mapPreVoutStakeAddress.find(pindexNew->prevoutStake);
+        if (it != mapPreVoutStakeAddress.end())
             pindexNew->prevOutStakeAddress = (*it).second;
 
         setStakeSeen.insert(make_pair(pindexNew->prevoutStake, pindexNew->nStakeTime));
@@ -4103,26 +4100,38 @@ static std::map<int, uint256> mapDoNotCheckBlock =
     (364001, uint256("0x00001e255cf98810cfae768ca1bb56fc964f3fe7284d55ca38419e3e72de283d"))
     ;
 
-double dMaximumReward = 4.3;
+int64 nMaximumReward = 4.7 * COIN;
 const CBlockIndex* pindexStart = NULL;
 map<uint256, int64> mapTimeIntervalBlocks;
-bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTxOut voutNew, const COutPoint prevout,
-                                              double& dRewardCoinYearNew, bool fResultOnly)
+bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTransaction& txPrev, const CTransaction& tx,
+                                              const CTxOut voutNew, const COutPoint prevout, int64& nRewardCoinYearNew,
+                                              CBigNum& bnCoinTimeDiff, bool fResultOnly)
 {
-    double nOneHundredPercent = 100;
-    double dProfitabilityGen = nOneHundredPercent;
-    double dProfitabilityMint = nOneHundredPercent;
-    double dProfitabilityTotal = 0;
+    int64 nOneHundredPercent = 100 * COIN;
+    int64 nProfitabilityGen = nOneHundredPercent;
+    int64 nProfitabilityMint = nOneHundredPercent;
+    int64 nProfitabilityTotal = 0;
     int64 nExcellenceMintingCoins = 0;
-    double dPosTargetSpacingCalculated = 0;
-    double dPosTargetSpacingAdjustedTolerance = 0;
+    int64 nPosTargetSpacingCalculated = 0;
+    int64 nPosTargetSpacingAdjustedTolerance = 0;
 
-    double nOneDay = 60 * 60 * 24;
-    double nOneYear = nOneDay * 366;
-    double nHalfYear = nOneYear / 2;
-    int64 nStopScanIndex = pindexBest->GetBlockTime() - (int64)nOneYear;
+    int nDaysInYear = 365;
+    int nYear = atol(DateTimeStrFormat("%G", pindex->GetBlockTime()).c_str());
+    while (nYear%4 == 0)
+    {
+        if (nYear%100 == 0 && nYear%400 != 0)
+            break;
+        nDaysInYear += 1;
+        break;
+    }
+
+    int64 nOneDay = 60 * 60 * 24;
+    int64 nOneYear = nOneDay * nDaysInYear;
+    int64 nHalfYear = nOneYear / 2;
+    int64 nStopScanIndex = pindexBest->GetBlockTime() - ((int64)nOneYear + (int64)nHalfYear);
 
     static int64 nTotalMintInOneYear = 0;
+    static CBigNum bnCoinTimeDiffTemp = 0;
     static int64 nTotalMintInOneYearTemp = 0;
     static int64 nAnalysisTotalMintInOneYear = 0;
     static int nTotalGenerateBlocksInOneYear = 0;
@@ -4134,13 +4143,44 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     CTxDestination addressNew;
     static std::string stAddressNew = "";
 
-    if (!mapPrevoutStakeAddress.count(prevout) && ExtractDestination(voutNew.scriptPubKey, addressNew))
-        mapPrevoutStakeAddress.insert(make_pair(prevout, CBitcoinAddress(addressNew).ToString()));
-
-    if (false && pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
-        return false;
-
     if (!fResultOnly)
+    {
+        bnCoinTimeDiffTemp = 0;
+
+        int64 nValueIn = voutNew.nValue;
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+            printf(" 'CTransaction::AnalysisProofOfStakeReward()' - nValueIn %"PRI64d"\n", nValueIn);
+
+        int64 nPrevTxTime = (int64)txPrev.nTime;
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+        {
+            printf(" 'CTransaction::AnalysisProofOfStakeReward()' - nPrevTxTime %"PRI64d"\n", nPrevTxTime);
+            printf(" 'CTransaction::AnalysisProofOfStakeReward()' - nTxTime %"PRI64d"\n", (int64)tx.nTime);
+        }
+
+        int64 nTimeDiff = (int64)tx.nTime - nPrevTxTime;
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+            printf(" 'CTransaction::AnalysisProofOfStakeReward()' - nTimeDiff %"PRI64d"\n", nTimeDiff);
+
+        bnCoinTimeDiffTemp = CBigNum(nValueIn) * COIN / nOneYear * nTimeDiff; // 31622400
+
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+            printf(" 'CTransaction::AnalysisProofOfStakeReward()' - nCoinTimeDiff %s\n", bnCoinTimeDiffTemp.ToString().c_str());
+
+        if ((int64)tx.nTime < nPrevTxTime)
+            return false;
+        if (nPrevTxTime + nStakeMinAge > (int64)tx.nTime)
+            return false;
+    }
+
+    if (!mapPreVoutStakeAddress.count(prevout) && ExtractDestination(voutNew.scriptPubKey, addressNew))
+        mapPreVoutStakeAddress.insert(make_pair(prevout, CBitcoinAddress(addressNew).ToString()));
+
+    bool fScanPindex = true;
+    if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
+        fScanPindex = false;
+
+    if (!fResultOnly && fScanPindex)
     {
         stAddressNew = "";
         pindexStart = NULL;
@@ -4154,7 +4194,7 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
 
         while (pindex)
         {
-            if (false && pindex->GetBlockTime() <= nStopScanIndex)
+            if (pindex->GetBlockTime() <= nStopScanIndex)
                 break;
             if (pindex == pindexGenesisBlock)
                 break;
@@ -4164,19 +4204,19 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 continue;
             }
 
-            std::map<COutPoint, std::string>::iterator it = mapPrevoutStakeAddress.find(pindex->prevoutStake);
-            if (it != mapPrevoutStakeAddress.end())
+            std::map<COutPoint, std::string>::iterator it = mapPreVoutStakeAddress.find(pindex->prevoutStake);
+            if (it != mapPreVoutStakeAddress.end())
             {
                 std::string AnalysisAddress = (*it).second;
                 nTotalGenerateBlocksInOneYearTemp++;
-                //nTotalMintInOneYearTemp += pindex->nMint;
+                nTotalMintInOneYearTemp += pindex->nMint;
                 if (AnalysisAddress == stAddressNew)
                 {
                     if (pindexStart && !mapTimeIntervalBlocks.count(pindexStart->GetBlockHash()))
                         mapTimeIntervalBlocks.insert(make_pair(pindexStart->GetBlockHash(), pindexStart->GetBlockTime() - pindex->GetBlockTime()));
                     pindexStart = pindex;
                     nAnalysisTotalGenerateBlocksInOneYear++;
-                    //nAnalysisTotalMintInOneYear += pindex->nMint;
+                    nAnalysisTotalMintInOneYear += pindex->nMint;
                     nTotalMintInOneYear += nTotalMintInOneYearTemp;
                     nTotalMintInOneYearTemp = 0;
                     nTotalGenerateBlocksInOneYear += nTotalGenerateBlocksInOneYearTemp;
@@ -4200,74 +4240,86 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Total time in the study period %"PRI64d"\n", pindexBest->GetBlockTime() - pindexStart->GetBlockTime());
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Total blocks generate during the study period(Total   ) %d\n", nTotalGenerateBlocksInOneYear);
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Total blocks generate during the study period(Analysis) %d\n", nAnalysisTotalGenerateBlocksInOneYear);
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Total minted during the study period(Total   ) %g\n", (double)nTotalMintInOneYear / (double)COIN);
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Total minted during the study period(Analysis) %g\n", (double)nAnalysisTotalMintInOneYear / (double)COIN);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Total minted during the study period(Total   ) %g\n", (double)nTotalMintInOneYear / COIN);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Total minted during the study period(Analysis) %g\n", (double)nAnalysisTotalMintInOneYear / COIN);
             }
 
-            dProfitabilityGen = (dProfitabilityGen / nTotalGenerateBlocksInOneYear * nAnalysisTotalGenerateBlocksInOneYear);
+            nProfitabilityGen = ((double)nProfitabilityGen / nTotalGenerateBlocksInOneYear * nAnalysisTotalGenerateBlocksInOneYear);
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - ProfitabilityGen %g\n", dProfitabilityGen);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - ProfitabilityGen %g\n", (double)nProfitabilityGen / COIN);
 
-            dProfitabilityMint = (dProfitabilityMint / nTotalMintInOneYear * nAnalysisTotalMintInOneYear);
+            nProfitabilityMint = ((double)nProfitabilityMint / (nTotalMintInOneYear / COIN) * (nAnalysisTotalMintInOneYear / COIN));
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - ProfitabilityMint %g\n", dProfitabilityMint);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - ProfitabilityMint %g\n", (double)nProfitabilityMint / COIN);
 
-            dProfitabilityTotal = dProfitabilityGen;
+            nProfitabilityTotal = nProfitabilityGen;
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - ProfitabilityTotal %g\n", dProfitabilityTotal);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - ProfitabilityTotal %g\n", (double)nProfitabilityTotal / COIN);
 
-            dPosTargetSpacingCalculated = ((pindexBest->GetBlockTime() - pindexStart->GetBlockTime()) / nAnalysisTotalGenerateBlocksInOneYear);
+            nPosTargetSpacingCalculated = (((double)(pindexBest->GetBlockTime() - pindexStart->GetBlockTime()) * COIN) / nAnalysisTotalGenerateBlocksInOneYear);
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Pos Target Spacing Сalculated(Analysis) %"PRI64d"\n", (int64)dPosTargetSpacingCalculated);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Pos Target Spacing Сalculated(Analysis) %g\n", (double)nPosTargetSpacingCalculated / COIN);
 
-            dPosTargetSpacingAdjustedTolerance = (int64)dPosTargetSpacingCalculated * (((nOneHundredPercent - dProfitabilityTotal) / nOneHundredPercent) + 1.0);
+            nPosTargetSpacingAdjustedTolerance =  (double)nOneHundredPercent / nProfitabilityTotal * nPosTargetSpacingCalculated;
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(Analysis) %"PRI64d"\n", (int64)dPosTargetSpacingAdjustedTolerance);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(Analysis) %g\n", (double)nPosTargetSpacingAdjustedTolerance / COIN);
 
+            nPosTargetSpacingAdjustedTolerance /= COIN;
             for (map<uint256, int64>::iterator mi = mapTimeIntervalBlocks.begin(); mi != mapTimeIntervalBlocks.end(); ++mi)
             {
-                if ((*mi).second > nExcellenceMintingCoins + ((int64)dPosTargetSpacingAdjustedTolerance * 3))
-                    if (mapBlockIndex[(*mi).first]->GetBlockTime() > pindexBest->GetBlockTime() - (int64)nHalfYear)
-                        nExcellenceMintingCoins += ((*mi).second - (nExcellenceMintingCoins + ((int64)dPosTargetSpacingAdjustedTolerance * 3)));
+                if ((*mi).second > nExcellenceMintingCoins && (*mi).second > nPosTargetSpacingAdjustedTolerance * 3)
+                    if (mapBlockIndex[(*mi).first]->GetBlockTime() > pindexBest->GetBlockTime() - ((int64)nStakeMinAge + (int64)nStakeMaxAge + nPosTargetSpacingAdjustedTolerance))
+                        nExcellenceMintingCoins = (*mi).second;
             }
 
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Graphics builder %"PRI64d"\n", nExcellenceMintingCoins);
 
-            if (nExcellenceMintingCoins >= ((int64)nStakeMinAge + (int64)nStakeMaxAge))
-                nExcellenceMintingCoins = ((int64)nStakeMinAge + (int64)nStakeMaxAge);
+            if (nExcellenceMintingCoins >= ((int64)nStakeMinAge + (int64)nStakeMaxAge + nPosTargetSpacingAdjustedTolerance))
+                nExcellenceMintingCoins = ((int64)nStakeMinAge + (int64)nStakeMaxAge + nPosTargetSpacingAdjustedTolerance);
 
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Graphics builder fix %"PRI64d"\n", nExcellenceMintingCoins);
 
-            nExcellenceMintingCoins = ((nOneHundredPercent / ((int64)nStakeMinAge + (int64)nStakeMaxAge)) * nExcellenceMintingCoins);
+            nExcellenceMintingCoins = (((double)nOneHundredPercent / ((int64)nStakeMinAge + (int64)nStakeMaxAge)) * nExcellenceMintingCoins); // 3196800
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Excellence Minting Coins, as a percentage(100) %"PRI64d"\n", nExcellenceMintingCoins);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Excellence Minting Coins, as a percentage(100) %g\n", (double)nExcellenceMintingCoins / COIN);
 
-            double dExcellenceMintingCoins = ((double)nExcellenceMintingCoins / nOneHundredPercent * ((double)nOneHundredPercent - dProfitabilityTotal));
+            nOneHundredPercent /= COIN;
+            nProfitabilityTotal /= COIN;
+            nExcellenceMintingCoins = ((double)nExcellenceMintingCoins / nOneHundredPercent * (nOneHundredPercent - nProfitabilityTotal));
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Excellence Minting Coins, as a percentage(ProfitabilityTotal) %g\n", dExcellenceMintingCoins);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Excellence Minting Coins, as a percentage(ProfitabilityTotal) %g\n", (double)nExcellenceMintingCoins / COIN);
 
-            int64 nRewardCoinYear = 5 * CENT;
+            int64 dRewardCoinYear = 5 * COIN;
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - RewardCoinYear Old %"PRI64d"\n", nRewardCoinYear);
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - RewardCoinYear Old %g(percent)\n", (double)dRewardCoinYear / COIN);
 
-            double dMaximumRewardReduction = 4.1 / nOneHundredPercent * dExcellenceMintingCoins;
-            dRewardCoinYearNew = (dMaximumReward - dMaximumRewardReduction) * CENT;
+            nExcellenceMintingCoins /= COIN;
+            int64 nMaximumRewardReduction = (double)(4.2 * COIN) / nOneHundredPercent * nExcellenceMintingCoins;
+            nRewardCoinYearNew = nMaximumReward - nMaximumRewardReduction;
             if (GetBoolArg("-analysisproofofstakedebug", 1))
-                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - RewardCoinYear New %"PRI64d", max New %"PRI64d"\n", (int64)dRewardCoinYearNew, (int64)(dMaximumReward * CENT));
+                printf(" 'CTransaction::AnalysisProofOfStakeReward()' - RewardCoinYear New %g(percent), max New %g(percent)\n", (double)nRewardCoinYearNew / COIN, (double)nMaximumReward / COIN);
+
+            bnCoinTimeDiff = bnCoinTimeDiffTemp;
         }
     }
     return true;
 }
 
-double GetAnalysisProofOfStakeReward(int64 nCoinAge)
+int64 GetAnalysisProofOfStakeReward(int64 nCoinAge)
 {
+    if (nProtocolSwitchingThresholds() < 1)
+        return GetProofOfStakeReward(nCoinAge);
+
     CTxOut voutNew;
     CTransaction tx;
-    double nSubsidy = 0;
+    CBigNum bnSubsidy = 0;
     const COutPoint prevout;
-    double dRewardCoinYearNew;
+    CBigNum bnCoinTimeDiff = 0;
+    int64 nRewardCoinYearNew = 0;
+    int64 nOneHundredPercent = 100;
+
     CBlockIndex* pindex = pindexBest;
 
     int nDaysInYear = 365;
@@ -4283,12 +4335,20 @@ double GetAnalysisProofOfStakeReward(int64 nCoinAge)
     if (fDebug)
         printf(" 'CTransaction::AnalysisProofOfStakeReward()' - Now %d year, is %d days\n", nYear, nDaysInYear);
 
-    if (tx.AnalysisProofOfStakeReward(pindex, voutNew, prevout, dRewardCoinYearNew, true))
-        nSubsidy = nCoinAge / nDaysInYear * dRewardCoinYearNew;
-    else
-        nSubsidy = nCoinAge / nDaysInYear * dMaximumReward * CENT;
+    bool fScanPindex = true;
+    if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
+        fScanPindex = false;
 
-    return nSubsidy;
+    if (fScanPindex && tx.AnalysisProofOfStakeReward(pindex, tx, tx, voutNew, prevout, nRewardCoinYearNew, bnCoinTimeDiff, true))
+    {
+        bnSubsidy = bnCoinTimeDiff / nOneHundredPercent * nRewardCoinYearNew;
+    }
+    if (!fScanPindex)
+    {
+        bnSubsidy = bnCoinTimeDiff / nOneHundredPercent * nMaximumReward;
+    }
+
+    return bnSubsidy.getuint64() / COIN / COIN;
 }
 
 bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug)

@@ -1580,10 +1580,11 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             if (pcoin.first->nTime + nStakeMaxAge > txNew.nTime)
                 continue;
 
-            double dRewardCoinYearNew;
+            CBigNum bnCoinTimeDiff = 0;
+            int64 nRewardCoinYearNew = 0;
             if (!txNew.vout[txNew.vin[0].prevout.n].IsEmpty() && pindexBest)
             {
-                if (!txNew.AnalysisProofOfStakeReward(pindexBest, txNew.vout[txNew.vin[0].prevout.n], txNew.vin[0].prevout, dRewardCoinYearNew, false))
+                if (!txNew.AnalysisProofOfStakeReward(pindexBest, txNew, txNew, txNew.vout[txNew.vin[0].prevout.n], txNew.vin[0].prevout, nRewardCoinYearNew, bnCoinTimeDiff, false))
                     continue;
             }
 
