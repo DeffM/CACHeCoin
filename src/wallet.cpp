@@ -1580,18 +1580,17 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             if (pcoin.first->nTime + nStakeMaxAge > txNew.nTime)
                 continue;
 
-            CBigNum bnCoinTimeDiff = 0;
-            int64 nRewardCoinYearNew = 0;
-            if (!txNew.vout[txNew.vin[0].prevout.n].IsEmpty() && pindexBest)
-            {
-                if (!txNew.AnalysisProofOfStakeReward(pindexBest, txNew, txNew, txNew.vout[txNew.vin[0].prevout.n], txNew.vin[0].prevout, nRewardCoinYearNew, bnCoinTimeDiff, false))
-                    continue;
-            }
-
             txNew.vin.push_back(CTxIn(pcoin.first->GetHash(), pcoin.second));
             nCredit += pcoin.first->vout[pcoin.second].nValue;
             vwtxPrev.push_back(pcoin.first);
         }
+    }
+
+    int64 nRewardCoinYearNew = 0;
+    if (!txNew.vout[txNew.vin[0].prevout.n].IsEmpty() && pindexBest)
+    {
+        if (!txNew.AnalysisProofOfStakeReward(pindexBest, txNew.vout[txNew.vin[0].prevout.n], txNew.vin[0].prevout, nRewardCoinYearNew, false))
+            return false;
     }
 
     // Calculate coin age reward
@@ -1609,7 +1608,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         if (GetBoolArg("-analysisproofofstakedebug", 1))
             printf(" 'CWallet->CreateCoinStake()' - Generate CreditOld %"PRI64d"\n", nCredit);
 
-        nStakeAnalysisCredit += GetAnalysisProofOfStakeReward(nCoinAge);
+        nStakeAnalysisCredit += txNew.GetAnalysisProofOfStakeReward(nCoinAge);
         if (GetBoolArg("-analysisproofofstakedebug", 1))
             printf(" 'CWallet->CreateCoinStake()' - Generate CreditNew %"PRI64d"\n", nStakeAnalysisCredit);
     }

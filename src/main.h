@@ -218,7 +218,6 @@ const CBlockIndex* GetLastBlockIndexPow(const CBlockIndex* powpindex, bool fProo
 const CBlockIndex* GetLastBlockIndexPos(const CBlockIndex* pospindex, bool fProofOfStake);
 
 int64 GetProofOfStakeReward(int64 nCoinAge);
-int64 GetAnalysisProofOfStakeReward(int64 nCoinAge);
 int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime);
 
 uint256 WantedByOrphan(const CBlock* pblockOrphan);
@@ -701,6 +700,8 @@ public:
      */
     int64 GetValueIn(const MapPrevTx& mapInputs) const;
 
+    int64 GetAnalysisProofOfStakeReward(int64 nCoinAge) const;
+
     static bool AllowFree(double dPriority)
     {
         // Large (in bytes) low-priority (new, small-coin) transactions
@@ -786,9 +787,8 @@ public:
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout);
     bool BasicCheckTransaction(CValidationState &state) const;
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout, CTxIndex& txindexRet);
-    bool AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTransaction& txPrev, const CTransaction& tx,
-                                    const CTxOut voutNew, const COutPoint prevout, int64& nRewardCoinYearNew,
-                                    CBigNum& bnCoinTimeDiff, bool fResultOnly);
+    bool AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTxOut voutNew, const COutPoint prevout,
+                                    int64& nRewardCoinYearNew, bool fResultOnly) const;
 
     /** Sanity check previous transactions, then, if all checks succeed,
         mark them as spent by this transaction.
@@ -814,6 +814,8 @@ public:
     bool GoTxToMemoryPool(CValidationState &state, CTxDB& txdb, MapPrevTx &TxMemPoolInputs, std::map<uint256,
                           CTxIndex> &mapMemPool, bool fCheckInputs=true, bool fLimitFree=true, bool* pfMissingInputs=NULL);
     bool GetCoinAge(CTxDB& txdb, uint64& nCoinAge) const;  // ppcoin: get transaction coin age
+    bool AnalysisGetCoinAge(CBigNum& bnCoinTimeDiff, int64 nOneYear) const;
+
 
 protected:
     const CTxOut& GetOutputFor(const CTxIn& input, const MapPrevTx& inputs) const;

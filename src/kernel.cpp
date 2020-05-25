@@ -449,12 +449,11 @@ bool CheckProofOfStake(const CTransaction& tx, unsigned int nBits, uint256 hash,
         return tx.DoS(1, error("CheckProofOfStake() : INFO: check kernel failed on coinstake %s, hashProof=%s", tx.GetHash().ToString().c_str(), hash.ToString().c_str())); // may occur during initial download or if behind on block chain sync
 
     pindex = pindexBest;
-    CBigNum bnCoinTimeDiff = 0;
     int64 nRewardCoinYearNew = 0;
     const CTxOut &voutNew = txPrev.vout[txin.prevout.n];
     if (!voutNew.IsEmpty() && pindex)
     {
-        if (!txPrev.AnalysisProofOfStakeReward(pindex, txPrev, tx, voutNew, txin.prevout, nRewardCoinYearNew, bnCoinTimeDiff, false))
+        if (!txPrev.AnalysisProofOfStakeReward(pindex, voutNew, txin.prevout, nRewardCoinYearNew, false))
             return false;
     }
     return true;
