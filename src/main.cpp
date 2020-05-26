@@ -2256,19 +2256,27 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             }
         }
 
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+            printf(" 'CTransaction->CheckInputsLevelTwo()' - Hard Fork Switching Thresholds %d\n", nProtocolSwitchingThresholds());
+
         if (IsCoinStake())
         {
             // ppcoin: coin stake tx earns reward instead of paying fee
-            uint64 nCoinAge;
-            if (!GetCoinAge(txdb, nCoinAge))
+            int64 nSubsidy = 0;
+            uint64 nCoinAge = 0;
+            if ((nProtocolSwitchingThresholds() < 2) && !GetCoinAge(txdb, nCoinAge))
                 return state.Invalid(error("CTransaction->CheckInputsLevelTwo() : %s unable to get coin age for coinstake", GetHash().ToString().substr(0,10).c_str()));
 
             int64 nStakeReward = GetValueOut() - nValueIn;
-            int64 nStakeAnalysisReward = GetAnalysisProofOfStakeReward(nCoinAge) - GetMinFee() + MIN_TX_FEE;
+
+            if (!GetAnalysisProofOfStakeReward(nCoinAge, nSubsidy))
+                return false;
+
+            int64 nStakeAnalysisReward = nSubsidy - GetMinFee() + MIN_TX_FEE;
+
             if (true || nStakeReward > nStakeAnalysisReward)
                 printf("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward);
                 //return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward));
-            printf("!!!!!!!!!!!!!!!!!! %d\n", nProtocolSwitchingThresholds());
         }
         else
         {
@@ -4195,13 +4203,11 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     static std::string stAddressNew = "";
 
     if (!mapPreVoutStakeAddress.count(prevout) && ExtractDestination(voutNew.scriptPubKey, addressNew))
-    {
-        printf("CCCCCCCCCCCCCCCC \n");
         mapPreVoutStakeAddress.insert(make_pair(prevout, CBitcoinAddress(addressNew).ToString()));
-     }
+
     bool fScanPindex = true;
     //if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
-       // fScanPindex = false;
+    //    fScanPindex = false;
 
     if (!fResultOnly && fScanPindex)
     {
@@ -4324,7 +4330,6 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Excellence Minting Coins, as a percentage(100) %g\n", (double)nExcellenceMintingCoins / COIN);
 
             nOneHundredPercent /= COIN;
-
             nExcellenceMintingCoins = ((double)nExcellenceMintingCoins / nOneHundredPercent * (nOneHundredPercent - bnProfitabilityTotal.getuint64()));
             nExcellenceMintingCoins /= COIN;
             if (GetBoolArg("-analysisproofofstakedebug", 1))
@@ -4347,11 +4352,15 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     return true;
 }
 
-int64 CTransaction::GetAnalysisProofOfStakeReward(int64 nCoinAge) const
+bool CTransaction::GetAnalysisProofOfStakeReward(uint64 nCoinAge, int64& nSubsidy) const
 {
-    if (nProtocolSwitchingThresholds() > 3)
-        return GetProofOfStakeReward(nCoinAge);
+    if (nProtocolSwitchingThresholds() < 2)
+    {
+        nSubsidy = GetProofOfStakeReward(nCoinAge);
+        return true;
+    }
 
+    nSubsidy = 0;
     const CTxOut voutNew;
     CBigNum bnSubsidy = 0;
     const COutPoint prevout;
@@ -4374,7 +4383,7 @@ int64 CTransaction::GetAnalysisProofOfStakeReward(int64 nCoinAge) const
     int64 nOneDay = 60 * 60 * 24;
     int64 nOneYear = nOneDay * nDaysInYear;
 
-    if (fDebug)
+    if (GetBoolArg("-analysisproofofstakedebug", 1))
         printf(" 'CTransaction->GetAnalysisProofOfStakeReward()' - Now %d year, is %d days\n", nYear, nDaysInYear);
 
     if (!AnalysisGetCoinAge(bnCoinTimeDiff, nOneYear))
@@ -4382,7 +4391,7 @@ int64 CTransaction::GetAnalysisProofOfStakeReward(int64 nCoinAge) const
 
     bool fScanPindex = true;
     //if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
-        //fScanPindex = false;
+    //    fScanPindex = false;
 
     if (fScanPindex && AnalysisProofOfStakeReward(pindex, voutNew, prevout, nRewardCoinYearNew, true))
     {
@@ -4392,8 +4401,9 @@ int64 CTransaction::GetAnalysisProofOfStakeReward(int64 nCoinAge) const
     {
         bnSubsidy = bnCoinTimeDiff / nOneHundredPercent * nMaximumReward;
     }
+    nSubsidy = bnSubsidy.getuint64() / COIN / COIN;
 
-    return bnSubsidy.getuint64() / COIN / COIN;
+    return true;
 }
 
 bool CBlock::ValidationCheckBlock(CValidationState &state, MapPrevTx& mapInputs, std::string &ResultOfChecking, bool fCheckDebug)

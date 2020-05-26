@@ -700,8 +700,6 @@ public:
      */
     int64 GetValueIn(const MapPrevTx& mapInputs) const;
 
-    int64 GetAnalysisProofOfStakeReward(int64 nCoinAge) const;
-
     static bool AllowFree(double dPriority)
     {
         // Large (in bytes) low-priority (new, small-coin) transactions
@@ -787,6 +785,7 @@ public:
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout);
     bool BasicCheckTransaction(CValidationState &state) const;
     bool ReadFromDisk(CTxDB& txdb, COutPoint prevout, CTxIndex& txindexRet);
+    bool GetAnalysisProofOfStakeReward(uint64 nCoinAge, int64& nSubsidy) const;
     bool AnalysisProofOfStakeReward(const CBlockIndex* pindex, const CTxOut voutNew, const COutPoint prevout,
                                     int64& nRewardCoinYearNew, bool fResultOnly) const;
 

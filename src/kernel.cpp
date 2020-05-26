@@ -452,10 +452,8 @@ bool CheckProofOfStake(const CTransaction& tx, unsigned int nBits, uint256 hash,
     int64 nRewardCoinYearNew = 0;
     const CTxOut &voutNew = txPrev.vout[txin.prevout.n];
     if (!voutNew.IsEmpty() && pindex)
-    {
-        if (!txPrev.AnalysisProofOfStakeReward(pindex, voutNew, txin.prevout, nRewardCoinYearNew, false))
-            return false;
-    }
+        txPrev.AnalysisProofOfStakeReward(pindex, voutNew, txin.prevout, nRewardCoinYearNew, false);
+
     return true;
 }
 
