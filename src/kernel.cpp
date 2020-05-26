@@ -30,7 +30,7 @@ static std::map<int, unsigned int> mapStakeModifierCheckpoints =
 static std::map<int64, unsigned int> mapProtocolSwitchingThresholds =
     boost::assign::map_list_of
     (int64(1587476876), 1)
-    (int64(9587476876), 2)
+    (int64(1590505700), 2)
     ;
 
 bool ProtocolSwitchingThresholds(uint256 hash, unsigned int& nThresholds)

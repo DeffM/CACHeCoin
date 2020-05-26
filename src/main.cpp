@@ -2256,9 +2256,6 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
             }
         }
 
-        if (GetBoolArg("-analysisproofofstakedebug", 1))
-            printf(" 'CTransaction->CheckInputsLevelTwo()' - Hard Fork Switching Thresholds %d\n", nProtocolSwitchingThresholds());
-
         if (IsCoinStake())
         {
             // ppcoin: coin stake tx earns reward instead of paying fee
@@ -2984,6 +2981,9 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     if  (IsOtherInitialBlockDownload(false)){
          if (fDebug) printf("IsOtherInitialBlockDownload\n");}
     else if (fDebug) printf("NoOtherInitialBlockDownload\n");
+
+    if (GetBoolArg("-analysisproofofstakedebug", 1))
+        printf(" 'CBlock->SetBestChain()' - Hard Fork Switching Thresholds %d\n", nProtocolSwitchingThresholds());
 
     // Check the version of the last 100 blocks to see if we need to upgrade:
     if (!fIsInitialDownload)
@@ -4187,8 +4187,8 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
 
     int64 nOneDay = 60 * 60 * 24;
     int64 nOneYear = nOneDay * nDaysInYear;
-    int64 nHalfYear = nOneYear / 2;
-    int64 nStopScanIndex = pindexBest->GetBlockTime() - ((int64)nOneYear + (int64)nHalfYear);
+    // int64 nHalfYear = nOneYear / 2;
+    int64 nStopScanIndex = pindexBest->GetBlockTime() - (int64)nOneYear;
 
     static int64 nTotalMintInOneYear = 0;
     static int64 nTotalMintInOneYearTemp = 0;
@@ -4238,16 +4238,16 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             {
                 std::string AnalysisAddress = (*it).second;
                 nTotalGenerateBlocksInOneYearTemp++;
-                nTotalMintInOneYearTemp += pindex->nMint;
+                // nTotalMintInOneYearTemp += pindex->nMint;
                 if (AnalysisAddress == stAddressNew)
                 {
                     if (pindexStart && !mapTimeIntervalBlocks.count(pindexStart->GetBlockHash()))
                         mapTimeIntervalBlocks.insert(make_pair(pindexStart->GetBlockHash(), pindexStart->GetBlockTime() - pindex->GetBlockTime()));
                     pindexStart = pindex;
                     nAnalysisTotalGenerateBlocksInOneYear++;
-                    nAnalysisTotalMintInOneYear += pindex->nMint;
-                    nTotalMintInOneYear += nTotalMintInOneYearTemp;
-                    nTotalMintInOneYearTemp = 0;
+                    // nAnalysisTotalMintInOneYear += pindex->nMint;
+                    // nTotalMintInOneYear += nTotalMintInOneYearTemp;
+                    // nTotalMintInOneYearTemp = 0;
                     nTotalGenerateBlocksInOneYear += nTotalGenerateBlocksInOneYearTemp;
                     nTotalGenerateBlocksInOneYearTemp = 0;
                 }
@@ -4271,6 +4271,7 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Total minted during the study period(Analysis) %g\n", (double)nAnalysisTotalMintInOneYear / COIN);
             }
 
+            if (nTotalGenerateBlocksInOneYear < 1) nTotalGenerateBlocksInOneYear = 1;
             bnProfitabilityGen = (CBigNum(bnProfitabilityGen) / nTotalGenerateBlocksInOneYear * nAnalysisTotalGenerateBlocksInOneYear);
             bnProfitabilityGen /= COIN;
             if (bnProfitabilityGen < 1)
@@ -4278,6 +4279,7 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - ProfitabilityGen %g\n", (double)bnProfitabilityGen.getuint64());
 
+            if (nTotalMintInOneYear < 1) nTotalMintInOneYear = 1;
             bnProfitabilityMint = (CBigNum(bnProfitabilityMint) / nTotalMintInOneYear * nAnalysisTotalMintInOneYear);
             bnProfitabilityMint /= COIN;
             if (bnProfitabilityMint < 1)
@@ -4289,6 +4291,7 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 1))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - ProfitabilityTotal %g\n", (double)bnProfitabilityTotal.getuint64());
 
+            if (nAnalysisTotalGenerateBlocksInOneYear < 1) nAnalysisTotalGenerateBlocksInOneYear = 1;
             int64 nTimeScan = (pindexBest->GetBlockTime() + 1 - pindexStart->GetBlockTime()) * COIN;
             if (nTimeScan > nMaxBigNum && bnProfitabilityTotal < 2)
                 bnPosTargetSpacingCalculated = nMaxBigNum - 1;
