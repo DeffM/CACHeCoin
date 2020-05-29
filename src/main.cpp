@@ -4357,19 +4357,19 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
 
 bool CTransaction::GetAnalysisProofOfStakeReward(uint64 nCoinAge, int64& nSubsidy) const
 {
+    nSubsidy = 0;
+    CTxOut voutNew;
+    COutPoint prevout;
+    CBigNum bnSubsidy = 0;
+    CBigNum bnCoinTimeDiff = 0;
+    int64 nRewardCoinYearNew = 0;
+    int64 nOneHundredPercent = 100;
+
     if (nProtocolSwitchingThresholds() < 2)
     {
         nSubsidy = GetProofOfStakeReward(nCoinAge);
         return true;
     }
-
-    nSubsidy = 0;
-    const CTxOut voutNew;
-    CBigNum bnSubsidy = 0;
-    const COutPoint prevout;
-    CBigNum bnCoinTimeDiff = 0;
-    int64 nRewardCoinYearNew = 0;
-    int64 nOneHundredPercent = 100;
 
     const CBlockIndex* pindex = pindexBest;
 

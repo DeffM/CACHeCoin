@@ -30,7 +30,7 @@ static std::map<int, unsigned int> mapStakeModifierCheckpoints =
 static std::map<int64, unsigned int> mapProtocolSwitchingThresholds =
     boost::assign::map_list_of
     (int64(1587476876), 1)
-    (int64(1590505700), 2)
+    (int64(9590505700), 2)
     ;
 
 bool ProtocolSwitchingThresholds(uint256 hash, unsigned int& nThresholds)
@@ -452,7 +452,11 @@ bool CheckProofOfStake(const CTransaction& tx, unsigned int nBits, uint256 hash,
     int64 nRewardCoinYearNew = 0;
     const CTxOut &voutNew = txPrev.vout[txin.prevout.n];
     if (!voutNew.IsEmpty() && pindex)
+    {
         txPrev.AnalysisProofOfStakeReward(pindex, voutNew, txin.prevout, nRewardCoinYearNew, false);
+        if (GetBoolArg("-analysisproofofstakedebug", 1))
+            printf(" 'CheckProofOfStake()' - Added Bitcoin Address %s - %s\n", voutNew.ToString().c_str(), txin.prevout.ToString().c_str());
+    }
 
     return true;
 }
