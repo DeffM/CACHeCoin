@@ -1596,7 +1596,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     if (!txPrev.vout[txNew.vin[0].prevout.n].IsEmpty() && pindex)
     {
         txPrev.AnalysisProofOfStakeReward(pindex, txPrev.vout[txNew.vin[0].prevout.n], txNew.vin[0].prevout, nRewardCoinYearNew, false);
-        if (GetBoolArg("-analysisproofofstakedebug", 1))
+        if (GetBoolArg("-analysisproofofstakedebug", 0))
             printf(" 'CWallet->CreateCoinStake()' - Added Bitcoin Address %s - %s\n", txPrev.vout[txNew.vin[0].prevout.n].ToString().c_str(), txNew.vin[0].prevout.ToString().c_str());
     }
 
@@ -1611,12 +1611,12 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         if (!txNew.GetAnalysisProofOfStakeReward(nCoinAge, nSubsidy))
             return false;
 
-        if (GetBoolArg("-analysisproofofstakedebug", 1))
+        if (GetBoolArg("-analysisproofofstakedebug", 0))
             printf(" 'CWallet->CreateCoinStake()' - Generate the base %"PRI64d"\n", nCredit);
 
         nCredit += nSubsidy;
 
-        if (GetBoolArg("-analysisproofofstakedebug", 1))
+        if (GetBoolArg("-analysisproofofstakedebug", 0))
             printf(" 'CWallet->CreateCoinStake()' - Generate credit %"PRI64d"\n", nCredit);
     }
 

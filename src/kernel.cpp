@@ -454,7 +454,7 @@ bool CheckProofOfStake(const CTransaction& tx, unsigned int nBits, uint256 hash,
     if (!voutNew.IsEmpty() && pindex)
     {
         txPrev.AnalysisProofOfStakeReward(pindex, voutNew, txin.prevout, nRewardCoinYearNew, false);
-        if (GetBoolArg("-analysisproofofstakedebug", 1))
+        if (GetBoolArg("-analysisproofofstakedebug", 0))
             printf(" 'CheckProofOfStake()' - Added Bitcoin Address %s - %s\n", voutNew.ToString().c_str(), txin.prevout.ToString().c_str());
     }
 
