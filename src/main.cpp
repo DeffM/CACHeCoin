@@ -4184,7 +4184,7 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
     int64 nOneDay = 60 * 60 * 24;
     int64 nOneYear = nOneDay * nDaysInYear;
     int64 nGentlemansTime = nOneDay * 2;
-    // int64 nHalfYear = nOneYear / 2;
+    int64 nHalfYear = nOneYear / 2;
     int64 nStopScanIndex = pindexBest->GetBlockTime() - nOneYear;
     int64 nStakeSummAge = (int64)(nStakeMinAge + nStakeMaxAge);
 
@@ -4201,8 +4201,8 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
         mapPreVoutStakeAddress.insert(make_pair(prevout, CBitcoinAddress(addressNew).ToString()));
 
     bool fScanPindex = true;
-    //if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
-    //    fScanPindex = false;
+    if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
+        fScanPindex = false;
 
     if (!fResultOnly && fScanPindex)
     {
@@ -4277,14 +4277,22 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Сalculated(Analysis) %.10g\n", dPosTargetSpacingCalculated);
 
-            double dMatchedParameter = dOneHundredPercent;
-            dMatchedParameter = (dMatchedParameter - (dMatchedParameter / dOneHundredPercent * dProfitabilityGen));
+            double dMatchedParameter = 0;
+            dMatchedParameter = (dOneHundredPercent - (dOneHundredPercent / dPosTargetSpacingCalculated * dPosTargetSpacingCalculatedTotal));
             if (dMatchedParameter == 0)
                 dMatchedParameter = 1;
+            if (dPosTargetSpacingCalculated == dPosTargetSpacingCalculatedTotal)
+                dMatchedParameter = dOneHundredPercent;
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Matched Parameter %.10g\n", dMatchedParameter);
 
-            dPosTargetSpacingAdjustedTolerance = ((nStakeSummAge / 2 / dOneHundredPercent * dMatchedParameter) + ((dPosTargetSpacingCalculated - dPosTargetSpacingCalculatedTotal) / dOneHundredPercent * 1000));
+            double dPosTargetSpacing = dPosTargetSpacingCalculated - dPosTargetSpacingCalculatedTotal;
+            if (GetBoolArg("-analysisproofofstakedebug", 0))
+                printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing(Preparing) %.12g\n", dPosTargetSpacing);
+
+            double dF = 4;
+            dF =  dF / dOneHundredPercent * dProfitabilityGen;
+            dPosTargetSpacingAdjustedTolerance = (((double)nStakeSummAge / 2 * dF / dOneHundredPercent * dMatchedParameter) + (dPosTargetSpacing / dOneHundredPercent * dOneHundredPercent * 14));
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(TargetSpacingCalculated) %.12g\n", dPosTargetSpacingAdjustedTolerance);
 
@@ -4297,18 +4305,17 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                     printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(GentlemansTimeFix) %.12g\n", dPosTargetSpacingAdjustedTolerance);
             }
 
-            if (fGoStep && dPosTargetSpacingAdjustedTolerance >= nOneYear)
+            if (fGoStep && dPosTargetSpacingAdjustedTolerance >= nHalfYear)
             {
-                dPosTargetSpacingAdjustedTolerance = nOneYear;
+                dPosTargetSpacingAdjustedTolerance = nHalfYear;
                 if (GetBoolArg("-analysisproofofstakedebug", 0))
-                    printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(OneYearFix) %.12g\n", dPosTargetSpacingAdjustedTolerance);
+                    printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(HalfYearFix) %.12g\n", dPosTargetSpacingAdjustedTolerance);
             }
 
             for (map<uint256, int64>::iterator mi = mapTimeIntervalBlocks.begin(); mi != mapTimeIntervalBlocks.end(); ++mi)
             {
-                // (*mi).second > dPosTargetSpacingAdjustedTolerance
-                if ((*mi).second > dExcellenceMintingCoins)
-                    if (mapBlockIndex[(*mi).first]->GetBlockTime() > pindexBest->GetBlockTime() - (nStakeSummAge + dPosTargetSpacingAdjustedTolerance))
+                if ((*mi).second > dExcellenceMintingCoins && (*mi).second > dPosTargetSpacingAdjustedTolerance)
+                    if (mapBlockIndex[(*mi).first]->GetBlockTime() > pindexBest->GetBlockTime() - nStakeSummAge - dPosTargetSpacingAdjustedTolerance)
                         dExcellenceMintingCoins = (*mi).second;
             }
 
@@ -4318,14 +4325,14 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Graphics builder %.12g\n", dExcellenceMintingCoins);
 
-            if (dExcellenceMintingCoins >= nStakeSummAge)
+            if (dExcellenceMintingCoins >= nStakeSummAge + dPosTargetSpacingAdjustedTolerance)
             {
-                dExcellenceMintingCoins = nStakeSummAge;
+                dExcellenceMintingCoins = nStakeSummAge + dPosTargetSpacingAdjustedTolerance;
                 if (GetBoolArg("-analysisproofofstakedebug", 0))
                     printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Graphics builder(StakeSummAgeFix) %.12g\n", dExcellenceMintingCoins);
             }
 
-            dExcellenceMintingCoins = (dOneHundredPercent / nStakeSummAge * dExcellenceMintingCoins); // 3196800
+            dExcellenceMintingCoins = (dOneHundredPercent / (nStakeSummAge + dPosTargetSpacingAdjustedTolerance) * dExcellenceMintingCoins); // 3196800
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Excellence Minting Coins, as a percentage(100) %.5g\n", dExcellenceMintingCoins);
 
@@ -4388,8 +4395,8 @@ bool CTransaction::GetAnalysisProofOfStakeReward(uint64 nCoinAge, int64& nSubsid
         return error("CTransaction::GetAnalysisProofOfStakeReward() : %s unable to get coin age for coinstake", GetHash().ToString().substr(0,10).c_str());
 
     bool fScanPindex = true;
-    //if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
-    //    fScanPindex = false;
+    if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
+        fScanPindex = false;
 
     if (fScanPindex && AnalysisProofOfStakeReward(pindex, voutNew, prevout, nRewardCoinYearNew, true))
     {
