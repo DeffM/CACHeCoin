@@ -4278,12 +4278,12 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             double dTimeScan = pindexBest->GetBlockTime() + 1 - pindexStart->GetBlockTime();
             dPosTargetSpacingCalculatedTotal = dTimeScan / nTotalGenerateBlocksInOneYear;
             if (GetBoolArg("-analysisproofofstakedebug", 0))
-                printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Сalculated Total(Analysis) %.10g\n", dPosTargetSpacingCalculatedTotal);
+                printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Calculated Total(Analysis) %.10g\n", dPosTargetSpacingCalculatedTotal);
 
             if (nAnalysisTotalGenerateBlocksInOneYear < 1) nAnalysisTotalGenerateBlocksInOneYear = 1;
             dPosTargetSpacingCalculated = dTimeScan / nAnalysisTotalGenerateBlocksInOneYear;
             if (GetBoolArg("-analysisproofofstakedebug", 0))
-                printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Сalculated(Analysis) %.10g\n", dPosTargetSpacingCalculated);
+                printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Calculated(Analysis) %.10g\n", dPosTargetSpacingCalculated);
 
             double dMatchedParameter = 0;
             dMatchedParameter = (dOneHundredPercent - (dOneHundredPercent / dPosTargetSpacingCalculated * dPosTargetSpacingCalculatedTotal));
@@ -4299,9 +4299,7 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing(Preparing) %.12g\n", dPosTargetSpacing);
 
             double dF = 4.3;
-            dF =  dF / dOneHundredPercent * dProfitabilityGen;
-            if (dF < 1)
-                dF = 1;
+            dF =  ((dF - 1) / dOneHundredPercent * dProfitabilityGen) + 1;
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Factor %.12g\n", dF);
 
