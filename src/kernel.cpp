@@ -16,6 +16,7 @@ extern int nStakeTargetSpacing;
 extern int64 nSynTimerStart;
 
 extern map<uint256, uint256> mapProofOfStake;
+extern map<COutPoint, std::string> mapPreVoutStakeAddress;
 
 // Modifier interval: time to elapse before new modifier is computed
 // Set to 6-hour for production network and 20-minute for test network
@@ -30,9 +31,11 @@ static std::map<int, unsigned int> mapStakeModifierCheckpoints =
 static std::map<int64, unsigned int> mapProtocolSwitchingThresholds =
     boost::assign::map_list_of
     (int64(1587476876), 1)
-    (int64(9590505700), 2)
+    (int64(1592699510), 2) // Sun, 21 Jun 2020 00:31:50 GMT
+    (int64(9999999999), 3)
     ;
 
+unsigned int nAlreadyActive = 0;
 bool ProtocolSwitchingThresholds(uint256 hash, unsigned int& nThresholds)
 {
     nThresholds = 0;
@@ -42,12 +45,28 @@ bool ProtocolSwitchingThresholds(uint256 hash, unsigned int& nThresholds)
     {
         if ((*i).first > nThresholdsTime && pindex->GetBlockTime() > (*i).first)
         {
-            nThresholdsTime = (*i).first;
+            bool fNotUse = false;
+            if (((*i).second == 2 || (*i).second == 3) && (*i).second > nAlreadyActive)
+            {
+                fNotUse = true;
+                for (map<COutPoint, std::string>::iterator mi = mapPreVoutStakeAddress.begin(); mi != mapPreVoutStakeAddress.end(); ++mi)
+                {
+                    if (((*mi).second == "CP7N2wZmkqKkowQsPfUfbJFuXYRBSUxZiG" && (*i).second == 2) ||
+                        ((*mi).second == "CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" && (*i).second == 3))
+                        nThresholdsTime = (*i).first;
+                }
+            }
+
+            if (!fNotUse)
+                nThresholdsTime = (*i).first;
         }
     }
 
     if (nThresholdsTime > 0)
+    {
         nThresholds = mapProtocolSwitchingThresholds.find(nThresholdsTime)->second;
+        nAlreadyActive = nThresholds;
+    }
 
     return true;
 }

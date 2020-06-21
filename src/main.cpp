@@ -4181,10 +4181,11 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
         break;
     }
 
+    int64 nHalvingAgent = 2;
     int64 nOneDay = 60 * 60 * 24;
     int64 nOneYear = nOneDay * nDaysInYear;
-    int64 nGentlemansTime = nOneDay * 2;
-    int64 nHalfYear = nOneYear / 2;
+    int64 nGentlemansTime = nOneDay * nHalvingAgent;
+    int64 nHalfYear = nOneYear / nHalvingAgent;
     int64 nStopScanIndex = pindexBest->GetBlockTime() - nHalfYear;
     int64 nStakeSummAge = (int64)(nStakeMinAge + nStakeMaxAge);
 
@@ -4223,10 +4224,10 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 break;
             if (pindex->GetBlockTime() <= nStopScanIndex)
             {
-                if (nAnalysisTotalGenerateBlocksInOneYear > 4)
+                if (nAnalysisTotalGenerateBlocksInOneYear > nHalvingAgent * nHalvingAgent)
                     break;
                 else
-                if (nAnalysisTotalGenerateBlocksInOneYear <= 4)
+                if (nAnalysisTotalGenerateBlocksInOneYear <= nHalvingAgent * nHalvingAgent)
                     nStopScanIndex = pindexBest->GetBlockTime() - nOneYear;
             }
             if (pindex == pindexGenesisBlock)
@@ -4298,12 +4299,12 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing(Preparing) %.12g\n", dPosTargetSpacing);
 
-            double dF = 4.3;
+            double dF = nHalvingAgent;
             dF =  ((dF - 1) / dOneHundredPercent * dProfitabilityGen) + 1;
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Factor %.12g\n", dF);
 
-            dPosTargetSpacingAdjustedTolerance = ((((double)nStakeSummAge / 2 * dF) / dOneHundredPercent * dMatchedParameter) + (dPosTargetSpacing / dOneHundredPercent * dOneHundredPercent * 9));
+            dPosTargetSpacingAdjustedTolerance = ((((double)nStakeMaxAge / nHalvingAgent * dF) / dOneHundredPercent * dMatchedParameter) + (dPosTargetSpacing / dOneHundredPercent * dOneHundredPercent * 5));
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(TargetSpacingCalculated) %.12g\n", dPosTargetSpacingAdjustedTolerance);
 
@@ -4322,6 +4323,9 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
                 if (GetBoolArg("-analysisproofofstakedebug", 0))
                     printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(HalfYearFix) %.12g\n", dPosTargetSpacingAdjustedTolerance);
             }
+
+            if (GetBoolArg("-analysisproofofstakedebug", 0))
+                printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(StakeSummAge) %.12g\n", (double)nStakeSummAge + dPosTargetSpacingAdjustedTolerance);
 
             for (map<uint256, int64>::iterator mi = mapTimeIntervalBlocks.begin(); mi != mapTimeIntervalBlocks.end(); ++mi)
             {

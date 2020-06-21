@@ -40,7 +40,7 @@ const std::string CLIENT_NAME("'CACHE'Project 2018");
 #ifdef GIT_ARCHIVE
 #    define GIT_COMMIT_ID "32a928e"
 #    //define GIT_COMMIT_DATE "$Format:%cD"
-#    define GIT_COMMIT_DATE "2019-03-16 05:05:32 +0700"
+#    define GIT_COMMIT_DATE "2020-06-21 05:05:32 +0700"
 #endif
 
 #define BUILD_DESC_FROM_COMMIT(maj,min,rev,build,commit) \
