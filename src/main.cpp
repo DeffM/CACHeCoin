@@ -2271,9 +2271,8 @@ bool CTransaction::CheckInputsLevelTwo(CValidationState &state, CTxDB& txdb, Map
 
             int64 nStakeAnalysisReward = nSubsidy - GetMinFee() + MIN_TX_FEE;
 
-            if (true || nStakeReward > nStakeAnalysisReward)
-                printf("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward);
-                //return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward));
+            if (nStakeReward > nStakeAnalysisReward)
+                return state.DoS(100, error("CTransaction->CheckInputsLevelTwo() : reward %"PRI64d" > analysis reward %"PRI64d"\n", nStakeReward, nStakeAnalysisReward));
         }
         else
         {
