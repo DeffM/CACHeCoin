@@ -59,7 +59,7 @@ static const unsigned int LOCKTIME_THRESHOLD = 500000000; // Tue Nov  5 00:53:20
 
 static const int64 nMaxClockDrift = 2 * 60 * 60; // two hours
 // Settings PowForceGlobal
-static const int64 nPowForceTimestamp = 1524837600;
+static const int64 nPowForceTimestamp = 1524837600; // + NTest(176500) = 1525014100(288384)
 
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64 nMinDiskSpace = 52428800;

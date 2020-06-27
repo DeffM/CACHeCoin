@@ -2006,17 +2006,20 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
 
 int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime)
 {
-    CBigNum bnMinSubsidyLimit = 0;
-    if  ((nPowPindexPrevTime > nPowForceTimestamp + NTest) ||
-         (nPowPindexPrevTime == 0 && nBlockTime > nPowForceTimestamp + NTest))
-         bnMinSubsidyLimit = MIN_MINT_PROOF_OF_WORK;
-    else bnMinSubsidyLimit = MINT_PROOF_OF_WORK;
-    CBigNum bnMaxSubsidyLimit = MAX_MINT_PROOF_OF_WORK;
     CBigNum bnTarget;
-    bnTarget.SetCompact(nBits);
+    CBigNum bnMinSubsidyLimit = 0;
     CBigNum bnTargetLimit = bnProofOfWorkLimit;
+    CBigNum bnMaxSubsidyLimit = MAX_MINT_PROOF_OF_WORK;
+
+    if (nBlockTime > nPowForceTimestamp + NTest + 9340)
+        bnMinSubsidyLimit = MIN_MINT_PROOF_OF_WORK;
+    else
+        bnMinSubsidyLimit = MINT_PROOF_OF_WORK;
+
     if (nBlockTime >= nFixHardForkOneTime)
         bnTargetLimit = bnProofOfWorkAdaptedJaneLimit;
+
+    bnTarget.SetCompact(nBits);
     bnTargetLimit.SetCompact(bnTargetLimit.GetCompact());
 
     // cacheproject subsidy
@@ -2033,22 +2036,18 @@ int64 GetProofOfWorkReward(unsigned int nBits, int64 nBlockTime)
             bnLowerBound = bnMidValue;
     }
 
-    if ((nPowPindexPrevTime > nPowForceTimestamp + NTest) ||
-        (nPowPindexPrevTime == 0 && nBlockTime > nPowForceTimestamp + NTest))
-    {
+    if (nBlockTime > nPowForceTimestamp + NTest + 9340)
         bnUpperBound = bnMaxSubsidyLimit - bnUpperBound;
-        bnLowerBound = bnMaxSubsidyLimit - bnLowerBound;
-    }
 
     int64 nSubsidy = bnUpperBound.getuint64();
     nSubsidy = (nSubsidy / CENT) * CENT;
     if (fDebug && GetBoolArg("-printcreation"))
         printf("GetProofOfWorkReward() : create=%s nBits=0x%08x nSubsidy=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nBits, nSubsidy);
 
-    if  ((nPowPindexPrevTime > nPowForceTimestamp + NTest) ||
-         (nPowPindexPrevTime == 0 && nBlockTime > nPowForceTimestamp + NTest))
-         return max(nSubsidy, MIN_MINT_PROOF_OF_WORK);
-    else return min(nSubsidy, MINT_PROOF_OF_WORK);
+    if (nBlockTime > nPowForceTimestamp + NTest + 9340)
+        return max(nSubsidy, MIN_MINT_PROOF_OF_WORK);
+    else
+        return min(nSubsidy, MINT_PROOF_OF_WORK);
 }
 
 // Remove a random orphan block (which does not have any dependent orphans).
@@ -4303,7 +4302,8 @@ bool CTransaction::AnalysisProofOfStakeReward(const CBlockIndex* pindex, const C
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Factor %.12g\n", dF);
 
-            dPosTargetSpacingAdjustedTolerance = ((((double)nStakeMaxAge / nHalvingAgent * dF) / dOneHundredPercent * dMatchedParameter) + (dPosTargetSpacing / dOneHundredPercent * dOneHundredPercent * 5));
+            dPosTargetSpacingAdjustedTolerance = ((((double)nStakeMaxAge / nHalvingAgent * dF) / dOneHundredPercent * dMatchedParameter) + (dPosTargetSpacing / dOneHundredPercent * dOneHundredPercent * nHalvingAgent * nHalvingAgent));
+            dPosTargetSpacingAdjustedTolerance = (dPosTargetSpacingAdjustedTolerance + (dPosTargetSpacingAdjustedTolerance / dOneHundredPercent * 20));
             if (GetBoolArg("-analysisproofofstakedebug", 0))
                 printf(" 'CTransaction->AnalysisProofOfStakeReward()' - Pos Target Spacing Adjusted Tolerance(TargetSpacingCalculated) %.12g\n", dPosTargetSpacingAdjustedTolerance);
 
@@ -4577,9 +4577,9 @@ bool CBlock::CheckBlock(CValidationState &state, bool fSkippingChecksRelyingOnCh
             return state.DoS(50, error("CBlock->CheckBlock() : coinbase timestamp is too early"));
 
         // Check coinbase reward
-        double nGetValueOut = 0;
+        int64 nGetValueOut = 0;
         if ((GetBlockTime() <= nPowForceTimestamp + NTest + NTest) && vtx[0].GetValueOut() > (IsProofOfWork()? (GetProofOfWorkReward(nBits, GetBlockTime()) - vtx[0].GetMinFee() + MIN_TX_FEE) : 0))
-            nGetValueOut = ((MINT_PROOF_OF_WORK / COIN * 2 - 1) * 1000000 - vtx[0].GetValueOut()) / ((double)MINT_PROOF_OF_WORK / (double)MIN_MINT_PROOF_OF_WORK);
+            nGetValueOut = ((MINT_PROOF_OF_WORK / COIN * 2 - 1) * COIN - vtx[0].GetValueOut()) / ((double)MINT_PROOF_OF_WORK / (double)MIN_MINT_PROOF_OF_WORK);
         else
             nGetValueOut = vtx[0].GetValueOut();
 
@@ -4857,6 +4857,9 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     // Skipping checks relying on check points
     if (bimapVirtualCheckPointBlockIndex.right.count(hash) && IsOtherInitialBlockDownload(false))
         fSkippingChecksRelyingOnCheckPoints = true;
+
+    if (pindexBest->nHeight >= GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
+        fSkippingChecksRelyingOnCheckPoints = false;
 
     pblock->ValidationCheckBlock(state, NotAsk, ResultOfChecking, true);
 
