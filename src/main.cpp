@@ -1459,17 +1459,23 @@ static CBlockIndex* pblockindexFBBHLast;
 CBlockIndex* FindBlockByHeight(int nHeight)
 {
     CBlockIndex *pblockindex;
+
     if (nHeight < nBestHeight / 2)
         pblockindex = pindexGenesisBlock;
     else
         pblockindex = pindexBest;
+
     if (pblockindexFBBHLast && abs(nHeight - pblockindex->nHeight) > abs(nHeight - pblockindexFBBHLast->nHeight))
         pblockindex = pblockindexFBBHLast;
+
     while (pblockindex->nHeight > nHeight)
-           pblockindex = pblockindex->pprev;
+        pblockindex = pblockindex->pprev;
+
     while (pblockindex->nHeight < nHeight)
-           pblockindex = pblockindex->pnext;
+        pblockindex = pblockindex->pnext;
+
     pblockindexFBBHLast = pblockindex;
+
     return pblockindex;
 }
 
@@ -1480,10 +1486,13 @@ bool CBlock::ReadFromDisk(const CBlockIndex* pindex, bool fReadTransactions)
         *this = pindex->GetBlockHeader();
         return true;
     }
+
     if (!ReadFromDisk(pindex->nFile, pindex->nBlockPos, fReadTransactions))
         return false;
+
     if (GetHash() != pindex->GetBlockHash())
         return error("CBlock::ReadFromDisk() : GetHash() doesn't match index");
+
     return true;
 }
 
@@ -1492,6 +1501,7 @@ uint256 static GetOrphanRoot(const CBlock* pblock)
     // Work back to the first block in the orphan chain
     while (mapOrphanBlocks.count(pblock->hashPrevBlock))
            pblock = mapOrphanBlocks[pblock->hashPrevBlock];
+
     return pblock->GetHash();
 }
 
@@ -2082,6 +2092,7 @@ int64 GetProofOfStakeReward(int64 nCoinAge)
 {
     int64 nSubsidy;
     static int64 nRewardCoinYear = 5 * CENT;  // creation amount per coin-year
+
     if (fTestNet)
         nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
     else
@@ -2601,7 +2612,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
                           bool fSkippingChecksRelyingOnCheckPoints)
 {
     // Check it again in case a previous version let a bad block in, but skip BlockSig checking
-    if (!CheckBlock(state, fSkippingChecksRelyingOnCheckPoints, !fJustCheck, !fJustCheck, false))
+    if (!fJustCheck && !CheckBlock(state, fSkippingChecksRelyingOnCheckPoints, !fJustCheck, !fJustCheck, false))
         return false;
 
     // Do not allow blocks that contain transactions which 'overwrite' older transactions,
@@ -2706,7 +2717,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     pindex->nMint = nValueOut - nValueIn + nFees;
     pindex->nMoneySupply = (pindex->pprev? pindex->pprev->nMoneySupply : 0) + nValueOut - nValueIn;
     if (!txdb.WriteBlockIndex(CDiskBlockIndex(pindex)))
-        return state.Invalid(error("CBlock->ConnectBlock() : WriteBlockIndex for pindex failed"));
+        return state.Abort(_("CBlock->ConnectBlock() : WriteBlockIndex for pindex failed"));
 
     // ppcoin: fees are not collected by miners as in bitcoin
     // ppcoin: fees are destroyed to compensate the entire network
@@ -2720,7 +2731,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     for (map<uint256, CTxIndex>::iterator mi = mapQueuedChanges.begin(); mi != mapQueuedChanges.end(); ++mi)
     {
         if (!txdb.UpdateTxIndex((*mi).first, (*mi).second))
-            return state.Invalid(error("CBlock->ConnectBlock() : UpdateTxIndex failed"));
+            return state.Abort(_("CBlock->ConnectBlock() : UpdateTxIndex failed"));
     }
 
     // Update block index on disk without changing it in memory.
@@ -2730,7 +2741,7 @@ bool CBlock::ConnectBlock(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
         CDiskBlockIndex blockindexPrev(pindex->pprev);
         blockindexPrev.hashNext = pindex->GetBlockHash();
         if (!txdb.WriteBlockIndex(blockindexPrev))
-            return state.Invalid(error("CBlock->ConnectBlock() : WriteBlockIndex failed"));
+            return state.Abort(_("CBlock->ConnectBlock() : WriteBlockIndex failed"));
     }
 
     // Watch for transactions paying to me
@@ -2753,11 +2764,11 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
     {
         while (plonger->nHeight > pfork->nHeight)
             if (!(plonger = plonger->pprev))
-                state.Invalid(error("Reorganize() : plonger->pprev is null"));
+                return error("Reorganize() : plonger->pprev is null");
         if (pfork == plonger)
             break;
         if (!(pfork = pfork->pprev))
-            state.Invalid(error("Reorganize() : pfork->pprev is null"));
+            return error("Reorganize() : pfork->pprev is null");
     }
 
     // List of what to disconnect
@@ -2781,9 +2792,9 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
         CBlock block;
         if (fShutdown) return true;
         if (!block.ReadFromDisk(pindex))
-            state.Invalid(error("Reorganize() : ReadFromDisk for disconnect failed"));
+            return state.Abort(_("Reorganize() : ReadFromDisk for disconnect failed"));
         if (!block.DisconnectBlock(txdb, pindex))
-            state.Invalid(error("Reorganize() : DisconnectBlock %s failed", pindex->GetBlockHash().ToString().substr(0,20).c_str()));
+            return error("Reorganize() : DisconnectBlock %s failed", pindex->GetBlockHash().ToString().substr(0,20).c_str());
 
         // Queue memory transactions to resurrect
         BOOST_FOREACH(const CTransaction& tx, block.vtx)
@@ -2803,11 +2814,13 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
             fGoFalse = false;
         CBlockIndex* pindex = vConnect[i];
         if (!block.ReadFromDisk(pindex))
-            state.Invalid(error("Reorganize() : ReadFromDisk for connect failed"));
+            return state.Abort(_("Reorganize() : ReadFromDisk for connect failed"));
         if (!block.ConnectBlock(state, txdb, pindex, false, fGoFalse, false))
         {
             // Invalid block
-            state.Invalid(error("Reorganize() : ConnectBlock %s failed", pindex->GetBlockHash().ToString().substr(0,20).c_str()));
+            if (state.IsInvalid())
+                InvalidChainFound(pindexNew);
+            return error("Reorganize() : ConnectBlock %s failed", pindex->GetBlockHash().ToString().substr(0,20).c_str());
         }
 
         // Queue memory transactions to delete
@@ -2815,11 +2828,11 @@ bool static Reorganize(CValidationState &state, CTxDB& txdb, CBlockIndex* pindex
             vDelete.push_back(tx);
     }
     if (!txdb.WriteHashBestChain(pindexNew->GetBlockHash()))
-        state.Invalid(error("Reorganize() : WriteHashBestChain failed"));
+        return state.Abort(_("Reorganize() : WriteHashBestChain failed"));
 
     // Make sure it's successfully written to disk before changing memory structure
     if (!txdb.TxnCommit())
-        state.Invalid(error("Reorganize() : TxnCommit failed"));
+        return error("Reorganize() : TxnCommit failed");
 
     // Disconnect shorter branch
     BOOST_FOREACH(CBlockIndex* pindex, vDisconnect)
@@ -2862,26 +2875,29 @@ bool CBlock::SetBestChainInner(CValidationState &state, CTxDB& txdb, CBlockIndex
     uint256 hash = GetHash();
 
     // Adding to current best branch
-    if (!ConnectBlock(state, txdb, pindexNew, false, false, fSkippingChecksRelyingOnCheckPoints) || !txdb.WriteHashBestChain(hash))
+    if (ConnectBlock(state, txdb, pindexNew, false, false, fSkippingChecksRelyingOnCheckPoints) && txdb.WriteHashBestChain(hash))
+    {
+        if (!txdb.TxnCommit())
+            return error("CBlock->SetBestChainInner() : TxnCommit failed");
+
+        // Add to current best branch
+        pindexNew->pprev->pnext = pindexNew;
+
+        // Delete redundant memory transactions
+        BOOST_FOREACH(CTransaction& tx, vtx)
+        {
+            mempool.remove(tx);
+            mempool.removeConflicts(tx);
+            if (fDebug)
+                printf("     'CBlock->SetBestChainInner()' - Delete redundant memory transactions\n");
+        }
+    }
+    else
     {
         txdb.TxnAbort();
-        InvalidChainFound(pindexNew);
+        if (state.IsInvalid())
+            InvalidChainFound(pindexNew);
         return false;
-    }
-
-    if (!txdb.TxnCommit())
-        state.Invalid(error("CBlock->SetBestChainInner() : TxnCommit failed"));
-
-    // Add to current best branch
-    pindexNew->pprev->pnext = pindexNew;
-
-    // Delete redundant memory transactions
-    BOOST_FOREACH(CTransaction& tx, vtx)
-    {
-        mempool.remove(tx);
-        mempool.removeConflicts(tx);
-        if (fDebug)
-            printf("     'CBlock->SetBestChainInner()' - Delete redundant memory transactions\n");
     }
     return true;
 }
@@ -2892,20 +2908,20 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
     uint256 hash = GetHash();
 
     if (!txdb.TxnBegin())
-        state.Invalid(error("CBlock->SetBestChain() : TxnBegin failed"));
+        return error("CBlock->SetBestChain() : TxnBegin failed");
 
     if (pindexGenesisBlock == NULL && hash == (!fTestNet ? hashGenesisBlock : hashGenesisBlockTestNet))
     {
         txdb.WriteHashBestChain(hash);
         if (!txdb.TxnCommit())
-            state.Invalid(error("CBlock->SetBestChain() : TxnCommit failed"));
+            return error("CBlock->SetBestChain() : TxnCommit failed");
         pindexGenesisBlock = pindexNew;
     }
     else
     if (hashPrevBlock == hashBestChain)
     {
         if (!SetBestChainInner(state, txdb, pindexNew, fSkippingChecksRelyingOnCheckPoints))
-            state.Invalid(error("CBlock->SetBestChain() : SetBestChainInner failed"));
+            return error("CBlock->SetBestChain() : SetBestChainInner failed");
     }
     else
     {
@@ -2930,8 +2946,9 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
         if (!Reorganize(state, txdb, pindexIntermediate))
         {
             txdb.TxnAbort();
-            InvalidChainFound(pindexNew);
-            state.Invalid(error("CBlock->SetBestChain() : Reorganize failed"));
+            if (state.IsInvalid())
+                InvalidChainFound(pindexNew);
+            return error("CBlock->SetBestChain() : Reorganize failed");
         }
 
         // Connect further blocks
@@ -3021,16 +3038,17 @@ bool CBlock::SetBestChain(CValidationState &state, CTxDB& txdb, CBlockIndex* pin
 // age (trust score) of competing branches.
 bool CTransaction::GetCoinAge(CTxDB& txdb, uint64& nCoinAge) const
 {
-    CBigNum bnCentSecond = 0;  // coin age in the unit of cent-seconds
     nCoinAge = 0;
+    CBigNum bnCentSecond = 0;  // coin age in the unit of cent-seconds
+
     if (IsCoinBase())
         return true;
 
     BOOST_FOREACH(const CTxIn& txin, vin)
     {
         // First try finding the previous transaction in database
-        CTransaction txPrev;
         CTxIndex txindex;
+        CTransaction txPrev;
         if (!txPrev.ReadFromDisk(txdb, txin.prevout, txindex))
             continue;  // previous transaction not in main chain
         if (nTime < txPrev.nTime)
@@ -3052,7 +3070,9 @@ bool CTransaction::GetCoinAge(CTxDB& txdb, uint64& nCoinAge) const
     CBigNum bnCoinDay = bnCentSecond * CENT / COIN / (24 * 60 * 60);
     if (fDebug && GetBoolArg("-printcoinage"))
         printf(" 'CTransaction->GetCoinAge()' - coin age bnCoinDay=%s\n", bnCoinDay.ToString().c_str());
+
     nCoinAge = bnCoinDay.getuint64();
+
     return true;
 }
 
@@ -3075,6 +3095,7 @@ bool CBlock::GetCoinAge(uint64& nCoinAge) const
         nCoinAge = 1;
     if (fDebug && GetBoolArg("-printcoinage"))
         printf(" 'CBlock->GetCoinAgeblock()' - coin age total nCoinDays=%"PRI64d"\n", nCoinAge);
+
     return true;
 }
 
@@ -4678,7 +4699,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkip
             {
                 if (nBits != GetNextTargetRequiredPow(pindexPrev, IsProofOfStake()))
                 {
-                    return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-work"));
+                    return state.DoS(100, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-work"));
                 }
             }
 
@@ -4686,7 +4707,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkip
             {
                 if (nBits != GetNextTargetRequiredPos(pindexPrev, IsProofOfStake(), false) && false)
                 {
-                    return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
+                    return state.DoS(100, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
                 }
             }
 
@@ -4694,7 +4715,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkip
             {
                 if (nBits != GetNextTargetRequiredPos(pindexPrev, true, true))
                 {
-                   return state.DoS(5, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
+                   return state.DoS(100, error("CBlock->AcceptBlock() : incorrect nBits - %s", "proof-of-stake"));
                 }
             }
 
@@ -4702,7 +4723,7 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkip
             {
                 if (nBits != GetNextTargetRequired(pindexPrev, IsProofOfStake()) && pindexBest->nHeight >= GetNumBlocksOfPeers())
                 {
-                    return state.DoS(5, error("CBlock->AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
+                    return state.DoS(100, error("CBlock->AcceptBlock() : incorrect %s", IsProofOfWork() ? "proof-of-work" : "proof-of-stake"));
                 }
             }
 
@@ -4783,10 +4804,10 @@ bool CBlock::AcceptBlock(CValidationState &state, CDiskBlockPos *dbp, bool fSkip
     unsigned int nFile = std::numeric_limits<unsigned int>::max();
     unsigned int nBlockPos = 0;
     if (!WriteToDisk(nFile, nBlockPos))
-        return state.Invalid(error("CBlock->AcceptBlock() : CBlock->WriteToDisk() failed"));
+        return state.Abort(_("CBlock->AcceptBlock() : CBlock->WriteToDisk() failed"));
 
     if (!AddToBlockIndex(state, nFile, nBlockPos, fSkippingChecksRelyingOnCheckPoints))
-        return state.Invalid(error("CBlock->AcceptBlock() : CBlock->AddToBlockIndex() failed"));
+        return error("CBlock->AcceptBlock() : CBlock->AddToBlockIndex() failed");
 
     // Relay inventory, but don't relay old inventory during initial block download
     int nBlockEstimate = Checkpoints::GetTotalBlocksEstimate();
@@ -4841,25 +4862,27 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
     {
         nBlocksToIgnore--;
         setIgnoredBlocksHashes.insert(GetHash());
-        return state.Invalid(error("ProcessBlock() : block ignored"));
+        return error("ProcessBlock() : block ignored");
     }
     if (setIgnoredBlocksHashes.count(GetHash()))
-        return state.Invalid(error("ProcessBlock() : block ignored"));
+        return error("ProcessBlock() : block ignored");
 #endif
 
     MapPrevTx NotAsk;
+    bool fScanPindex = false;
     std::string ResultOfChecking;
     nSynTimerStart = GetTimeMillis();
     uint256 hash = pblock->GetHash();
+    CBlockIndex* pindex = pindexBest;
     bool fDuplicateStakeOfBestBlock = false;
     bool fSkippingChecksRelyingOnCheckPoints = false;
 
-    // Skipping checks relying on check points
-    if (bimapVirtualCheckPointBlockIndex.right.count(hash) && IsOtherInitialBlockDownload(false))
-        fSkippingChecksRelyingOnCheckPoints = true;
+    if (pindex->nHeight < GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
+        fScanPindex = true;
 
-    if (pindexBest->nHeight >= GetOtherNumBlocksOfPeers() - GetArg("-depthofthedisputeszone", 240))
-        fSkippingChecksRelyingOnCheckPoints = false;
+    // Skipping checks relying on check points
+    if (fScanPindex && IsOtherInitialBlockDownload(false) && bimapVirtualCheckPointBlockIndex.right.count(hash))
+        fSkippingChecksRelyingOnCheckPoints = true;
 
     pblock->ValidationCheckBlock(state, NotAsk, ResultOfChecking, true);
 
@@ -4874,17 +4897,20 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         return false;
 
     if (ResultOfChecking == "duplicate proof-of-stake")
-        return state.Invalid(error("ProcessBlock() : CBlock->ValidationCheckBlock() - FAILED"));
+        return error("ProcessBlock() : CBlock->ValidationCheckBlock() - FAILED");
 
     if (ResultOfChecking == "prev duplicate stake block")
-        return state.Invalid(error("ProcessBlock() : CBlock->ValidationCheckBlock() - FAILED"));
+        return error("ProcessBlock() : CBlock->ValidationCheckBlock() - FAILED");
 
     if (ResultOfChecking == "duplicatestakeofbestblock")
         fDuplicateStakeOfBestBlock = true;
 
+    if (ResultOfChecking == "do not check block ")
+        fSkippingChecksRelyingOnCheckPoints = true;;
+
     // Preliminary checks
     if (!pblock->CheckBlock(state, fSkippingChecksRelyingOnCheckPoints))
-        return state.Invalid(error("ProcessBlock() : CheckBlock - FAILED"));
+        return error("ProcessBlock() : CheckBlock - FAILED");
 
     // ppcoin: verify hash target and signature of coinstake tx
     if (pblock->IsProofOfStake())
@@ -4934,7 +4960,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         InvalidChainFound(pindexBest);
         CValidationState stateDummy;
         if (!pblock->SetBestChain(stateDummy, txdb, pindexBest->pprev, false))
-            return state.Invalid(error("ProcessBlock() : SetBestChain on previous best block failed"));
+            return error("ProcessBlock() : SetBestChain on previous best block failed");
 
         return false;
     }
@@ -4945,7 +4971,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
         CBlock* pprevBlock = mapDuplicateStakeBlocks[pblock->hashPrevBlock];
         // Block was already checked when it was first received, so we can just accept it here
         if (!pprevBlock->AcceptBlock(state, dbp, false))
-            return state.Invalid(error("ProcessBlock() : AcceptBlock of previously duplicate block FAILED"));
+            return error("ProcessBlock() : AcceptBlock of previously duplicate block FAILED");
         mapDuplicateStakeBlocks.erase(pblock->hashPrevBlock);
         delete pprevBlock;
     }
@@ -4973,7 +4999,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
                 // Duplicate stake allowed only when there is orphan child block
                 if (setStakeSeenOrphan.count(pblock2->GetProofOfStake()) && !mapOrphanBlocksByPrev.count(hash) && !Checkpoints::WantedByPendingSyncCheckpoint(hash))
                 {
-                    state.Invalid(error("ProcessBlock() : duplicate proof-of-stake (%s, %d) for orphan block %s", pblock2->GetProofOfStake().first.ToString().c_str(), pblock2->GetProofOfStake().second, hash.ToString().c_str()));
+                    error("ProcessBlock() : duplicate proof-of-stake (%s, %d) for orphan block %s", pblock2->GetProofOfStake().first.ToString().c_str(), pblock2->GetProofOfStake().second, hash.ToString().c_str());
                     //pblock2 will not be needed, free it
                     delete pblock2;
                     return false;
@@ -4997,7 +5023,7 @@ bool ProcessBlock(CValidationState &state, CNode* pfrom, CBlock* pblock, CDiskBl
 
     // Store to disk
     if (!pblock->AcceptBlock(state, dbp, fSkippingChecksRelyingOnCheckPoints))
-        return state.Invalid(error("ProcessBlock() : CBlock->AcceptBlock() FAILED"));
+        return error("ProcessBlock() : CBlock->AcceptBlock() FAILED");
 
     // Recursively process any orphan blocks that depended on this one
     vector<uint256> vWorkQueue;
@@ -7503,7 +7529,6 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
 
         nLastBlockTx = nBlockTx;
         nLastBlockSize = nBlockSize;
-
         if (fDebug && GetBoolArg("-printpriority"))
             printf(" 'CreateNewBlock()' - total size %"PRI64u"\n", nBlockSize);
 
@@ -7519,6 +7544,12 @@ CBlock* CreateNewBlock(CWallet* pwallet, bool fProofOfStake, bool fProofOfWork, 
         if (pblock->IsProofOfWork())
             pblock->UpdateTime(pindexPrev);
         pblock->nNonce         = 0;
+
+        if (!pblock->ConnectBlock(state, txdb, pindexPrev, true, false, false))
+        {
+            error("'CreateNewBlock()' : ConnectBlock failed");
+            return NULL;
+        }
     }
 
     return pblock.release();
